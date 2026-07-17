@@ -1,0 +1,9 @@
+node_modules/
+
+# user configuration — generated with defaults on first run,
+# may contain local paths and repo names
+config/
+
+# local tooling state
+.claude/
+*.log

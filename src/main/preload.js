@@ -1,0 +1,33 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('api', {
+  ptyCreate: (cols, rows, opts = {}) => ipcRenderer.invoke('pty:create', { cols, rows, ...opts }),
+  ptyInput: (id, data) => ipcRenderer.send('pty:input', { id, data }),
+  ptyResize: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),
+  ptyKill: (id) => ipcRenderer.send('pty:kill', { id }),
+  onPtyData: (cb) => ipcRenderer.on('pty:data', (_e, m) => cb(m)),
+  onPtyExit: (cb) => ipcRenderer.on('pty:exit', (_e, m) => cb(m)),
+  themeGet: () => ipcRenderer.invoke('theme:get'),
+  themeSave: (theme) => ipcRenderer.invoke('theme:save', theme),
+  themeOpenFile: (which) => ipcRenderer.send('theme:openFile', which),
+  onThemeChanged: (cb) => ipcRenderer.on('theme:changed', (_e, m) => cb(m)),
+  glassInfo: () => ipcRenderer.invoke('glass:info'),
+  diagReport: (data) => ipcRenderer.send('diag:report', data),
+  pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
+  fontsList: () => ipcRenderer.invoke('fonts:list'),
+  agentsGetConfig: () => ipcRenderer.invoke('agents:getConfig'),
+  agentsAddSpace: () => ipcRenderer.invoke('agents:addSpace'),
+  agentsSpawn: (opts) => ipcRenderer.invoke('agents:spawn', opts),
+  agentsTrack: (opts) => ipcRenderer.send('agents:track', opts),
+  agentsSelectDiff: (agentId) => ipcRenderer.send('agents:selectDiff', agentId),
+  onAgentStatus: (cb) => ipcRenderer.on('agent:status', (_e, m) => cb(m)),
+  onAgentDiff: (cb) => ipcRenderer.on('agent:diff', (_e, m) => cb(m)),
+  onAgentDetected: (cb) => ipcRenderer.on('agent:detected', (_e, m) => cb(m)),
+  onAgentEnded: (cb) => ipcRenderer.on('agent:ended', (_e, m) => cb(m)),
+  agentsGetSessions: () => ipcRenderer.invoke('agents:getSessions'),
+  agentsRemoveSession: (cwd) => ipcRenderer.invoke('agents:removeSession', cwd),
+  onWinBounds: (cb) => ipcRenderer.on('win:bounds', (_e, m) => cb(m)),
+  winMinimize: () => ipcRenderer.send('win:minimize'),
+  winMaximize: () => ipcRenderer.send('win:maximize'),
+  winClose: () => ipcRenderer.send('win:close')
+});

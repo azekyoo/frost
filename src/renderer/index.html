@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;" />
+  <title>Frost</title>
+  <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
+  <link rel="stylesheet" href="style.css" />
+  <style id="custom-css"></style>
+</head>
+<body>
+  <div id="glass-bg"></div>
+  <div id="glass-tint"></div>
+  <div id="titlebar">
+    <div id="tabstrip"></div>
+    <button id="btn-newtab" title="New tab (Ctrl+Shift+T)">+</button>
+    <button id="btn-agents" title="New agent tab (Ctrl+Shift+A)">&#10022;</button>
+    <div class="titlebar-spacer"></div>
+    <button id="btn-settings" title="Settings (Ctrl+,)">&#9881;</button>
+    <div class="wco-spacer"></div>
+    <div id="win-controls">
+      <button id="btn-min" title="Minimize">&#x2013;</button>
+      <button id="btn-max" title="Maximize">&#x25A1;</button>
+      <button id="btn-close" title="Close">&#x2715;</button>
+    </div>
+  </div>
+
+  <div id="content"></div>
+
+  <div id="settings">
+    <div class="settings-header">
+      <span>Settings</span>
+      <button id="btn-settings-close" title="Close">&times;</button>
+    </div>
+    <div class="settings-body">
+      <div class="group">
+        <h3>Backdrop</h3>
+
+        <label class="field">
+          <span>Material</span>
+          <select id="s-material">
+            <option value="acrylic">Acrylic</option>
+            <option value="acrylic-always">Acrylic (always on)</option>
+            <option value="glass">Glass (custom blur, no frost)</option>
+            <option value="mica">Mica</option>
+            <option value="tabbed">Tabbed (Mica Alt)</option>
+            <option value="none">None</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Color mode</span>
+          <select id="s-colormode">
+            <option value="dark">Dark (neutral smoke)</option>
+            <option value="light">Light (white frost)</option>
+            <option value="system">Follow Windows</option>
+          </select>
+        </label>
+
+        <label class="field" id="f-glass-blur">
+          <span>Glass blur <em id="s-glass-blur-val"></em></span>
+          <input type="range" id="s-glass-blur" min="0" max="100" step="1" />
+        </label>
+
+        <div class="field-pair">
+          <label class="field">
+            <span>Tint</span>
+            <input type="color" id="s-tint-color" />
+          </label>
+          <label class="field">
+            <span>Accent</span>
+            <input type="color" id="s-accent" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Tint opacity <em id="s-tint-alpha-val"></em></span>
+          <input type="range" id="s-tint-alpha" min="0" max="100" step="1" />
+        </label>
+      </div>
+
+      <div class="group">
+        <h3>Terminal</h3>
+
+        <label class="field">
+          <span>Start directory (new tabs)</span>
+          <div class="input-row">
+            <input type="text" id="s-startdir" spellcheck="false" placeholder="C:\Users\you" />
+            <button id="s-startdir-browse" title="Browse for folder" type="button">&#128193;</button>
+          </div>
+        </label>
+
+        <label class="field">
+          <span>Font (installed monospace)</span>
+          <select id="s-font-family"></select>
+        </label>
+
+        <label class="field">
+          <span>Font size <em id="s-font-size-val"></em></span>
+          <input type="range" id="s-font-size" min="8" max="28" step="1" />
+        </label>
+
+        <label class="field">
+          <span>Padding <em id="s-padding-val"></em></span>
+          <input type="range" id="s-padding" min="0" max="48" step="1" />
+        </label>
+
+        <label class="field">
+          <span>Corner radius <em id="s-radius-val"></em></span>
+          <input type="range" id="s-radius" min="0" max="24" step="1" />
+        </label>
+
+        <label class="field">
+          <span>Auto-contrast text</span>
+          <select id="s-contrast">
+            <option value="1">Off</option>
+            <option value="4.5">Always (recommended)</option>
+            <option value="7">Strong</option>
+          </select>
+        </label>
+
+        <label class="field row">
+          <input type="checkbox" id="s-gpu" />
+          <span>GPU renderer (builtin glyphs)</span>
+        </label>
+
+        <label class="field row">
+          <input type="checkbox" id="s-autodetect" />
+          <span>Auto-detect claude sessions</span>
+        </label>
+      </div>
+
+      <div class="group">
+        <h3>Cursor</h3>
+
+        <label class="field">
+          <span>Style</span>
+          <select id="s-cursor-style">
+            <option value="bar">Bar</option>
+            <option value="block">Block</option>
+            <option value="underline">Underline</option>
+          </select>
+        </label>
+
+        <label class="field row">
+          <input type="checkbox" id="s-cursor-blink" />
+          <span>Cursor blink</span>
+        </label>
+      </div>
+
+      <div class="group">
+        <h3>Files</h3>
+        <div class="settings-actions">
+          <button id="btn-open-theme">theme.json</button>
+          <button id="btn-open-css">theme.css</button>
+        </div>
+        <p class="hint">Both hot-reload on save. theme.css accepts any CSS — full control.</p>
+        <p class="hint" id="diag"></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="../../node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+  <script src="../../node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>
+  <script src="../../node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
