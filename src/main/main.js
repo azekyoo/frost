@@ -18,6 +18,7 @@ const DEFAULT_THEME = {
   minContrast: 4.5,
   gpuRenderer: true,
   autoDetectAgents: true,
+  copyOnSelect: true,
   unicodeVersion: '11',
   tint: 'rgba(0, 0, 0, 0.00)',
   accent: '#80a8ff',

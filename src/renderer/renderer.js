@@ -40,6 +40,14 @@ function debounce(fn, ms) {
 
 // ---------- theme ----------
 
+// paste via term.paste(): respects bracketed paste mode, so multi-line
+// pastes don't execute line-by-line in the shell
+function pasteInto(term) {
+  navigator.clipboard.readText().then((t) => {
+    if (t) term.paste(t);
+  });
+}
+
 // GPU (WebGL) renderer: enables customGlyphs box-drawing and faster rendering.
 // Falls back to the DOM renderer if WebGL is unavailable.
 function applyGpu(node) {
@@ -177,16 +185,38 @@ async function createPane(opts = {}) {
     if (ev.type !== 'keydown') return true;
     // shortcut executed by the window-level listener; just keep it away from the pty
     if (matchShortcut(ev)) return false;
-    // clipboard
+    // clipboard — Windows Terminal behavior
+    const ctrlOnly = ev.ctrlKey && !ev.shiftKey && !ev.altKey;
+    if (ctrlOnly && ev.code === 'KeyC' && term.hasSelection()) {
+      // copy instead of interrupt when text is selected
+      navigator.clipboard.writeText(term.getSelection());
+      term.clearSelection();
+      return false;
+    }
+    if ((ctrlOnly || (ev.ctrlKey && ev.shiftKey)) && ev.code === 'KeyV') {
+      // single controlled paste: preventDefault kills the browser's native
+      // paste event, returning false keeps ^V away from the shell (PSReadLine
+      // would paste on raw ^V too) — then paste exactly once ourselves
+      ev.preventDefault();
+      pasteInto(term);
+      return false;
+    }
     if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyC' && term.hasSelection()) {
       navigator.clipboard.writeText(term.getSelection());
       return false;
     }
-    if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyV') {
-      navigator.clipboard.readText().then((t) => t && node.ptyId && api.ptyInput(node.ptyId, t));
-      return false;
-    }
     return true;
+  });
+
+  // copy-on-select (debounced: selection changes continuously while dragging)
+  let selTimer = null;
+  term.onSelectionChange(() => {
+    clearTimeout(selTimer);
+    selTimer = setTimeout(() => {
+      if (state.theme?.copyOnSelect !== false && term.hasSelection()) {
+        navigator.clipboard.writeText(term.getSelection());
+      }
+    }, 150);
   });
 
   paneEl.addEventListener('mousedown', () => focusPane(node));
@@ -196,8 +226,7 @@ async function createPane(opts = {}) {
       await navigator.clipboard.writeText(term.getSelection());
       term.clearSelection();
     } else {
-      const t = await navigator.clipboard.readText();
-      if (t && node.ptyId) api.ptyInput(node.ptyId, t);
+      pasteInto(term);
     }
   });
 
@@ -926,6 +955,7 @@ const s = {
   contrast: document.getElementById('s-contrast'),
   gpu: document.getElementById('s-gpu'),
   autoDetect: document.getElementById('s-autodetect'),
+  copyOnSelect: document.getElementById('s-copyonselect'),
   startDir: document.getElementById('s-startdir'),
   tintColor: document.getElementById('s-tint-color'),
   tintAlpha: document.getElementById('s-tint-alpha'),
@@ -1019,6 +1049,7 @@ function syncSettingsUI() {
   s.contrast.value = String(t.minContrast ?? 4.5);
   s.gpu.checked = t.gpuRenderer !== false;
   s.autoDetect.checked = t.autoDetectAgents !== false;
+  s.copyOnSelect.checked = t.copyOnSelect !== false;
   s.startDir.value = t.startDir || '';
   s.tintColor.value = tint.hex;
   s.tintAlpha.value = Math.round(tint.alpha * 100);
@@ -1058,6 +1089,7 @@ function onSettingChange() {
   t.minContrast = parseFloat(s.contrast.value);
   t.gpuRenderer = s.gpu.checked;
   t.autoDetectAgents = s.autoDetect.checked;
+  t.copyOnSelect = s.copyOnSelect.checked;
   t.startDir = s.startDir.value.trim();
   t.tint = `rgba(${r}, ${g}, ${b}, ${alpha})`;
   t.accent = s.accent.value;
