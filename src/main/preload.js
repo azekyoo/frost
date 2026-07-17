@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('api', {
   fontsList: () => ipcRenderer.invoke('fonts:list'),
   agentsGetConfig: () => ipcRenderer.invoke('agents:getConfig'),
   agentsAddSpace: () => ipcRenderer.invoke('agents:addSpace'),
+  agentsRemoveSpace: (path) => ipcRenderer.invoke('agents:removeSpace', path),
   agentsSpawn: (opts) => ipcRenderer.invoke('agents:spawn', opts),
   agentsTrack: (opts) => ipcRenderer.send('agents:track', opts),
   agentsSelectDiff: (agentId) => ipcRenderer.send('agents:selectDiff', agentId),

@@ -602,9 +602,18 @@ function renderSpaces(tab, cfg) {
       name.title = space.path;
       const btn = document.createElement('button');
       btn.textContent = '+ agent';
-      btn.title = 'Spawn a Claude Code agent in a new worktree';
+      btn.title = 'Spawn a Claude Code agent here';
       btn.addEventListener('click', () => showSpawnForm(tab, space, row));
-      row.append(name, btn);
+      const del = document.createElement('button');
+      del.className = 'space-remove';
+      del.textContent = '×';
+      del.title = 'Remove this space (repo itself is untouched)';
+      del.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        const cfg = await api.agentsRemoveSpace(space.path);
+        renderSpaces(tab, cfg);
+      });
+      row.append(name, btn, del);
       return row;
     })
   );

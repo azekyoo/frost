@@ -547,6 +547,13 @@ ipcMain.handle('agents:addSpace', async () => {
   return cfg;
 });
 
+ipcMain.handle('agents:removeSpace', (_e, spacePath) => {
+  const cfg = readAgentsCfg();
+  cfg.spaces = (cfg.spaces || []).filter((s) => s.path !== spacePath);
+  fs.writeFileSync(AGENTS_FILE, JSON.stringify(cfg, null, 2));
+  return cfg;
+});
+
 ipcMain.handle('agents:spawn', (_e, { spacePath, task, useWorktree }) => {
   let cwd = spacePath;
   let branch;
