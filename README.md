@@ -11,6 +11,8 @@
 
 ---
 
+![Agent mode — live status, terminal, and diff watch](assets/screenshot-agent.png)
+
 ## Why
 
 Windows terminals let you pick a theme. Frost lets you own the whole surface:
@@ -73,6 +75,8 @@ Requires Node 18+, Windows 11 for the acrylic/mica materials
 | Right-click | Copy selection, else paste |
 
 ## Configuration
+
+![Settings — glass backdrop, tint, fonts, agent options](assets/screenshot-options.png)
 
 Created with defaults on first run, all hot-reloading:
 
