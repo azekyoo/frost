@@ -31,7 +31,8 @@ running and supervising Claude Code agents with live status and diff watching.
 - **Hot-reload everything** — save `config/theme.json` or `config/theme.css`
   and the running window updates instantly. `theme.css` is raw CSS injected
   last: restyle anything
-- **Agent mode** — a special tab for AI coding agents (Claude Code first):
+- **Agent mode** — a special tab for AI coding agents (Claude Code first),
+  heavily inspired by the excellent [herdr](https://herdr.dev/):
   - run `claude` in any Frost terminal → it auto-registers as an agent with
     live status: working / **blocked (needs you)** / done / idle
   - diff watch panel: live green/red diff of the agent's repo — **Session**
