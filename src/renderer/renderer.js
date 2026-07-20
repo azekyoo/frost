@@ -1,4 +1,4 @@
-/* global Terminal, FitAddon, WebLinksAddon, WebglAddon, Unicode11Addon */
+/* global Terminal, FitAddon, WebLinksAddon, WebglAddon, Unicode11Addon, SearchAddon */
 
 const state = {
   theme: null,
@@ -135,6 +135,90 @@ function allLeaves(node, out = []) {
   return out;
 }
 
+// ---------- buffer search ----------
+
+const SEARCH_DECORATIONS = {
+  matchBackground: '#5a4a1f',
+  matchBorder: '#8a7020',
+  matchOverviewRuler: '#8a7020',
+  activeMatchBackground: '#c98a1f',
+  activeMatchBorder: '#ffb84d',
+  activeMatchColorOverviewRuler: '#ffb84d'
+};
+
+function attachPaneSearch(node) {
+  const search = new SearchAddon.SearchAddon();
+  node.term.loadAddon(search);
+  node.search = search;
+
+  const bar = document.createElement('div');
+  bar.className = 'pane-search';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'pane-search-input';
+  input.placeholder = 'Find';
+  input.spellcheck = false;
+  const count = document.createElement('span');
+  count.className = 'pane-search-count';
+  const prev = document.createElement('button');
+  prev.textContent = '▲';
+  prev.title = 'Previous match (Shift+Enter)';
+  const next = document.createElement('button');
+  next.textContent = '▼';
+  next.title = 'Next match (Enter)';
+  const close = document.createElement('button');
+  close.textContent = '×';
+  close.title = 'Close (Esc)';
+  bar.append(input, count, prev, next, close);
+  node.el.appendChild(bar);
+  node.searchEl = bar;
+  node.searchInput = input;
+
+  search.onDidChangeResults(({ resultIndex, resultCount }) => {
+    count.textContent = resultCount === 0 ? 'No results' : `${resultIndex + 1}/${resultCount}`;
+  });
+
+  function go(dir, incremental) {
+    const query = input.value;
+    if (!query) {
+      search.clearDecorations();
+      count.textContent = '';
+      return;
+    }
+    const searchOpts = { decorations: SEARCH_DECORATIONS, incremental };
+    if (dir === 'prev') search.findPrevious(query, searchOpts);
+    else search.findNext(query, searchOpts);
+  }
+
+  input.addEventListener('input', () => go('next', true));
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      go(ev.shiftKey ? 'prev' : 'next', false);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      closePaneSearch(node);
+    }
+  });
+  prev.addEventListener('click', () => go('prev', false));
+  next.addEventListener('click', () => go('next', false));
+  close.addEventListener('click', () => closePaneSearch(node));
+}
+
+function openPaneSearch(node) {
+  if (!node?.searchEl) return;
+  node.searchEl.classList.add('open');
+  node.searchInput.focus();
+  node.searchInput.select();
+}
+
+function closePaneSearch(node) {
+  if (!node?.searchEl) return;
+  node.searchEl.classList.remove('open');
+  node.search.clearDecorations();
+  node.term.focus();
+}
+
 async function createPane(opts = {}) {
   const id = 'pane-' + ++paneCounter;
   const paneEl = document.createElement('div');
@@ -180,6 +264,7 @@ async function createPane(opts = {}) {
 
   const node = { type: 'leaf', id, ptyId: null, term, fit, webgl: null, el: paneEl };
   applyGpu(node);
+  attachPaneSearch(node);
 
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
@@ -921,6 +1006,9 @@ function matchShortcut(ev) {
   if (altShift && (ev.code === 'Equal' || ev.code === 'NumpadAdd')) return () => splitPane('row');
   if (altShift && (ev.code === 'Minus' || ev.code === 'NumpadSubtract')) return () => splitPane('col');
   if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === 'Comma') return () => toggleSettings();
+  if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === 'KeyF') {
+    return () => state.activeTab?.activePane && openPaneSearch(state.activeTab.activePane);
+  }
   if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === 'Tab') return () => cycleTab(1);
   if (ev.ctrlKey && ev.shiftKey && ev.code === 'Tab') return () => cycleTab(-1);
   return null;

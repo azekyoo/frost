@@ -362,6 +362,66 @@ body.frameless #win-controls {
   background: transparent !important;
 }
 
+/* ---------- buffer search ---------- */
+
+.pane-search {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  background: rgba(16, 18, 27, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 5px 6px;
+  box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.5);
+}
+
+.pane-search.open {
+  display: flex;
+}
+
+.pane-search-input {
+  width: 160px;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  color: var(--fg);
+  font-size: 12px;
+  padding: 4px 7px;
+  outline: none;
+}
+
+.pane-search-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.pane-search-count {
+  font-size: 11px;
+  min-width: 52px;
+  text-align: center;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+  white-space: nowrap;
+}
+
+.pane-search button {
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.pane-search button:hover {
+  background: var(--surface-3);
+}
+
 /* ---------- agent mode ---------- */
 
 .agents-layout {
