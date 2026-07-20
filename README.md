@@ -74,6 +74,7 @@ Requires Node 18+, Windows 11 for the acrylic/mica materials
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
 | Right-click | Copy selection, else paste |
+| `Ctrl+F` | Search buffer |
 
 ## Configuration
 
