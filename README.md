@@ -62,20 +62,42 @@ running and supervising Claude Code agents with live status and diff watching.
   (Windows Terminal parity), tabs, split panes, font picker listing your
   installed monospace fonts
 
-## Run
+## Install
 
-```
-npm install
-npm start
-```
+Grab `Frost-Setup-<version>.exe` from
+[Releases](https://github.com/azekyoo/frost/releases) — a per-user install, no
+admin needed. `Frost-<version>-portable.exe` runs with no install at all.
 
-Requires Node 18+, Windows 11 for the acrylic/mica materials
-(`glass` works anywhere), and [PowerShell 7](https://github.com/PowerShell/PowerShell)
+The installer also adds:
+
+- **Open Frost here** in the folder right-click menu (on a folder, or on empty
+  space inside one)
+- **`frost`** on your PATH — `frost .` opens a tab in that directory. If Frost is
+  already running, it opens a new tab there instead of a second window
+
+Settings live in `%APPDATA%\Frost\config` for installed builds. Running from
+source uses the repo's `config/` folder instead, so the two never collide.
+
+Windows 11 is needed for the acrylic/mica materials (`glass` works anywhere), and
+[PowerShell 7](https://github.com/PowerShell/PowerShell) is used when present
 (falls back to Windows PowerShell). Agent mode expects
 [Claude Code](https://claude.com/claude-code) on PATH.
 
-> **Smart App Control**: unsigned dev binaries (Electron) are blocked when SAC
-> is enforcing. Dev on a SAC machine requires turning it off.
+> **The builds are unsigned.** SmartScreen will warn on first run — "More info"
+> then "Run anyway". With Smart App Control *enforcing*, Windows blocks unsigned
+> binaries outright and Frost can't run until you turn SAC off. Code signing
+> needs a certificate this project doesn't have yet.
+
+## Build from source
+
+```
+npm install
+npm start            # run it
+npm run dist         # installer + portable exe into dist/
+npm run pack         # unpacked build only, faster
+```
+
+Requires Node 18+.
 
 ## Shortcuts
 
@@ -121,7 +143,8 @@ lands on the same key on every keyboard layout.
 
 ![Settings — glass backdrop, tint, fonts, agent options](assets/screenshot-options.png)
 
-Created with defaults on first run, all hot-reloading:
+Created with defaults on first run, all hot-reloading. In `%APPDATA%\Frost\config`
+for an installed build, in the repo's `config/` when running from source:
 
 - `config/theme.json` — material, colors, blur, tint, fonts, cursor, padding,
   corner radii, start directory, ANSI palette, agent auto-detect, and

@@ -1,4 +1,5 @@
 node_modules/
+dist/
 
 # user configuration — generated with defaults on first run,
 # may contain local paths and repo names

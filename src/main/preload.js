@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
   keysGet: () => ipcRenderer.invoke('keys:get'),
   sessionGet: () => ipcRenderer.invoke('session:get'),
   sessionSave: (layout) => ipcRenderer.send('session:layout', layout),
+  onOpenDir: (cb) => ipcRenderer.on('session:openDir', (_e, dir) => cb(dir)),
   onKeysChanged: (cb) => ipcRenderer.on('keys:changed', (_e, m) => cb(m)),
   glassInfo: () => ipcRenderer.invoke('glass:info'),
   diagReport: (data) => ipcRenderer.send('diag:report', data),

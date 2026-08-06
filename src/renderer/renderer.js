@@ -1967,7 +1967,7 @@ document.getElementById('btn-max').addEventListener('click', () => api.winMaximi
 document.getElementById('btn-close').addEventListener('click', () => api.winClose());
 
 (async () => {
-  const { theme, css, frameless, home } = await api.themeGet();
+  const { theme, css, frameless, home, openDir } = await api.themeGet();
   state.home = home || null;
   glassState.active = Boolean(frameless);
   if (frameless) {
@@ -1989,9 +1989,17 @@ document.getElementById('btn-close').addEventListener('click', () => api.winClos
     await document.fonts.ready;
   } catch {}
 
-  const session = theme.restoreSession === false ? null : await api.sessionGet();
-  const restored = session?.tabs?.length ? await restoreTabs(session) : false;
-  if (!restored) await newTab();
+  // launched as `frost <dir>` or from "Open Frost here": that directory is the
+  // whole point of the launch, so it wins over the saved layout
+  if (openDir) {
+    await newTab({ cwd: openDir });
+  } else {
+    const session = theme.restoreSession === false ? null : await api.sessionGet();
+    const restored = session?.tabs?.length ? await restoreTabs(session) : false;
+    if (!restored) await newTab();
+  }
+
+  api.onOpenDir((dir) => newTab({ cwd: dir }));
 
   // Belt and braces: one atlas rebuild after boot in case a font swapped late
   setTimeout(() => {

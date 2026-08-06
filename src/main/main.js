@@ -5,7 +5,12 @@ const { spawnSync } = require('child_process');
 const chokidar = require('chokidar');
 const pty = require('@lydell/node-pty');
 
-const CONFIG_DIR = path.join(__dirname, '..', '..', 'config');
+// Installed builds live somewhere unwritable (Program Files, or a read-only
+// asar), so their config goes to %APPDATA%. Running from source keeps using the
+// repo's config/ folder, which keeps the dev loop and .gitignore intact.
+const CONFIG_DIR = app.isPackaged
+  ? path.join(app.getPath('userData'), 'config')
+  : path.join(__dirname, '..', '..', 'config');
 const THEME_FILE = path.join(CONFIG_DIR, 'theme.json');
 const CSS_FILE = path.join(CONFIG_DIR, 'theme.css');
 const AGENTS_FILE = path.join(CONFIG_DIR, 'agents.json');
@@ -445,6 +450,19 @@ function startDir() {
   return process.env.USERPROFILE || process.cwd();
 }
 
+// `frost .` and the "Open Frost here" shell entry both arrive as a directory
+// argument. Packaged, argv is [exe, ...args]; from source it's [electron, '.', ...].
+function dirFromArgv(argv) {
+  for (const a of argv.slice(app.isPackaged ? 1 : 2)) {
+    if (!a || a.startsWith('-')) continue;
+    try {
+      const p = path.resolve(a);
+      if (fs.statSync(p).isDirectory()) return p;
+    } catch {}
+  }
+  return null;
+}
+
 // --- IPC ---
 
 // Session-local `claude` wrapper: announces launches to the app (start/end +
@@ -642,7 +660,8 @@ ipcMain.handle('theme:get', () => ({
   theme: readTheme() || DEFAULT_THEME,
   css: readCss(),
   frameless: Boolean(win && win.isFramelessMode),
-  home: app.getPath('home')
+  home: app.getPath('home'),
+  openDir: dirFromArgv(process.argv)
 }));
 
 // ---------- agent mode ----------
@@ -1025,6 +1044,20 @@ ipcMain.on('theme:openFile', (_e, which) => {
 });
 
 // --- app lifecycle ---
+
+// A shell context-menu click on a second folder should land in the window
+// already open, not start a rival process that fights over window.json.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', (_e, argv) => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    const dir = dirFromArgv(argv);
+    if (dir) win.webContents.send('session:openDir', dir);
+  });
+}
 
 app.whenReady().then(() => {
   ensureConfig();
