@@ -30,6 +30,22 @@ const PORT = Number(process.env.FROST_SHOT_PORT || 9333);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log('•', ...a);
 
+// Claude Code's start-up banner greets the account holder by name and prints
+// their organisation, neither of which belongs in a committed screenshot. A
+// scenario that shows a real agent must scroll the banner out of view; these
+// markers are how we prove it did.
+//
+// They match the banner's own furniture rather than any name, so this list
+// carries no personal data itself. A scenario returning visible text that still
+// matches is failed rather than captured.
+const BANNER_MARKERS = [
+  /Welcome back/i,
+  /Claude Team/i,
+  /Tips for getting started/i,
+  /What's new/i,
+  /release-notes for more/i
+];
+
 // Electron quits by default once the last window closes, and this tool destroys
 // its compositor window after every scenario — which ended the run after the
 // first image. Own the event so the loop decides when we're finished.
@@ -121,8 +137,14 @@ class Cdp {
 
 // ---------- child app ----------
 
-function scenarioConfig(dir) {
+function scenarioConfig(dir, scenario) {
   fs.mkdirSync(dir, { recursive: true });
+  // Spaces are normally added through a native folder picker, which can't be
+  // driven from the renderer — so an agent scenario gets its space written in.
+  fs.writeFileSync(
+    path.join(dir, 'agents.json'),
+    JSON.stringify({ spaces: scenario.spaces ? [{ name: path.basename(DEMO), path: DEMO }] : [] }, null, 2)
+  );
   // A deliberate config: glass on, restore off (so one scenario can't inherit
   // another's tabs), and a tint light enough that the wallpaper reads through.
   fs.writeFileSync(
@@ -144,13 +166,28 @@ function scenarioConfig(dir) {
         cornerRadius: 13,
         windowRadius: 12,
         startDir: DEMO,
-        font: { family: '"Cascadia Mono", Consolas, monospace', size: 14, lineHeight: 1.25 }
+        font: { family: '"Cascadia Mono", Consolas, monospace', size: 14, lineHeight: 1.25 },
+        // last, so a scenario can override any of the above
+        ...(scenario.theme || {})
       },
       null,
       2
     )
   );
   return dir;
+}
+
+// If this tool is itself run from a Claude Code session, a `claude` started
+// inside a scenario inherits that session's markers: it comes up in a degraded
+// mode that ignores input, and it renders the parent session's name. Handing the
+// child a clean environment is also what keeps the account name and organisation
+// out of the committed screenshots.
+function scenarioEnv(shot) {
+  const env = { ...process.env, FROST_SHOT: JSON.stringify(shot) };
+  for (const key of Object.keys(env)) {
+    if (/^CLAUDE/i.test(key)) delete env[key];
+  }
+  return env;
 }
 
 function killTree(pid) {
@@ -180,7 +217,7 @@ function ensureNotes() {
 }
 
 async function captureScenario(scenario, wallpaperFile, bounds, port) {
-  const configDir = scenarioConfig(path.join(TMP, 'config-' + scenario.name));
+  const configDir = scenarioConfig(path.join(TMP, 'config-' + scenario.name), scenario);
   const userData = path.join(TMP, 'userdata-' + scenario.name);
   fs.rmSync(path.join(configDir, 'window.json'), { force: true });
 
@@ -192,10 +229,11 @@ async function captureScenario(scenario, wallpaperFile, bounds, port) {
     {
       cwd: ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        FROST_SHOT: JSON.stringify({ configDir, wallpaper: wallpaperFile, bounds })
-      }
+      env: scenarioEnv({
+        configDir,
+        wallpaper: wallpaperFile,
+        bounds
+      })
     }
   );
 
@@ -214,7 +252,20 @@ async function captureScenario(scenario, wallpaperFile, bounds, port) {
       color: { r: 0, g: 0, b: 0, a: 0 }
     });
     await dbg.waitForApp();
-    await dbg.eval(scenario.setup);
+
+    // A scenario may return the text currently on screen; if it does, it gets
+    // checked before anything is written to disk.
+    const visible = await dbg.eval(scenario.setup);
+    if (typeof visible === 'string') {
+      const leak = BANNER_MARKERS.find((re) => re.test(visible));
+      if (leak) {
+        throw new Error(
+          `refusing to capture: Claude's banner is still on screen (${leak}), ` +
+            'which would put the account name and organisation in the image'
+        );
+      }
+    }
+
     const shot = await dbg.send('Page.captureScreenshot', { format: 'png' });
     return Buffer.from(shot.data, 'base64');
   } catch (err) {

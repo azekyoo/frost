@@ -123,6 +123,11 @@ onto a generated landscape so the `glass` backdrop is shown doing its job.
 Nothing in those images is mocked, and it leaves your own config, window layout
 and desktop untouched. Pass a name to render one: `npm run shots -- palette`.
 
+The agent scenario runs a **real Claude Code session** against the demo repo,
+because agent mode isn't itself without one — so that shot costs a little API
+usage, and the renderer refuses to capture it while Claude's start-up banner is
+still on screen, which would put your account name and organisation in the image.
+
 Requires Node 22.12+, which is what Electron 43 asks for. Tagged builds come out
 of [CI](.github/workflows/release.yml) on `windows-latest`, so you only need this
 to hack on Frost.

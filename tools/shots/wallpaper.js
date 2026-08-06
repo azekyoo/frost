@@ -285,6 +285,23 @@ const SCENES = {
     ]
   },
 
+  // Misty forested valley, morning
+  pine: {
+    seed: 5512034,
+    horizon: 0.6,
+    shade: [10, 26, 24],
+    sky: { top: [58, 96, 122], horizon: [216, 232, 226], curve: 1.5 },
+    clouds: { color: [248, 252, 250], threshold: 0.46, gain: 3.2, alpha: 0.85 },
+    sun: { x: 0.78, y: 0.3, r: 0.026, color: [255, 248, 220], strength: 0.45, spread: 12 },
+    haze: [200, 220, 214],
+    layers: [
+      { base: 0.0, amp: 0.12, freq: 2.4, color: [124, 148, 140] },
+      { base: -0.05, amp: 0.13, freq: 3.6, color: [74, 104, 96] },
+      { base: -0.12, amp: 0.12, freq: 5.2, color: [42, 68, 60] },
+      { base: -0.2, amp: 0.1, freq: 7.4, color: [24, 44, 38] }
+    ]
+  },
+
   // Moonlit lake
   night: {
     seed: 90124,
