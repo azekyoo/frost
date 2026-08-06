@@ -19,17 +19,20 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # .npmrc pins flat peer resolution; npm ci honours it
       - run: npm ci
 
-      - run: npm run dist
+      # --publish never: with a tag present electron-builder would otherwise try
+      # to publish the release itself and fail for want of a token. Publishing is
+      # the explicit step below.
+      - run: npm run dist -- --publish never
 
       # Kept for workflow_dispatch runs, where there's no release to attach to
       - uses: actions/upload-artifact@v4
