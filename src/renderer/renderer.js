@@ -182,6 +182,7 @@ function setPaneCwd(node, cwd) {
   if (moved || wasTitled) {
     if (moved) node.branch = null;
     refreshPaneTitle(node);
+    if (moved) saveSession(); // restore should reopen where the pane actually is
   }
   if (!moved && Date.now() - (node.branchAt || 0) < 1000) {
     // same directory, checked a moment ago — a `git checkout` lands next prompt
@@ -481,10 +482,12 @@ function makeDivider(splitNode, index) {
       kids[index].style.flex = `${na} 1 0%`;
       kids[index + 1].style.flex = `${nb} 1 0%`;
     };
-    const up = (uv) => {
+    const up = () => {
       d.classList.remove('dragging');
+      d.releasePointerCapture?.(ev.pointerId);
       d.removeEventListener('pointermove', move);
       d.removeEventListener('pointerup', up);
+      saveSession();
     };
     d.addEventListener('pointermove', move);
     d.addEventListener('pointerup', up);
@@ -531,6 +534,7 @@ async function splitPane(dir) {
   }
   renderTab(tab);
   focusPane(newLeaf);
+  saveSession();
 }
 
 function destroyLeaf(node) {
@@ -573,6 +577,7 @@ function removePane(node, { killPty = true } = {}) {
   }
   renderTab(tab);
   focusPane(firstLeaf(tab.root));
+  saveSession();
 }
 
 // ---------- tabs ----------
@@ -593,12 +598,14 @@ async function newTab({ profileId, cwd } = {}) {
   activateTab(tab);
   renderTab(tab);
   focusPane(leaf);
+  saveSession();
 }
 
 function activateTab(tab) {
   state.activeTab = tab;
   el.content.replaceChildren(tab.contentEl);
   renderTabs();
+  saveSession();
   if (tab.kind === 'agents') {
     const visible = [...tab.centerLeaves].find((l) => l.el.style.display !== 'none');
     if (visible) {
@@ -644,6 +651,7 @@ function closeTab(tab, { killPtys = true } = {}) {
   } else {
     renderTabs();
   }
+  saveSession();
 }
 
 function renderTabs() {
@@ -678,6 +686,126 @@ function renderTabs() {
     })
   );
   document.title = state.activeTab ? `${state.activeTab.title} — Frost` : 'Frost';
+}
+
+// ---------- session persistence ----------
+// The layout is pushed to the main process on every change rather than on exit,
+// so a crash still leaves something restorable on disk. Agent tabs are left out
+// on purpose: they have their own resumable-session list, and relaunching
+// `claude` unasked on startup would be the wrong call.
+
+let restoring = false;
+
+function serializeNode(node) {
+  if (node.type === 'leaf') {
+    return { t: 'leaf', profileId: node.profileId || null, cwd: node.cwd || null };
+  }
+  return {
+    t: 'split',
+    dir: node.dir,
+    sizes: node.sizes.slice(),
+    children: node.children.map(serializeNode)
+  };
+}
+
+const saveSession = debounce(() => {
+  if (restoring) return;
+  if (state.theme?.restoreSession === false) {
+    api.sessionSave({ tabs: [], activeTab: 0 });
+    return;
+  }
+  const tabs = state.tabs.filter((t) => t.kind !== 'agents' && t.root);
+  api.sessionSave({
+    tabs: tabs.map((t) => ({ root: serializeNode(t.root) })),
+    activeTab: Math.max(0, tabs.indexOf(state.activeTab))
+  });
+}, 400);
+
+function savedSizes(sizes, n) {
+  const s = Array.isArray(sizes) && sizes.length === n ? sizes.map(Number) : null;
+  return s && s.every((x) => Number.isFinite(x) && x > 0) ? s : Array(n).fill(1);
+}
+
+// window.json is a plain file the user can edit or corrupt, and every leaf
+// costs a real shell process, so the tree is measured before anything spawns.
+const MAX_TABS = 20;
+const MAX_PANES_PER_TAB = 16;
+const MAX_PANES = 40;
+const MAX_DEPTH = 12;
+
+function isSplit(saved, depth) {
+  return (
+    depth < MAX_DEPTH &&
+    saved &&
+    saved.t === 'split' &&
+    Array.isArray(saved.children) &&
+    saved.children.length > 0
+  );
+}
+
+function countLeaves(saved, depth = 0) {
+  if (!isSplit(saved, depth)) return 1;
+  let n = 0;
+  for (const c of saved.children) {
+    n += countLeaves(c, depth + 1);
+    if (n > MAX_PANES) return n; // already disqualifying, no point walking further
+  }
+  return n;
+}
+
+async function buildSavedNode(saved, depth = 0) {
+  if (!isSplit(saved, depth)) {
+    // a directory that no longer exists falls back to the start dir in main
+    return createPane({ profileId: saved?.profileId || undefined, cwd: saved?.cwd || undefined });
+  }
+  const children = [];
+  for (const c of saved.children) children.push(await buildSavedNode(c, depth + 1));
+  return {
+    type: 'split',
+    dir: saved.dir === 'col' ? 'col' : 'row',
+    children,
+    sizes: savedSizes(saved.sizes, children.length),
+    el: null
+  };
+}
+
+async function restoreTabs(session) {
+  let budget = MAX_PANES;
+  const savedTabs = [];
+  for (const t of session.tabs.slice(0, MAX_TABS)) {
+    const panes = countLeaves(t?.root);
+    if (panes > MAX_PANES_PER_TAB || panes > budget) continue;
+    budget -= panes;
+    savedTabs.push(t);
+  }
+  if (savedTabs.length < session.tabs.length) {
+    toast(`Restored ${savedTabs.length} of ${session.tabs.length} saved tabs`);
+  }
+  restoring = true;
+  try {
+    for (const savedTab of savedTabs) {
+      const tab = {
+        id: 'tab-' + ++tabCounter,
+        title: '',
+        root: null,
+        activePane: null,
+        contentEl: document.createElement('div')
+      };
+      tab.contentEl.className = 'tab-content';
+      tab.root = await buildSavedNode(savedTab.root);
+      const first = firstLeaf(tab.root);
+      tab.title = first.profileName || 'shell';
+      state.tabs.push(tab);
+      activateTab(tab);
+      renderTab(tab);
+      focusPane(first);
+    }
+  } finally {
+    restoring = false;
+  }
+  const target = state.tabs[session.activeTab];
+  if (target) activateTab(target);
+  return state.tabs.length > 0;
 }
 
 // ---------- shell profiles ----------
@@ -1587,6 +1715,7 @@ const s = {
   contrast: document.getElementById('s-contrast'),
   gpu: document.getElementById('s-gpu'),
   defaultProfile: document.getElementById('s-profile'),
+  restoreSession: document.getElementById('s-restore'),
   autoDetect: document.getElementById('s-autodetect'),
   copyOnSelect: document.getElementById('s-copyonselect'),
   startDir: document.getElementById('s-startdir'),
@@ -1702,6 +1831,7 @@ function syncSettingsUI() {
   s.contrast.value = String(t.minContrast ?? 4.5);
   if (profiles.length) s.defaultProfile.value = t.defaultProfile || profiles[0].id;
   s.gpu.checked = t.gpuRenderer !== false;
+  s.restoreSession.checked = t.restoreSession !== false;
   s.autoDetect.checked = t.autoDetectAgents !== false;
   s.copyOnSelect.checked = t.copyOnSelect !== false;
   s.startDir.value = t.startDir || '';
@@ -1743,6 +1873,7 @@ function onSettingChange() {
   t.minContrast = parseFloat(s.contrast.value);
   if (s.defaultProfile.value) t.defaultProfile = s.defaultProfile.value;
   t.gpuRenderer = s.gpu.checked;
+  t.restoreSession = s.restoreSession.checked;
   t.autoDetectAgents = s.autoDetect.checked;
   t.copyOnSelect = s.copyOnSelect.checked;
   t.startDir = s.startDir.value.trim();
@@ -1758,6 +1889,7 @@ function onSettingChange() {
   t.cursor.blink = s.cursorBlink.checked;
   applyTheme(t, undefined);
   saveTheme();
+  saveSession(); // toggling restore off clears the stored layout
 }
 
 for (const input of Object.values(s)) {
@@ -1857,7 +1989,9 @@ document.getElementById('btn-close').addEventListener('click', () => api.winClos
     await document.fonts.ready;
   } catch {}
 
-  await newTab();
+  const session = theme.restoreSession === false ? null : await api.sessionGet();
+  const restored = session?.tabs?.length ? await restoreTabs(session) : false;
+  if (!restored) await newTab();
 
   // Belt and braces: one atlas rebuild after boot in case a font swapped late
   setTimeout(() => {

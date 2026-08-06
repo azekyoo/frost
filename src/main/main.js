@@ -11,6 +11,7 @@ const CSS_FILE = path.join(CONFIG_DIR, 'theme.css');
 const AGENTS_FILE = path.join(CONFIG_DIR, 'agents.json');
 const SESSIONS_FILE = path.join(CONFIG_DIR, 'sessions.json');
 const KEYS_FILE = path.join(CONFIG_DIR, 'keybindings.json');
+const WINDOW_FILE = path.join(CONFIG_DIR, 'window.json');
 
 // Only overrides live in this file; the defaults stay in code so new versions
 // can add keys without rewriting a file the user owns. Ctrl+Shift+P lists every
@@ -33,6 +34,7 @@ const DEFAULT_THEME = {
   minContrast: 4.5,
   gpuRenderer: true,
   autoDetectAgents: true,
+  restoreSession: true,
   copyOnSelect: true,
   unicodeVersion: '11',
   tint: 'rgba(0, 0, 0, 0.00)',
@@ -262,6 +264,59 @@ function applyWindowTheme(theme) {
   }
 }
 
+// ---------- window + session state ----------
+// window.json is written continuously rather than on close, so a crash or a
+// kill still leaves the last layout on disk.
+
+let sessionLayout = null; // last { tabs, activeTab } the renderer reported
+let sessionTimer = null;
+
+function readWindowState() {
+  try {
+    return JSON.parse(fs.readFileSync(WINDOW_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+// Reject bounds that no longer land on a monitor — an unplugged second screen
+// would otherwise park the window somewhere unreachable.
+function boundsVisible(b) {
+  if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.width)) return false;
+  return screen.getAllDisplays().some(({ workArea: w }) => {
+    return (
+      b.x < w.x + w.width - 40 &&
+      b.x + b.width > w.x + 40 &&
+      b.y < w.y + w.height - 40 &&
+      b.y + b.height > w.y + 40
+    );
+  });
+}
+
+function flushWindowState() {
+  clearTimeout(sessionTimer);
+  sessionTimer = null;
+  if (!win) return;
+  const prev = readWindowState();
+  const layout = sessionLayout || { tabs: prev.tabs || [], activeTab: prev.activeTab || 0 };
+  const out = { ...layout };
+  if (!win.isMinimized()) {
+    out.bounds = win.getNormalBounds();
+    out.maximized = win.isMaximized();
+  } else {
+    out.bounds = prev.bounds;
+    out.maximized = prev.maximized;
+  }
+  try {
+    fs.writeFileSync(WINDOW_FILE, JSON.stringify(out, null, 2));
+  } catch {}
+}
+
+function saveWindowStateSoon() {
+  clearTimeout(sessionTimer);
+  sessionTimer = setTimeout(flushWindowState, 500);
+}
+
 function createWindow() {
   const theme = readTheme() || DEFAULT_THEME;
   const material = theme.material || 'acrylic';
@@ -269,6 +324,7 @@ function createWindow() {
   const glass = material === 'glass';
   nativeTheme.themeSource = theme.colorMode || 'dark';
 
+  const saved = readWindowState();
   const opts = {
     width: 1100,
     height: 700,
@@ -299,6 +355,8 @@ function createWindow() {
     };
   }
 
+  if (boundsVisible(saved.bounds)) Object.assign(opts, saved.bounds);
+
   win = new BrowserWindow(opts);
   win.isFramelessMode = glass;
 
@@ -327,9 +385,17 @@ function createWindow() {
     }
   });
 
+  for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) {
+    win.on(ev, saveWindowStateSoon);
+  }
+  win.on('close', flushWindowState);
+
   currentMaterial = material;
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    if (saved.maximized) win.maximize();
+    win.show();
+  });
   win.on('closed', () => {
     win = null;
   });
@@ -944,6 +1010,16 @@ ipcMain.handle('theme:save', (_e, theme) => {
 
 ipcMain.handle('keys:get', () => readKeys() || []);
 
+ipcMain.handle('session:get', () => {
+  const s = readWindowState();
+  return { tabs: Array.isArray(s.tabs) ? s.tabs : [], activeTab: s.activeTab || 0 };
+});
+
+ipcMain.on('session:layout', (_e, layout) => {
+  sessionLayout = layout && Array.isArray(layout.tabs) ? layout : null;
+  saveWindowStateSoon();
+});
+
 ipcMain.on('theme:openFile', (_e, which) => {
   shell.openPath(which === 'css' ? CSS_FILE : which === 'keys' ? KEYS_FILE : THEME_FILE);
 });
@@ -956,6 +1032,8 @@ app.whenReady().then(() => {
   createWindow();
   watchConfig();
 });
+
+app.on('before-quit', flushWindowState);
 
 app.on('window-all-closed', () => {
   for (const p of ptys.values()) {

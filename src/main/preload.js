@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   themeOpenFile: (which) => ipcRenderer.send('theme:openFile', which),
   onThemeChanged: (cb) => ipcRenderer.on('theme:changed', (_e, m) => cb(m)),
   keysGet: () => ipcRenderer.invoke('keys:get'),
+  sessionGet: () => ipcRenderer.invoke('session:get'),
+  sessionSave: (layout) => ipcRenderer.send('session:layout', layout),
   onKeysChanged: (cb) => ipcRenderer.on('keys:changed', (_e, m) => cb(m)),
   glassInfo: () => ipcRenderer.invoke('glass:info'),
   diagReport: (data) => ipcRenderer.send('diag:report', data),

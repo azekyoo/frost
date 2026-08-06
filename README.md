@@ -33,6 +33,10 @@ running and supervising Claude Code agents with live status and diff watching.
   working), and the branch is read straight out of `.git/HEAD`, so no `git`
   process runs per prompt. A program that sets its own title (claude, ssh, vim)
   still wins. Splits and `Ctrl+Shift+D` inherit the current directory
+- **Picks up where you left off** — window size, position and maximized state
+  come back, along with your tabs and split layout, each pane reopened in the
+  directory it was in. Written continuously, so a crash doesn't lose it. Toggle
+  in settings; agent tabs stay out of it and keep their own resume list
 - **Backdrop materials**
   - `acrylic` / `mica` / `tabbed` — native Windows backdrops
   - `acrylic-always` — native acrylic that **never dims on unfocus** (Frost
@@ -142,6 +146,7 @@ Created with defaults on first run, all hot-reloading:
 - `config/keybindings.json` — key overrides (see [Shortcuts](#shortcuts))
 - `config/agents.json` — saved repos ("spaces") for agent mode
 - `config/sessions.json` — resumable agent sessions (managed automatically)
+- `config/window.json` — window geometry and tab layout (managed automatically)
 
 The settings panel (`Ctrl+,`) edits `theme.json` for you.
 
