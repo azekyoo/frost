@@ -1,0 +1,61 @@
+name: release
+
+# Push a tag and the exes build themselves:
+#   git tag v0.1.1 && git push origin v0.1.1
+# Assets land on the matching GitHub release. Runs on workflow_dispatch too,
+# which builds and uploads artifacts without touching releases — useful for
+# checking a build before committing to a version number.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # .npmrc pins flat peer resolution; npm ci honours it
+      - run: npm ci
+
+      - run: npm run dist
+
+      # Kept for workflow_dispatch runs, where there's no release to attach to
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frost-windows
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+          retention-days: 14
+
+      - name: Publish to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        # bash, not the default PowerShell: PowerShell does not expand globs
+        # into arguments for native commands, so dist/*.exe would reach gh
+        # as a literal string
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Idempotent: a release may already exist if it was cut by hand, and
+          # re-running the job must not fail on that.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.exe --clobber
+          else
+            gh release create "$TAG" dist/*.exe \
+              --title "Frost $TAG" \
+              --generate-notes
+          fi
