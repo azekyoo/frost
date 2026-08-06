@@ -178,14 +178,25 @@
         <div class="settings-actions">
           <button id="btn-open-theme">theme.json</button>
           <button id="btn-open-css">theme.css</button>
+          <button id="btn-open-keys">keybindings.json</button>
         </div>
-        <p class="hint">Both hot-reload on save. theme.css accepts any CSS — full control.</p>
+        <p class="hint">
+          All hot-reload on save. theme.css accepts any CSS — full control.
+          Ctrl+Shift+P lists every command with the key it currently answers to.
+        </p>
         <p class="hint" id="diag"></p>
       </div>
     </div>
   </div>
 
   <div id="profile-menu" class="menu"></div>
+
+  <div id="palette">
+    <div class="palette-box">
+      <input id="palette-input" type="text" placeholder="Run a command&hellip;" spellcheck="false" />
+      <div id="palette-list"></div>
+    </div>
+  </div>
 
   <div id="toast"></div>
 

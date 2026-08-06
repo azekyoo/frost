@@ -20,6 +20,9 @@ const el = {
   settings: document.getElementById('settings'),
   toast: document.getElementById('toast'),
   profileMenu: document.getElementById('profile-menu'),
+  palette: document.getElementById('palette'),
+  paletteInput: document.getElementById('palette-input'),
+  paletteList: document.getElementById('palette-list'),
   customCss: document.getElementById('custom-css')
 };
 
@@ -1146,37 +1149,100 @@ api.onAgentEnded(({ agentId, sessions: s }) => {
   renderAgentLists();
 });
 
-// ---------- shortcuts ----------
+// ---------- keys ----------
+// Bindings are matched on physical key position (ev.code), so they land in the
+// same place on every keyboard layout. config/keybindings.json overrides them.
 
-function matchShortcut(ev) {
-  const ctrlShift = ev.ctrlKey && ev.shiftKey && !ev.altKey;
-  const altShift = ev.altKey && ev.shiftKey && !ev.ctrlKey;
+const KEY_ALIASES = {
+  Equal: '=',
+  NumpadAdd: '=',
+  Minus: '-',
+  NumpadSubtract: '-',
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Backslash: '\\',
+  Backquote: '`',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Semicolon: ';',
+  Quote: "'",
+  Space: 'space',
+  Enter: 'enter',
+  NumpadEnter: 'enter',
+  Tab: 'tab',
+  Escape: 'escape',
+  Backspace: 'backspace',
+  Delete: 'delete',
+  Insert: 'insert',
+  Home: 'home',
+  End: 'end',
+  PageUp: 'pageup',
+  PageDown: 'pagedown',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  ArrowUp: 'up',
+  ArrowDown: 'down'
+};
 
-  if (ctrlShift && ev.code === 'KeyT') return () => newTab();
-  if (ctrlShift && ev.code === 'KeyA') return () => newAgentTab();
-  // Ctrl+Shift+1..9 — new tab with the Nth shell profile
-  if (ctrlShift && /^Digit[1-9]$/.test(ev.code)) {
-    const p = profiles[+ev.code.slice(5) - 1];
-    return p ? () => newTab({ profileId: p.id }) : null;
-  }
-  if (ctrlShift && ev.code === 'KeyD') {
-    return () => {
-      const pane = state.activeTab?.activePane;
-      if (pane) newTab({ profileId: pane.profileId, cwd: pane.cwd });
-    };
-  }
-  if (ctrlShift && ev.code === 'KeyW') {
-    return () => state.activeTab?.activePane && removePane(state.activeTab.activePane);
-  }
-  if (altShift && (ev.code === 'Equal' || ev.code === 'NumpadAdd')) return () => splitPane('row');
-  if (altShift && (ev.code === 'Minus' || ev.code === 'NumpadSubtract')) return () => splitPane('col');
-  if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === 'Comma') return () => toggleSettings();
-  if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === 'KeyF') {
-    return () => state.activeTab?.activePane && openPaneSearch(state.activeTab.activePane);
-  }
-  if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.code === 'Tab') return () => cycleTab(1);
-  if (ev.ctrlKey && ev.shiftKey && ev.code === 'Tab') return () => cycleTab(-1);
+const NAME_ALIASES = {
+  control: 'ctrl',
+  esc: 'escape',
+  del: 'delete',
+  return: 'enter',
+  plus: '=',
+  add: '=',
+  minus: '-',
+  subtract: '-',
+  arrowleft: 'left',
+  arrowright: 'right',
+  arrowup: 'up',
+  arrowdown: 'down'
+};
+
+function keyName(code) {
+  if (KEY_ALIASES[code]) return KEY_ALIASES[code];
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
+  if (/^Digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^Numpad[0-9]$/.test(code)) return code.slice(6);
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) return code.toLowerCase();
   return null;
+}
+
+function eventKeys(ev) {
+  const name = keyName(ev.code);
+  if (!name) return null;
+  const parts = [];
+  if (ev.ctrlKey) parts.push('ctrl');
+  if (ev.altKey) parts.push('alt');
+  if (ev.shiftKey) parts.push('shift');
+  if (ev.metaKey) parts.push('meta');
+  parts.push(name);
+  return parts.join('+');
+}
+
+function normalizeKeys(str) {
+  const raw = String(str || '')
+    .toLowerCase()
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => NAME_ALIASES[p] || p);
+  const key = raw.pop();
+  const parts = ['ctrl', 'alt', 'shift', 'meta'].filter((m) => raw.includes(m));
+  parts.push(key);
+  return parts.join('+');
+}
+
+// ---------- commands ----------
+
+const commands = [];
+const commandsById = new Map();
+
+function cmd(id, label, run) {
+  const c = { id, label, run };
+  commands.push(c);
+  commandsById.set(id, c);
 }
 
 function cycleTab(dir) {
@@ -1185,17 +1251,330 @@ function cycleTab(dir) {
   activateTab(state.tabs[(i + dir + state.tabs.length) % state.tabs.length]);
 }
 
+function activePane() {
+  const tab = state.activeTab;
+  if (!tab) return null;
+  if (tab.kind === 'agents') return [...tab.centerLeaves].find((l) => l.el.style.display !== 'none') || null;
+  return tab.activePane;
+}
+
+// Geometric pane navigation: works for any split tree, unlike walking the tree,
+// because what "left" means on screen is a question about rectangles.
+function focusDirection(dir) {
+  const tab = state.activeTab;
+  if (!tab || !tab.root || tab.kind === 'agents') return;
+  const cur = tab.activePane;
+  if (!cur) return;
+  const a = cur.el.getBoundingClientRect();
+  const horizontal = dir === 'left' || dir === 'right';
+  let best = null;
+  let bestGap = Infinity;
+  for (const leaf of allLeaves(tab.root)) {
+    if (leaf === cur) continue;
+    const b = leaf.el.getBoundingClientRect();
+    // must overlap on the other axis, else it isn't "beside" the current pane
+    const overlaps = horizontal
+      ? b.bottom > a.top + 1 && b.top < a.bottom - 1
+      : b.right > a.left + 1 && b.left < a.right - 1;
+    if (!overlaps) continue;
+    const gap =
+      dir === 'left' ? a.left - b.right
+      : dir === 'right' ? b.left - a.right
+      : dir === 'up' ? a.top - b.bottom
+      : b.top - a.bottom;
+    if (gap < -1 || gap >= bestGap) continue;
+    best = leaf;
+    bestGap = gap;
+  }
+  if (best) focusPane(best);
+}
+
+let bootFontSize = null;
+
+function setFontSize(px) {
+  const t = state.theme;
+  if (!t) return;
+  t.font = t.font || {};
+  t.font.size = Math.min(28, Math.max(8, px));
+  applyTheme(t, undefined);
+  saveTheme();
+}
+
+cmd('tab.new', 'New tab', () => newTab());
+cmd('tab.newProfile', 'New tab: Nth shell profile', ({ index, profile }) => {
+  const p = profile ? profiles.find((x) => x.id === profile) : profiles[(index || 1) - 1];
+  if (p) newTab({ profileId: p.id });
+});
+cmd('tab.duplicate', 'Duplicate tab (same shell and directory)', () => {
+  const pane = activePane();
+  if (pane) newTab({ profileId: pane.profileId, cwd: pane.cwd });
+});
+cmd('tab.agent', 'New agent tab', () => newAgentTab());
+cmd('tab.close', 'Close tab', () => state.activeTab && closeTab(state.activeTab));
+cmd('tab.next', 'Next tab', () => cycleTab(1));
+cmd('tab.prev', 'Previous tab', () => cycleTab(-1));
+cmd('tab.go', 'Go to tab N', ({ index }) => {
+  const t = state.tabs[(index || 1) - 1];
+  if (t) activateTab(t);
+});
+cmd('tab.last', 'Go to last tab', () => {
+  if (state.tabs.length) activateTab(state.tabs[state.tabs.length - 1]);
+});
+cmd('shell.menu', 'Choose a shell profile…', () => openProfileMenu(document.getElementById('btn-newtab-menu')));
+
+cmd('pane.splitRight', 'Split pane right', () => splitPane('row'));
+cmd('pane.splitDown', 'Split pane down', () => splitPane('col'));
+cmd('pane.close', 'Close pane', () => {
+  const tab = state.activeTab;
+  if (!tab) return;
+  if (tab.activePane) removePane(tab.activePane);
+  else closeTab(tab); // agent tabs have no pane tree to close into
+});
+cmd('pane.focusLeft', 'Focus pane left', () => focusDirection('left'));
+cmd('pane.focusRight', 'Focus pane right', () => focusDirection('right'));
+cmd('pane.focusUp', 'Focus pane up', () => focusDirection('up'));
+cmd('pane.focusDown', 'Focus pane down', () => focusDirection('down'));
+
+cmd('font.zoomIn', 'Zoom in', () => setFontSize((state.theme?.font?.size || 14) + 1));
+cmd('font.zoomOut', 'Zoom out', () => setFontSize((state.theme?.font?.size || 14) - 1));
+cmd('font.zoomReset', 'Reset zoom', () => setFontSize(bootFontSize || 14));
+
+cmd('view.search', 'Find in buffer', () => {
+  const pane = activePane();
+  if (pane) openPaneSearch(pane);
+});
+cmd('view.clear', 'Clear buffer', () => {
+  const pane = activePane();
+  if (pane) pane.term.clear();
+});
+cmd('view.scrollToTop', 'Scroll to top', () => activePane()?.term.scrollToTop());
+cmd('view.scrollToBottom', 'Scroll to bottom', () => activePane()?.term.scrollToBottom());
+
+cmd('app.settings', 'Settings', () => toggleSettings());
+cmd('app.palette', 'Command palette', () => openPalette());
+cmd('app.openKeys', 'Edit keybindings.json', () => api.themeOpenFile('keys'));
+cmd('app.openTheme', 'Edit theme.json', () => api.themeOpenFile('json'));
+cmd('app.openCss', 'Edit theme.css', () => api.themeOpenFile('css'));
+
+// ---------- bindings ----------
+
+const DEFAULT_BINDINGS = [
+  { keys: 'ctrl+shift+t', command: 'tab.new' },
+  { keys: 'ctrl+shift+a', command: 'tab.agent' },
+  { keys: 'ctrl+shift+d', command: 'tab.duplicate' },
+  { keys: 'ctrl+shift+w', command: 'pane.close' },
+  { keys: 'ctrl+tab', command: 'tab.next' },
+  { keys: 'ctrl+shift+tab', command: 'tab.prev' },
+  { keys: 'ctrl+9', command: 'tab.last' },
+  { keys: 'alt+shift+=', command: 'pane.splitRight' },
+  { keys: 'alt+shift+-', command: 'pane.splitDown' },
+  { keys: 'alt+left', command: 'pane.focusLeft' },
+  { keys: 'alt+right', command: 'pane.focusRight' },
+  { keys: 'alt+up', command: 'pane.focusUp' },
+  { keys: 'alt+down', command: 'pane.focusDown' },
+  { keys: 'ctrl+=', command: 'font.zoomIn' },
+  { keys: 'ctrl+shift+=', command: 'font.zoomIn' },
+  { keys: 'ctrl+-', command: 'font.zoomOut' },
+  { keys: 'ctrl+0', command: 'font.zoomReset' },
+  { keys: 'ctrl+,', command: 'app.settings' },
+  { keys: 'ctrl+f', command: 'view.search' },
+  { keys: 'ctrl+shift+k', command: 'view.clear' },
+  { keys: 'ctrl+shift+p', command: 'app.palette' },
+  // Ctrl+1..8 pick a tab, Ctrl+Shift+1..9 open the Nth shell profile
+  ...Array.from({ length: 8 }, (_, i) => ({
+    keys: `ctrl+${i + 1}`,
+    command: 'tab.go',
+    args: { index: i + 1 }
+  })),
+  ...Array.from({ length: 9 }, (_, i) => ({
+    keys: `ctrl+shift+${i + 1}`,
+    command: 'tab.newProfile',
+    args: { index: i + 1 }
+  }))
+];
+
+let keymap = new Map(); // 'ctrl+shift+t' -> { command, args }
+
+function buildKeymap(user = []) {
+  const m = new Map();
+  for (const b of DEFAULT_BINDINGS) m.set(normalizeKeys(b.keys), { command: b.command, args: b.args });
+  for (const b of user) {
+    if (!b || !b.keys) continue;
+    const k = normalizeKeys(b.keys);
+    // command: null unbinds the key entirely
+    if (!b.command || b.command === 'none') m.delete(k);
+    else m.set(k, { command: b.command, args: b.args });
+  }
+  keymap = m;
+}
+
+function keysFor(commandId, args) {
+  const want = JSON.stringify(args ?? null);
+  for (const [k, b] of keymap) {
+    if (b.command !== commandId) continue;
+    if (JSON.stringify(b.args ?? null) !== want) continue;
+    return k;
+  }
+  return null;
+}
+
+function runCommand(id, args) {
+  const c = commandsById.get(id);
+  if (!c) {
+    toast('Unknown command: ' + id);
+    return;
+  }
+  c.run(args || {});
+}
+
+function matchShortcut(ev) {
+  const k = eventKeys(ev);
+  if (!k) return null;
+  const b = keymap.get(k);
+  return b ? () => runCommand(b.command, b.args) : null;
+}
+
+buildKeymap();
+
+// ---------- command palette ----------
+// Doubles as the shortcut reference: every command shows the key it answers to,
+// which is why the defaults don't need to be duplicated into a config file.
+
+const palette = { items: [], index: 0, returnTo: null };
+
+function paletteItems() {
+  // tab.go / tab.newProfile take an index, so they're listed per tab / profile
+  const items = commands
+    .filter((c) => c.id !== 'tab.go' && c.id !== 'tab.newProfile')
+    .map((c) => ({ label: c.label, command: c.id, args: null }));
+  profiles.forEach((p, i) =>
+    items.push({ label: `New tab: ${p.name}`, command: 'tab.newProfile', args: { index: i + 1 } })
+  );
+  state.tabs.forEach((t, i) =>
+    items.push({ label: `Go to tab ${i + 1}: ${t.title}`, command: 'tab.go', args: { index: i + 1 } })
+  );
+  return items;
+}
+
+// subsequence match: "ndt" finds "New tab", "spr" finds "Split pane right"
+function fuzzy(hay, needle) {
+  if (!needle) return true;
+  const h = hay.toLowerCase();
+  let i = 0;
+  for (const ch of needle.toLowerCase()) {
+    if (ch === ' ') continue;
+    i = h.indexOf(ch, i);
+    if (i < 0) return false;
+    i++;
+  }
+  return true;
+}
+
+function renderPalette() {
+  const query = el.paletteInput.value.trim();
+  palette.items = paletteItems().filter((it) => fuzzy(it.label, query));
+  palette.index = Math.min(palette.index, Math.max(0, palette.items.length - 1));
+  el.paletteList.replaceChildren(
+    ...palette.items.map((it, i) => {
+      const row = document.createElement('button');
+      row.className = 'palette-item' + (i === palette.index ? ' selected' : '');
+      const label = document.createElement('span');
+      label.textContent = it.label;
+      row.appendChild(label);
+      const keys = keysFor(it.command, it.args);
+      if (keys) {
+        const kbd = document.createElement('em');
+        kbd.textContent = keys;
+        row.appendChild(kbd);
+      }
+      row.addEventListener('mousedown', (ev) => {
+        ev.preventDefault();
+        choosePalette(i);
+      });
+      return row;
+    })
+  );
+  if (!palette.items.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'No matching command';
+    el.paletteList.appendChild(p);
+  }
+  el.paletteList.querySelector('.palette-item.selected')?.scrollIntoView({ block: 'nearest' });
+}
+
+function openPalette() {
+  palette.returnTo = activePane();
+  palette.index = 0;
+  el.paletteInput.value = '';
+  el.palette.classList.add('open');
+  renderPalette();
+  el.paletteInput.focus();
+}
+
+function closePalette() {
+  el.palette.classList.remove('open');
+  palette.returnTo?.term.focus();
+}
+
+function choosePalette(i) {
+  const it = palette.items[i];
+  if (!it) return;
+  closePalette();
+  runCommand(it.command, it.args);
+}
+
+function movePalette(delta) {
+  if (!palette.items.length) return;
+  palette.index = (palette.index + delta + palette.items.length) % palette.items.length;
+  renderPalette();
+}
+
+el.paletteInput.addEventListener('input', () => {
+  palette.index = 0;
+  renderPalette();
+});
+
+el.paletteInput.addEventListener('keydown', (ev) => {
+  if (ev.key === 'ArrowDown') movePalette(1);
+  else if (ev.key === 'ArrowUp') movePalette(-1);
+  else if (ev.key === 'Enter') choosePalette(palette.index);
+  else if (ev.key === 'Escape') closePalette();
+  else return;
+  ev.preventDefault();
+});
+
+el.palette.addEventListener('mousedown', (ev) => {
+  if (ev.target === el.palette) closePalette();
+});
+
 window.addEventListener('focus', () => document.body.classList.add('win-focused'));
 window.addEventListener('blur', () => document.body.classList.remove('win-focused'));
 if (document.hasFocus()) document.body.classList.add('win-focused');
 
+function inTextField() {
+  const t = document.activeElement;
+  return t && ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName);
+}
+
 window.addEventListener('keydown', (ev) => {
+  // typing in the search box or palette: only modified keys count as shortcuts
+  if (inTextField() && !ev.ctrlKey && !ev.altKey && !ev.metaKey) return;
   const action = matchShortcut(ev);
   if (action) {
     ev.preventDefault();
     ev.stopPropagation();
     action();
   }
+});
+
+api.onKeysChanged(({ keys, error }) => {
+  if (error) {
+    toast(error);
+    return;
+  }
+  buildKeymap(keys);
+  toast('Keybindings reloaded');
 });
 
 // ---------- settings UI ----------
@@ -1295,6 +1674,7 @@ document.getElementById('s-startdir-browse').addEventListener('click', async () 
 });
 document.getElementById('btn-open-theme').addEventListener('click', () => api.themeOpenFile('json'));
 document.getElementById('btn-open-css').addEventListener('click', () => api.themeOpenFile('css'));
+document.getElementById('btn-open-keys').addEventListener('click', () => api.themeOpenFile('keys'));
 
 function parseTint(tint) {
   const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\)/.exec(tint || '');
@@ -1463,6 +1843,8 @@ document.getElementById('btn-close').addEventListener('click', () => api.winClos
     await initGlass();
   }
   profiles = await api.profilesList();
+  bootFontSize = theme.font?.size || 14; // what Ctrl+0 returns to
+  buildKeymap(await api.keysGet());
   applyTheme(theme, css);
   populateProfileSelect();
   populateFontList();

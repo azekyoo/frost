@@ -75,19 +75,43 @@ Requires Node 18+, Windows 11 for the acrylic/mica materials
 
 ## Shortcuts
 
+`Ctrl+Shift+P` opens the command palette, which lists every command next to the
+key it currently answers to — that, not this table, is the authoritative list.
+
 | Keys | Action |
 |------|--------|
+| `Ctrl+Shift+P` | Command palette |
 | `Ctrl+Shift+T` | New tab (default profile) |
 | `Ctrl+Shift+1` … `9` | New tab with the Nth shell profile |
+| `Ctrl+1` … `8` / `Ctrl+9` | Go to tab N / last tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+Shift+A` | New agent tab |
 | `Ctrl+Shift+D` | Duplicate tab (same shell, same directory) |
 | `Ctrl+Shift+W` | Close pane (last pane closes tab) |
 | `Alt+Shift+=` / `Alt+Shift+-` | Split right / down (inherits directory) |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Alt+←` `→` `↑` `↓` | Move focus to the pane in that direction |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / reset |
+| `Ctrl+F` | Search buffer |
+| `Ctrl+Shift+K` | Clear buffer |
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
 | Right-click | Copy selection, else paste |
-| `Ctrl+F` | Search buffer |
+
+Every one of them is remappable in `config/keybindings.json`:
+
+```json
+{
+  "bindings": [
+    { "keys": "ctrl+t", "command": "tab.new" },
+    { "keys": "ctrl+shift+k", "command": null },
+    { "keys": "alt+2", "command": "tab.go", "args": { "index": 2 } }
+  ]
+}
+```
+
+Reusing a built-in's `keys` replaces it, `"command": null` unbinds it, and the
+file hot-reloads on save. Keys are matched on physical position, so a binding
+lands on the same key on every keyboard layout.
 
 ## Configuration
 
@@ -115,6 +139,7 @@ Created with defaults on first run, all hot-reloading:
   written in: `powershell`, `bash`, or `none` (no agent auto-detect in that
   shell — agent tabs then use the first profile that supports it)
 - `config/theme.css` — raw CSS, injected last, overrides anything
+- `config/keybindings.json` — key overrides (see [Shortcuts](#shortcuts))
 - `config/agents.json` — saved repos ("spaces") for agent mode
 - `config/sessions.json` — resumable agent sessions (managed automatically)
 

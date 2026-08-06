@@ -10,6 +10,21 @@ const THEME_FILE = path.join(CONFIG_DIR, 'theme.json');
 const CSS_FILE = path.join(CONFIG_DIR, 'theme.css');
 const AGENTS_FILE = path.join(CONFIG_DIR, 'agents.json');
 const SESSIONS_FILE = path.join(CONFIG_DIR, 'sessions.json');
+const KEYS_FILE = path.join(CONFIG_DIR, 'keybindings.json');
+
+// Only overrides live in this file; the defaults stay in code so new versions
+// can add keys without rewriting a file the user owns. Ctrl+Shift+P lists every
+// command with its current key.
+const DEFAULT_KEYS = {
+  _help: [
+    'Overrides for Frost built-in keys. Each entry: { "keys": "ctrl+shift+t", "command": "tab.new" }.',
+    'Same "keys" as a built-in replaces it; "command": null unbinds it.',
+    'Optional "args", e.g. { "keys": "ctrl+1", "command": "tab.go", "args": { "index": 1 } }.',
+    'Keys are physical positions, so they behave the same on every layout.',
+    'Press Ctrl+Shift+P for the command list.'
+  ].join(' '),
+  bindings: []
+};
 
 const DEFAULT_THEME = {
   material: 'glass',
@@ -158,6 +173,9 @@ function ensureConfig() {
   if (!fs.existsSync(AGENTS_FILE)) {
     fs.writeFileSync(AGENTS_FILE, JSON.stringify({ spaces: [] }, null, 2));
   }
+  if (!fs.existsSync(KEYS_FILE)) {
+    fs.writeFileSync(KEYS_FILE, JSON.stringify(DEFAULT_KEYS, null, 2));
+  }
   if (!fs.existsSync(CSS_FILE)) {
     fs.writeFileSync(
       CSS_FILE,
@@ -186,6 +204,15 @@ function readCss() {
     return fs.readFileSync(CSS_FILE, 'utf8');
   } catch {
     return '';
+  }
+}
+
+function readKeys() {
+  try {
+    const k = JSON.parse(fs.readFileSync(KEYS_FILE, 'utf8'));
+    return Array.isArray(k.bindings) ? k.bindings : [];
+  } catch {
+    return null; // invalid JSON — caller keeps whatever is loaded
   }
 }
 
@@ -309,12 +336,24 @@ function createWindow() {
 }
 
 function watchConfig() {
-  let timer = null;
+  const timers = {};
   chokidar
-    .watch([THEME_FILE, CSS_FILE], { ignoreInitial: true })
-    .on('all', () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
+    .watch([THEME_FILE, CSS_FILE, KEYS_FILE], { ignoreInitial: true })
+    .on('all', (_ev, file) => {
+      if (path.basename(file || '') === path.basename(KEYS_FILE)) {
+        clearTimeout(timers.keys);
+        timers.keys = setTimeout(() => {
+          if (!win) return;
+          const keys = readKeys();
+          win.webContents.send(
+            'keys:changed',
+            keys ? { keys } : { error: 'keybindings.json: invalid JSON — keeping previous keys' }
+          );
+        }, 60);
+        return;
+      }
+      clearTimeout(timers.theme);
+      timers.theme = setTimeout(() => {
         if (!win) return;
         const theme = readTheme();
         if (!theme) {
@@ -903,8 +942,10 @@ ipcMain.handle('theme:save', (_e, theme) => {
   return true;
 });
 
+ipcMain.handle('keys:get', () => readKeys() || []);
+
 ipcMain.on('theme:openFile', (_e, which) => {
-  shell.openPath(which === 'css' ? CSS_FILE : THEME_FILE);
+  shell.openPath(which === 'css' ? CSS_FILE : which === 'keys' ? KEYS_FILE : THEME_FILE);
 });
 
 // --- app lifecycle ---
