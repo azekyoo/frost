@@ -13,7 +13,8 @@
   <div id="glass-tint"></div>
   <div id="titlebar">
     <div id="tabstrip"></div>
-    <button id="btn-newtab" title="New tab (Ctrl+Shift+T)">+</button>
+    <button id="btn-newtab" title="New tab (Ctrl+Shift+T) — right-click for shells">+</button>
+    <button id="btn-newtab-menu" title="Open a different shell">&#9662;</button>
     <button id="btn-agents" title="New agent tab (Ctrl+Shift+A)">&#10022;</button>
     <div class="titlebar-spacer"></div>
     <button id="btn-settings" title="Settings (Ctrl+,)">&#9881;</button>
@@ -77,6 +78,20 @@
           <span>Tint opacity <em id="s-tint-alpha-val"></em></span>
           <input type="range" id="s-tint-alpha" min="0" max="100" step="1" />
         </label>
+      </div>
+
+      <div class="group">
+        <h3>Shell</h3>
+
+        <label class="field">
+          <span>Default profile (Ctrl+Shift+T)</span>
+          <select id="s-profile"></select>
+        </label>
+        <p class="hint">
+          Detected on first run. Edit <b>profiles</b> in theme.json to add your own —
+          shell path, args, cwd, env. Ctrl+Shift+1&hellip;9 opens the Nth profile;
+          the <b>&#9662;</b> button lists them all.
+        </p>
       </div>
 
       <div class="group">
@@ -164,6 +179,8 @@
       </div>
     </div>
   </div>
+
+  <div id="profile-menu" class="menu"></div>
 
   <div id="toast"></div>
 

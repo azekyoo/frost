@@ -22,6 +22,11 @@ running and supervising Claude Code agents with live status and diff watching.
 
 ## Features
 
+- **Shell profiles** — PowerShell 7, Windows PowerShell, cmd, Git Bash and every
+  WSL distro are detected on first run and written into `theme.json`. Add your
+  own (shell, args, cwd, env) by editing that list. The `▾` button next to `+`
+  lists them, `Ctrl+Shift+1…9` opens the Nth, and splitting a pane keeps the
+  shell you were already in
 - **Backdrop materials**
   - `acrylic` / `mica` / `tabbed` — native Windows backdrops
   - `acrylic-always` — native acrylic that **never dims on unfocus** (Frost
@@ -66,7 +71,8 @@ Requires Node 18+, Windows 11 for the acrylic/mica materials
 
 | Keys | Action |
 |------|--------|
-| `Ctrl+Shift+T` | New tab |
+| `Ctrl+Shift+T` | New tab (default profile) |
+| `Ctrl+Shift+1` … `9` | New tab with the Nth shell profile |
 | `Ctrl+Shift+A` | New agent tab |
 | `Ctrl+Shift+W` | Close pane (last pane closes tab) |
 | `Alt+Shift+=` / `Alt+Shift+-` | Split right / down |
@@ -83,7 +89,24 @@ Requires Node 18+, Windows 11 for the acrylic/mica materials
 Created with defaults on first run, all hot-reloading:
 
 - `config/theme.json` — material, colors, blur, tint, fonts, cursor, padding,
-  corner radii, start directory, ANSI palette, agent auto-detect
+  corner radii, start directory, ANSI palette, agent auto-detect, and
+  `profiles` / `defaultProfile`:
+
+  ```json
+  {
+    "id": "ubuntu",
+    "name": "Ubuntu",
+    "shell": "C:\\Windows\\System32\\wsl.exe",
+    "args": ["-d", "Ubuntu", "--cd", "~"],
+    "cwd": "",
+    "env": {},
+    "agentWrapper": "none"
+  }
+  ```
+
+  `agentWrapper` says which dialect the session-local `claude` wrapper is
+  written in: `powershell`, `bash`, or `none` (no agent auto-detect in that
+  shell — agent tabs then use the first profile that supports it)
 - `config/theme.css` — raw CSS, injected last, overrides anything
 - `config/agents.json` — saved repos ("spaces") for agent mode
 - `config/sessions.json` — resumable agent sessions (managed automatically)

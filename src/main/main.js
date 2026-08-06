@@ -57,20 +57,103 @@ const DEFAULT_THEME = {
 let win = null;
 let ptyCounter = 0;
 const ptys = new Map();
-let shellPath = null;
 
-function resolveShell() {
-  const r = spawnSync('where.exe', ['pwsh'], { encoding: 'utf8' });
+// ---------- shell profiles ----------
+// A profile is { id, name, shell, args[], cwd?, env?, agentWrapper }.
+// agentWrapper picks the shell dialect used to inject the `claude` wrapper:
+// 'powershell' | 'bash' | 'none' (no agent auto-detect in that shell).
+
+function whichExe(name) {
+  const r = spawnSync('where.exe', [name], { encoding: 'utf8' });
   if (r.status === 0 && r.stdout && r.stdout.trim()) {
     return r.stdout.trim().split(/\r?\n/)[0];
   }
-  return 'powershell.exe';
+  return null;
+}
+
+function wslDistros() {
+  // wsl.exe -l -q writes UTF-16LE, so decode the raw buffer ourselves
+  const r = spawnSync('wsl.exe', ['-l', '-q'], { encoding: 'buffer' });
+  if (r.status !== 0 || !r.stdout) return [];
+  return r.stdout
+    .toString('utf16le')
+    .split(/\r?\n/)
+    .map((s) => s.replace(/\0/g, '').trim())
+    .filter(Boolean);
+}
+
+function detectProfiles() {
+  const out = [];
+  const sys = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32');
+
+  const pwsh = whichExe('pwsh');
+  if (pwsh) out.push({ id: 'pwsh', name: 'PowerShell', shell: pwsh, args: [], agentWrapper: 'powershell' });
+
+  const wps = path.join(sys, 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  if (fs.existsSync(wps)) {
+    out.push({ id: 'powershell', name: 'Windows PowerShell', shell: wps, args: [], agentWrapper: 'powershell' });
+  }
+
+  const cmd = path.join(sys, 'cmd.exe');
+  if (fs.existsSync(cmd)) {
+    out.push({ id: 'cmd', name: 'Command Prompt', shell: cmd, args: [], agentWrapper: 'none' });
+  }
+
+  for (const base of [
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs')
+  ]) {
+    if (!base) continue;
+    const b = path.join(base, 'Git', 'bin', 'bash.exe');
+    if (fs.existsSync(b)) {
+      out.push({ id: 'git-bash', name: 'Git Bash', shell: b, args: ['-i', '-l'], agentWrapper: 'bash' });
+      break;
+    }
+  }
+
+  const wsl = whichExe('wsl.exe');
+  if (wsl) {
+    // docker-desktop* are Docker's plumbing distros, not shells anyone wants
+    for (const d of wslDistros().filter((d) => !/^docker-desktop/i.test(d))) {
+      out.push({
+        id: 'wsl-' + d.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        name: d + ' (WSL)',
+        shell: wsl,
+        args: ['-d', d, '--cd', '~'],
+        agentWrapper: 'none'
+      });
+    }
+  }
+
+  if (!out.length) {
+    out.push({ id: 'powershell', name: 'Windows PowerShell', shell: 'powershell.exe', args: [], agentWrapper: 'powershell' });
+  }
+  return out;
+}
+
+function getProfiles() {
+  const t = readTheme();
+  return Array.isArray(t?.profiles) && t.profiles.length ? t.profiles : detectProfiles();
+}
+
+function findProfile(id) {
+  const list = getProfiles();
+  const def = readTheme()?.defaultProfile;
+  return list.find((p) => p.id === id) || list.find((p) => p.id === def) || list[0];
 }
 
 function ensureConfig() {
   if (!fs.existsSync(CONFIG_DIR)) fs.mkdirSync(CONFIG_DIR, { recursive: true });
   if (!fs.existsSync(THEME_FILE)) {
     fs.writeFileSync(THEME_FILE, JSON.stringify(DEFAULT_THEME, null, 2));
+  }
+  // fill in shell profiles for configs written before profiles existed
+  const t = readTheme();
+  if (t && (!Array.isArray(t.profiles) || !t.profiles.length)) {
+    t.profiles = detectProfiles();
+    t.defaultProfile = t.defaultProfile || t.profiles[0].id;
+    fs.writeFileSync(THEME_FILE, JSON.stringify(t, null, 2));
   }
   if (!fs.existsSync(AGENTS_FILE)) {
     fs.writeFileSync(AGENTS_FILE, JSON.stringify({ spaces: [] }, null, 2));
@@ -271,25 +354,61 @@ const CLAUDE_WRAPPER =
   'Set-Content -LiteralPath $env:FROST_LAUNCH -Value ("end|" + (Get-Location).Path) -Encoding UTF8 ' +
   '}';
 
-ipcMain.handle('pty:create', (_e, { cols, rows, cwd, run }) => {
+// Same wrapper for bash-family shells (Git Bash, MSYS). Sourced as the rc file
+// so the user's own ~/.bashrc still loads. `type -P` skips functions, otherwise
+// the wrapper would resolve to itself and recurse.
+const BASH_WRAPPER = [
+  '# Frost session rc — exists only inside terminals Frost spawns.',
+  '[ -f /etc/bash.bashrc ] && . /etc/bash.bashrc',
+  '[ -f ~/.bashrc ] && . ~/.bashrc',
+  'claude() {',
+  '  local exe; exe=$(type -P claude) || exe=""',
+  '  if [ -z "$exe" ]; then echo "claude not found" >&2; return 1; fi',
+  '  local here; here=$(pwd -W 2>/dev/null || pwd)',
+  '  printf "start|%s" "$here" > "$FROST_LAUNCH"',
+  '  "$exe" --settings "$FROST_HOOKS" "$@"',
+  '  printf "end|%s" "$here" > "$FROST_LAUNCH"',
+  '}',
+  ''
+].join('\n');
+
+function bashWrapperFile() {
+  const f = path.join(STATUS_DIR, 'frost-bashrc');
+  fs.writeFileSync(f, BASH_WRAPPER);
+  return f;
+}
+
+ipcMain.handle('pty:create', (_e, { cols, rows, cwd, run, profileId }) => {
   const id = String(++ptyCounter);
+  const profile = findProfile(profileId);
   const autoDetect = (readTheme() || DEFAULT_THEME).autoDetectAgents !== false;
-  let args = [];
-  let env = process.env;
-  if (autoDetect) {
+  const wrapper = autoDetect ? profile.agentWrapper || 'none' : 'none';
+  let args = Array.isArray(profile.args) ? [...profile.args] : [];
+  let env = { ...process.env, ...(profile.env || {}) };
+  if (wrapper !== 'none') {
     const agentId = 'pty' + id;
-    env = {
-      ...process.env,
-      FROST_HOOKS: hookSettingsFile(agentId),
-      FROST_LAUNCH: path.join(STATUS_DIR, 'ln-' + agentId)
-    };
-    args = ['-NoLogo', '-NoExit', '-Command', CLAUDE_WRAPPER];
+    const hooks = hookSettingsFile(agentId);
+    const launch = path.join(STATUS_DIR, 'ln-' + agentId);
+    if (wrapper === 'bash') {
+      // bash eats backslashes in redirect targets — hand it msys-style paths
+      env.FROST_HOOKS = hooks.replace(/\\/g, '/');
+      env.FROST_LAUNCH = launch.replace(/\\/g, '/');
+      args = ['--rcfile', bashWrapperFile(), '-i'];
+    } else {
+      env.FROST_HOOKS = hooks;
+      env.FROST_LAUNCH = launch;
+      args = ['-NoLogo', '-NoExit', '-Command', CLAUDE_WRAPPER];
+    }
   }
-  const p = pty.spawn(shellPath, args, {
+  const startCwd =
+    (cwd && fs.existsSync(cwd) && cwd) ||
+    (profile.cwd && fs.existsSync(profile.cwd) && profile.cwd) ||
+    startDir();
+  const p = pty.spawn(profile.shell, args, {
     name: 'xterm-256color',
     cols: cols || 80,
     rows: rows || 24,
-    cwd: cwd && fs.existsSync(cwd) ? cwd : startDir(),
+    cwd: startCwd,
     env
   });
   ptys.set(id, p);
@@ -310,8 +429,12 @@ ipcMain.handle('pty:create', (_e, { cols, rows, cwd, run }) => {
       } catch {}
     }, 1500);
   }
-  return id;
+  return { id, profileId: profile.id, profileName: profile.name };
 });
+
+ipcMain.handle('profiles:list', () =>
+  getProfiles().map(({ id, name, agentWrapper }) => ({ id, name, agentWrapper: agentWrapper || 'none' }))
+);
 
 ipcMain.on('pty:input', (_e, { id, data }) => {
   const p = ptys.get(id);
@@ -709,7 +832,6 @@ ipcMain.on('theme:openFile', (_e, which) => {
 // --- app lifecycle ---
 
 app.whenReady().then(() => {
-  shellPath = resolveShell();
   ensureConfig();
   initAgentInfra();
   createWindow();

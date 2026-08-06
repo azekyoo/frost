@@ -199,6 +199,7 @@ body.glass #glass-tint {
 }
 
 #btn-newtab,
+#btn-newtab-menu,
 #btn-agents,
 #btn-settings {
   -webkit-app-region: no-drag;
@@ -216,6 +217,7 @@ body.glass #glass-tint {
 }
 
 #btn-newtab:hover,
+#btn-newtab-menu:hover,
 #btn-agents:hover,
 #btn-settings:hover {
   background: var(--surface-2);
@@ -223,9 +225,70 @@ body.glass #glass-tint {
 }
 
 #btn-newtab:active,
+#btn-newtab-menu:active,
 #btn-agents:active,
 #btn-settings:active {
   transform: scale(0.92);
+}
+
+/* the profile caret hugs the + button */
+#btn-newtab-menu {
+  width: 16px;
+  font-size: 10px;
+  margin-left: -4px;
+}
+
+/* ---------- profile menu ---------- */
+
+.menu {
+  position: fixed;
+  display: none;
+  z-index: 120;
+  min-width: 200px;
+  padding: 5px;
+  background: rgba(16, 18, 27, 0.94);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+}
+
+.menu.open {
+  display: block;
+}
+
+.menu .hint {
+  margin: 4px 8px;
+}
+
+.menu-item {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 9px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 88%, transparent);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.menu-item em {
+  font-style: normal;
+  font-size: 10px;
+  opacity: 0.45;
+  white-space: nowrap;
 }
 
 /* custom window buttons — frameless (glass) mode only */

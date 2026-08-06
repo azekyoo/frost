@@ -18,6 +18,7 @@ const el = {
   content: document.getElementById('content'),
   settings: document.getElementById('settings'),
   toast: document.getElementById('toast'),
+  profileMenu: document.getElementById('profile-menu'),
   customCss: document.getElementById('custom-css')
 };
 
@@ -324,8 +325,10 @@ async function createPane(opts = {}) {
     if (node.ptyId) api.ptyResize(node.ptyId, cols, rows);
   });
 
-  const ptyId = await api.ptyCreate(term.cols, term.rows, opts);
+  const { id: ptyId, profileId, profileName } = await api.ptyCreate(term.cols, term.rows, opts);
   node.ptyId = ptyId;
+  node.profileId = profileId;
+  node.profileName = profileName;
   panesByPty.set(ptyId, node);
   term.onData((d) => api.ptyInput(ptyId, d));
 
@@ -419,7 +422,8 @@ async function splitPane(dir) {
   const tab = state.activeTab;
   if (!tab || !tab.activePane) return;
   const target = tab.activePane;
-  const newLeaf = await createPane();
+  // a split keeps the shell you were already in
+  const newLeaf = await createPane({ profileId: target.profileId });
   const parent = tab.root === target ? null : findParent(tab.root, target);
 
   if (parent && parent.dir === dir) {
@@ -484,16 +488,17 @@ function removePane(node, { killPty = true } = {}) {
 
 // ---------- tabs ----------
 
-async function newTab() {
+async function newTab(profileId) {
   const tab = {
     id: 'tab-' + ++tabCounter,
-    title: 'pwsh',
+    title: '',
     root: null,
     activePane: null,
     contentEl: document.createElement('div')
   };
   tab.contentEl.className = 'tab-content';
-  const leaf = await createPane();
+  const leaf = await createPane({ profileId });
+  tab.title = leaf.profileName || 'shell';
   tab.root = leaf;
   state.tabs.push(tab);
   activateTab(tab);
@@ -583,6 +588,62 @@ function renderTabs() {
   );
 }
 
+// ---------- shell profiles ----------
+
+let profiles = []; // [{ id, name, agentWrapper }] — from theme.json, detected on first run
+
+// Agent mode needs a shell we can inject the `claude` wrapper into; cmd/WSL
+// can't host it, so agent tabs fall back to the first shell that can.
+function agentProfileId() {
+  const def = profiles.find((p) => p.id === state.theme?.defaultProfile);
+  if (def && def.agentWrapper !== 'none') return def.id;
+  return profiles.find((p) => p.agentWrapper !== 'none')?.id;
+}
+
+function closeProfileMenu() {
+  el.profileMenu.classList.remove('open');
+}
+
+function openProfileMenu(anchor) {
+  if (el.profileMenu.classList.contains('open')) {
+    closeProfileMenu();
+    return;
+  }
+  el.profileMenu.replaceChildren(
+    ...profiles.map((p, i) => {
+      const item = document.createElement('button');
+      item.className = 'menu-item';
+      const name = document.createElement('span');
+      name.textContent = p.name;
+      item.appendChild(name);
+      if (i < 9) {
+        const kbd = document.createElement('em');
+        kbd.textContent = `Ctrl+Shift+${i + 1}`;
+        item.appendChild(kbd);
+      }
+      item.addEventListener('click', () => {
+        closeProfileMenu();
+        newTab(p.id);
+      });
+      return item;
+    })
+  );
+  if (!profiles.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'No profiles — check theme.json';
+    el.profileMenu.appendChild(p);
+  }
+  const r = anchor.getBoundingClientRect();
+  el.profileMenu.style.left = Math.round(r.left) + 'px';
+  el.profileMenu.style.top = Math.round(r.bottom + 4) + 'px';
+  el.profileMenu.classList.add('open');
+}
+
+window.addEventListener('mousedown', (ev) => {
+  if (!el.profileMenu.contains(ev.target) && ev.target.id !== 'btn-newtab-menu') closeProfileMenu();
+});
+
 // ---------- agent mode ----------
 
 const globalAgents = new Map(); // agentId -> agent {id,name,cwd,branch,git,ptyId,leaf,status}
@@ -625,7 +686,7 @@ async function newAgentTab() {
   state.tabs.push(tab);
   activateTab(tab);
   // default center terminal: cd anywhere and run `claude` — auto-registers
-  const leaf = await createPane();
+  const leaf = await createPane({ profileId: agentProfileId() });
   addCenterLeaf(tab, leaf, true);
   const cfg = await api.agentsGetConfig();
   renderSpaces(tab, cfg);
@@ -776,7 +837,7 @@ async function spawnAgent(tab, space, task, useWorktree = false) {
     toast(res?.error || 'Agent spawn failed');
     return;
   }
-  const leaf = await createPane({ cwd: res.cwd, run: res.run });
+  const leaf = await createPane({ cwd: res.cwd, run: res.run, profileId: agentProfileId() });
   addCenterLeaf(tab, leaf, true);
   pendingNames.set(leaf.ptyId, task);
   if (res.agentId) {
@@ -841,7 +902,11 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
 }
 
 async function resumeSession(tab, session) {
-  const leaf = await createPane({ cwd: session.cwd, run: 'claude --continue' });
+  const leaf = await createPane({
+    cwd: session.cwd,
+    run: 'claude --continue',
+    profileId: agentProfileId()
+  });
   addCenterLeaf(tab, leaf, true);
   pendingNames.set(leaf.ptyId, session.name);
 }
@@ -1000,6 +1065,11 @@ function matchShortcut(ev) {
 
   if (ctrlShift && ev.code === 'KeyT') return () => newTab();
   if (ctrlShift && ev.code === 'KeyA') return () => newAgentTab();
+  // Ctrl+Shift+1..9 — new tab with the Nth shell profile
+  if (ctrlShift && /^Digit[1-9]$/.test(ev.code)) {
+    const p = profiles[+ev.code.slice(5) - 1];
+    return p ? () => newTab(p.id) : null;
+  }
   if (ctrlShift && ev.code === 'KeyW') {
     return () => state.activeTab?.activePane && removePane(state.activeTab.activePane);
   }
@@ -1042,6 +1112,7 @@ const s = {
   glassBlurVal: document.getElementById('s-glass-blur-val'),
   contrast: document.getElementById('s-contrast'),
   gpu: document.getElementById('s-gpu'),
+  defaultProfile: document.getElementById('s-profile'),
   autoDetect: document.getElementById('s-autodetect'),
   copyOnSelect: document.getElementById('s-copyonselect'),
   startDir: document.getElementById('s-startdir'),
@@ -1073,8 +1144,27 @@ function toggleSettings() {
 
 document.getElementById('btn-settings').addEventListener('click', toggleSettings);
 document.getElementById('btn-settings-close').addEventListener('click', toggleSettings);
-document.getElementById('btn-newtab').addEventListener('click', () => newTab());
+const btnNewTab = document.getElementById('btn-newtab');
+btnNewTab.addEventListener('click', () => newTab());
+btnNewTab.addEventListener('contextmenu', (ev) => {
+  ev.preventDefault();
+  openProfileMenu(btnNewTab);
+});
+const btnNewTabMenu = document.getElementById('btn-newtab-menu');
+btnNewTabMenu.addEventListener('click', () => openProfileMenu(btnNewTabMenu));
 document.getElementById('btn-agents').addEventListener('click', () => newAgentTab());
+
+function populateProfileSelect() {
+  s.defaultProfile.replaceChildren(
+    ...profiles.map((p) => {
+      const o = document.createElement('option');
+      o.value = p.id;
+      o.textContent = p.name;
+      return o;
+    })
+  );
+  if (state.theme?.defaultProfile) s.defaultProfile.value = state.theme.defaultProfile;
+}
 async function populateFontList() {
   const families = await api.fontsList();
   const ctx = document.createElement('canvas').getContext('2d');
@@ -1135,6 +1225,7 @@ function syncSettingsUI() {
   s.glassBlur.value = t.glassBlur ?? 40;
   s.glassBlurVal.textContent = (t.glassBlur ?? 40) + 'px';
   s.contrast.value = String(t.minContrast ?? 4.5);
+  if (profiles.length) s.defaultProfile.value = t.defaultProfile || profiles[0].id;
   s.gpu.checked = t.gpuRenderer !== false;
   s.autoDetect.checked = t.autoDetectAgents !== false;
   s.copyOnSelect.checked = t.copyOnSelect !== false;
@@ -1175,6 +1266,7 @@ function onSettingChange() {
   t.colorMode = s.colorMode.value;
   t.glassBlur = +s.glassBlur.value;
   t.minContrast = parseFloat(s.contrast.value);
+  if (s.defaultProfile.value) t.defaultProfile = s.defaultProfile.value;
   t.gpuRenderer = s.gpu.checked;
   t.autoDetectAgents = s.autoDetect.checked;
   t.copyOnSelect = s.copyOnSelect.checked;
@@ -1249,12 +1341,15 @@ api.onPtyExit(({ id }) => {
   removePane(node, { killPty: false });
 });
 
-api.onThemeChanged(({ theme, css, error, notice }) => {
+api.onThemeChanged(async ({ theme, css, error, notice }) => {
   if (error) {
     toast(error);
     return;
   }
+  // profiles live in theme.json, so an edit there can add/remove shells
+  profiles = await api.profilesList();
   applyTheme(theme, css);
+  populateProfileSelect();
   if (notice) toast(notice);
 });
 
@@ -1271,7 +1366,9 @@ document.getElementById('btn-close').addEventListener('click', () => api.winClos
     document.body.classList.add('frameless');
     await initGlass();
   }
+  profiles = await api.profilesList();
   applyTheme(theme, css);
+  populateProfileSelect();
   populateFontList();
 
   // Wait for the terminal font before opening the first terminal — opening

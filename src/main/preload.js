@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   diagReport: (data) => ipcRenderer.send('diag:report', data),
   pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
   fontsList: () => ipcRenderer.invoke('fonts:list'),
+  profilesList: () => ipcRenderer.invoke('profiles:list'),
   agentsGetConfig: () => ipcRenderer.invoke('agents:getConfig'),
   agentsAddSpace: () => ipcRenderer.invoke('agents:addSpace'),
   agentsRemoveSpace: (path) => ipcRenderer.invoke('agents:removeSpace', path),
