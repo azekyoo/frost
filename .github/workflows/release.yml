@@ -35,7 +35,7 @@ jobs:
       - run: npm run dist -- --publish never
 
       # Kept for workflow_dispatch runs, where there's no release to attach to
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: frost-windows
           path: |
