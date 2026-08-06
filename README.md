@@ -9,6 +9,16 @@
   Electron · xterm.js · ConPTY · PowerShell 7
 </p>
 
+<p align="center">
+  <a href="https://github.com/azekyoo/frost/releases/latest"><strong>Download for Windows</strong></a>
+  ·
+  <a href="#install">Install</a>
+  ·
+  <a href="#shortcuts">Shortcuts</a>
+  ·
+  <a href="#configuration">Configuration</a>
+</p>
+
 ---
 
 ![Agent mode — live status, terminal, and diff watch](assets/screenshot-agent.png)
@@ -33,6 +43,13 @@ running and supervising Claude Code agents with live status and diff watching.
   working), and the branch is read straight out of `.git/HEAD`, so no `git`
   process runs per prompt. A program that sets its own title (claude, ssh, vim)
   still wins. Splits and `Ctrl+Shift+D` inherit the current directory
+- **Command palette and keys that are yours** — `Ctrl+Shift+P` lists every
+  command beside the key it currently answers to. Rebind any of them in
+  `keybindings.json`, which hot-reloads. Bindings match on physical key position,
+  so they land in the same place on any layout
+- **Opens where you're working** — `frost .` opens a tab in that directory, and
+  the installer adds **Open Frost here** to the folder right-click menu. If Frost
+  is already running you get a new tab, not a second window
 - **Picks up where you left off** — window size, position and maximized state
   come back, along with your tabs and split layout, each pane reopened in the
   directory it was in. Written continuously, so a crash doesn't lose it. Toggle
@@ -97,7 +114,9 @@ npm run dist         # installer + portable exe into dist/
 npm run pack         # unpacked build only, faster
 ```
 
-Requires Node 18+.
+Requires Node 22.12+, which is what Electron 43 asks for. Tagged builds come out
+of [CI](.github/workflows/release.yml) on `windows-latest`, so you only need this
+to hack on Frost.
 
 ## Shortcuts
 
