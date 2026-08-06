@@ -1,0 +1,367 @@
+'use strict';
+
+// Screenshot renderer.  Run with:  npm run shots
+//
+// Each scenario launches a real Frost instance against the demo repo, drives it
+// over the Chrome debugging protocol (real keystrokes into a real pty, real
+// program output), captures the window, then composites that capture onto a
+// generated wallpaper so the `glass` backdrop is shown doing its job.
+//
+// The window is deliberately not maximised and each scenario gets its own
+// wallpaper, matching the framing of the original hand-taken screenshots.
+//
+// Nothing touches your own config, window layout or desktop: the child runs with
+// its own --user-data-dir and an isolated config directory, and the wallpaper is
+// handed over by env var rather than by changing your actual desktop.
+
+const { app, BrowserWindow, screen, nativeImage } = require('electron');
+const { spawn, spawnSync } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+const { render, SCENES } = require('./shots/wallpaper');
+const scenarios = require('./shots/scenarios');
+
+const ROOT = path.join(__dirname, '..');
+const OUT = path.join(ROOT, 'assets');
+const TMP = path.join(app.getPath('temp'), 'frost-shots');
+const DEMO = process.env.FROST_SHOT_REPO || 'C:\\dev\\aurora-notes';
+const PORT = Number(process.env.FROST_SHOT_PORT || 9333);
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const log = (...a) => console.log('•', ...a);
+
+// Electron quits by default once the last window closes, and this tool destroys
+// its compositor window after every scenario — which ended the run after the
+// first image. Own the event so the loop decides when we're finished.
+app.on('window-all-closed', () => {});
+
+// ---------- debugging-protocol client ----------
+// Node 22 ships a global WebSocket, so this needs no dependency.
+
+class Cdp {
+  constructor(ws) {
+    this.ws = ws;
+    this.seq = 0;
+    this.pending = new Map();
+    ws.addEventListener('message', (ev) => {
+      const msg = JSON.parse(ev.data);
+      const p = this.pending.get(msg.id);
+      if (!p) return;
+      this.pending.delete(msg.id);
+      if (msg.error) p.reject(new Error(msg.error.message));
+      else p.resolve(msg.result);
+    });
+  }
+
+  static async attach(port, timeoutMs = 30000) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        const targets = await fetch(`http://127.0.0.1:${port}/json/list`).then((r) => r.json());
+        const page = targets.find((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+        if (page) {
+          const ws = new WebSocket(page.webSocketDebuggerUrl);
+          await new Promise((resolve, reject) => {
+            ws.addEventListener('open', resolve, { once: true });
+            ws.addEventListener('error', reject, { once: true });
+          });
+          return new Cdp(ws);
+        }
+      } catch {
+        // app not listening yet
+      }
+      if (Date.now() > deadline) throw new Error('debugger never came up on port ' + port);
+      await sleep(250);
+    }
+  }
+
+  // The page target is advertised before loadFile() has navigated to it, so an
+  // early evaluate lands in a context that is about to be thrown away
+  // ("Execution context was destroyed"). Poll until the app is genuinely up:
+  // a pane whose shell has reported its cwd is a shell sitting at a prompt,
+  // which is exactly when it's safe to start typing.
+  async waitForApp(timeoutMs = 45000) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        const ready = await this.eval(
+          `Boolean(document.readyState === 'complete' && typeof state !== 'undefined'
+             && state.activeTab && state.activeTab.activePane
+             && state.activeTab.activePane.ptyId && state.activeTab.activePane.cwd)`
+        );
+        if (ready) return;
+      } catch {
+        // context swapped under us mid-navigation; try again
+      }
+      if (Date.now() > deadline) throw new Error('app never reached a shell prompt');
+      await sleep(200);
+    }
+  }
+
+  send(method, params = {}) {
+    const id = ++this.seq;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.ws.send(JSON.stringify({ id, method, params }));
+    });
+  }
+
+  async eval(expression) {
+    const res = await this.send('Runtime.evaluate', {
+      expression,
+      awaitPromise: true,
+      returnByValue: true
+    });
+    if (res.exceptionDetails) {
+      throw new Error('scenario failed: ' + JSON.stringify(res.exceptionDetails.exception?.description || res.exceptionDetails.text));
+    }
+    return res.result?.value;
+  }
+}
+
+// ---------- child app ----------
+
+function scenarioConfig(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  // A deliberate config: glass on, restore off (so one scenario can't inherit
+  // another's tabs), and a tint light enough that the wallpaper reads through.
+  fs.writeFileSync(
+    path.join(dir, 'theme.json'),
+    JSON.stringify(
+      {
+        material: 'glass',
+        colorMode: 'dark',
+        glassBlur: 34,
+        minContrast: 4.5,
+        gpuRenderer: true,
+        autoDetectAgents: false,
+        copyOnSelect: true,
+        restoreSession: false,
+        unicodeVersion: '11',
+        tint: 'rgba(8, 10, 20, 0.24)',
+        accent: '#80a8ff',
+        padding: 14,
+        cornerRadius: 13,
+        windowRadius: 12,
+        startDir: DEMO,
+        font: { family: '"Cascadia Mono", Consolas, monospace', size: 14, lineHeight: 1.25 }
+      },
+      null,
+      2
+    )
+  );
+  return dir;
+}
+
+function killTree(pid) {
+  spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+}
+
+// The demo app reads notes from %USERPROFILE%\aurora-notes. Without them every
+// command answers "0 notes loaded", which makes for a dull screenshot.
+function ensureNotes() {
+  const dir = path.join(process.env.USERPROFILE || process.env.HOME, 'aurora-notes');
+  const notes = {
+    'grocery list.md': '# grocery list\n\n- oat milk\n- chili crisp\n- sourdough\n\n#errands #food\n',
+    'reading queue.md': '# reading queue\n\n- Designing Data-Intensive Applications\n- The Soul of a New Machine\n\n#books\n',
+    'glass blur notes.md': '# glass blur notes\n\nDWM dims acrylic on unfocus; re-applying the\nbackdrop on blur keeps it constant.\n\n#frost #windows\n',
+    'conpty quirks.md': '# conpty quirks\n\nResize storms while dragging — coalesce them.\n\n#frost #terminal\n',
+    'trip packing.md': '# trip packing\n\n- passport\n- adapters\n- running shoes\n\n#errands #travel\n'
+  };
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [name, body] of Object.entries(notes)) {
+    const file = path.join(dir, name);
+    if (!fs.existsSync(file)) fs.writeFileSync(file, body);
+  }
+  // A global core.autocrlf makes git print a line-ending warning per file on
+  // every diff, which fills the screenshot with noise instead of the diff.
+  spawnSync('git', ['-C', DEMO, 'config', 'core.autocrlf', 'false'], { stdio: 'ignore' });
+  return dir;
+}
+
+async function captureScenario(scenario, wallpaperFile, bounds, port) {
+  const configDir = scenarioConfig(path.join(TMP, 'config-' + scenario.name));
+  const userData = path.join(TMP, 'userdata-' + scenario.name);
+  fs.rmSync(path.join(configDir, 'window.json'), { force: true });
+
+  const child = spawn(
+    process.execPath,
+    // a fresh port per scenario: a just-killed instance can hold the old one
+    // long enough for the next attach to latch onto a dead target
+    [ROOT, `--remote-debugging-port=${port}`, `--user-data-dir=${userData}`],
+    {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        FROST_SHOT: JSON.stringify({ configDir, wallpaper: wallpaperFile, bounds })
+      }
+    }
+  );
+
+  let childLog = '';
+  child.stdout.on('data', (d) => (childLog += d));
+  child.stderr.on('data', (d) => (childLog += d));
+  child.on('exit', (code) => (childLog += `\n[child exited: ${code}]`));
+
+  try {
+    const dbg = await Cdp.attach(port);
+    await dbg.send('Runtime.enable');
+    await dbg.send('Page.enable');
+    // the window is transparent in glass mode; without this the capture would
+    // be flattened onto opaque white
+    await dbg.send('Emulation.setDefaultBackgroundColorOverride', {
+      color: { r: 0, g: 0, b: 0, a: 0 }
+    });
+    await dbg.waitForApp();
+    await dbg.eval(scenario.setup);
+    const shot = await dbg.send('Page.captureScreenshot', { format: 'png' });
+    return Buffer.from(shot.data, 'base64');
+  } catch (err) {
+    if (childLog.trim()) console.error('--- child output ---\n' + childLog.trim().slice(-1500));
+    throw err;
+  } finally {
+    killTree(child.pid);
+    await sleep(600);
+  }
+}
+
+// ---------- compositing ----------
+
+function composerHtml(wallpaperFile, windowFile, display, canvas, bounds) {
+  const url = (p) => 'file:///' + p.replace(/\\/g, '/');
+  return `<!doctype html>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05060a; }
+  #wp {
+    position: absolute; inset: 0;
+    /* Sized and offset exactly as Frost sizes its own copy of the wallpaper —
+       screen-sized, screen-aligned — so the blurred image inside the window
+       lines up with the sharp one around it. */
+    background-image: url("${url(wallpaperFile)}");
+    background-size: ${display.width}px ${display.height}px;
+    background-position: ${display.x - canvas.x}px ${display.y - canvas.y}px;
+  }
+  #win {
+    position: absolute;
+    left: ${bounds.x}px; top: ${bounds.y}px;
+    width: ${bounds.width}px; height: ${bounds.height}px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.28), 0 24px 70px rgba(0,0,0,.52);
+  }
+  #win img { display: block; width: 100%; height: 100%; border-radius: 12px; }
+</style>
+<div id="wp"></div>
+<div id="win"><img src="${url(windowFile)}"></div>
+<script>
+  // signal readiness only once the images have actually decoded
+  window.ready = Promise.all(
+    [...document.images].map((i) => i.decode().catch(() => {}))
+  ).then(() => document.fonts.ready);
+</script>`;
+}
+
+async function composite(wallpaperFile, windowPng, display, canvas, bounds, outFile) {
+  const windowFile = path.join(TMP, 'window-' + path.basename(outFile));
+  fs.writeFileSync(windowFile, windowPng);
+  const htmlFile = path.join(TMP, 'compose-' + path.basename(outFile) + '.html');
+  fs.writeFileSync(
+    htmlFile,
+    composerHtml(wallpaperFile, windowFile, display, canvas, {
+      x: bounds.x - canvas.x,
+      y: bounds.y - canvas.y,
+      width: bounds.width,
+      height: bounds.height
+    })
+  );
+
+  const win = new BrowserWindow({
+    width: canvas.width,
+    height: canvas.height,
+    show: false,
+    frame: false,
+    useContentSize: true,
+    webPreferences: { offscreen: false }
+  });
+  try {
+    await win.loadFile(htmlFile);
+    await win.webContents.executeJavaScript('window.ready');
+    await sleep(150);
+    // Captured at the display's 2x, then halved back to logical size: sharper
+    // than rendering at 1x, and a third of the file size of keeping 3070px for
+    // an image a README shows at under 1000.
+    const image = await win.webContents.capturePage();
+    const scaled = image.resize({ width: Math.round(image.getSize().width / 1.5), quality: 'best' });
+    fs.writeFileSync(outFile, scaled.toPNG());
+    return scaled.getSize();
+  } finally {
+    win.destroy();
+  }
+}
+
+// ---------- main ----------
+
+app.whenReady().then(async () => {
+  if (!fs.existsSync(DEMO)) {
+    console.error(`demo repo not found: ${DEMO}\nset FROST_SHOT_REPO to override`);
+    app.exit(1);
+    return;
+  }
+
+  fs.mkdirSync(TMP, { recursive: true });
+  log('demo notes →', ensureNotes());
+
+  const display = screen.getPrimaryDisplay();
+  const size = display.bounds;
+  // Windows won't let a window exceed the work area, so that — not the full
+  // display — is the canvas. The wallpaper is still positioned against the
+  // display, which is what Frost aligns its blurred copy to.
+  const canvas = display.workArea;
+
+  // Framing from the original screenshots: a window that clearly floats on the
+  // desktop rather than filling it, sitting slightly above centre.
+  const width = Math.round(canvas.width * 0.86);
+  const height = Math.round(canvas.height * 0.8);
+  const bounds = {
+    x: canvas.x + Math.round((canvas.width - width) / 2),
+    y: canvas.y + Math.round(canvas.height * 0.055),
+    width,
+    height
+  };
+
+  log(`display ${size.width}x${size.height} @${display.scaleFactor}x → window ${width}x${height}`);
+
+  const wallpapers = {};
+  for (const [name, scene] of Object.entries(SCENES)) {
+    const file = path.join(TMP, `wallpaper-${name}.png`);
+    if (!fs.existsSync(file)) {
+      const t = Date.now();
+      fs.writeFileSync(file, render(scene, size.width * display.scaleFactor, size.height * display.scaleFactor));
+      log(`wallpaper ${name} rendered in ${Date.now() - t}ms`);
+    }
+    wallpapers[name] = file;
+  }
+
+  const only = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+  const todo = only.length ? scenarios.filter((s) => only.some((o) => s.name.includes(o))) : scenarios;
+
+  let failed = 0;
+  for (const [i, scenario] of todo.entries()) {
+    const t = Date.now();
+    try {
+      const wallpaper = wallpapers[scenario.wallpaper];
+      const windowPng = await captureScenario(scenario, wallpaper, bounds, PORT + i);
+      const outFile = path.join(OUT, scenario.name + '.png');
+      const out = await composite(wallpaper, windowPng, size, canvas, bounds, outFile);
+      const kb = Math.round(fs.statSync(outFile).size / 1024);
+      log(`${scenario.name}  ${out.width}x${out.height}  ${kb}kb  ${Date.now() - t}ms`);
+    } catch (err) {
+      failed++;
+      console.error(`✗ ${scenario.name}: ${err.message}`);
+    }
+  }
+
+  log(failed ? `done with ${failed} failure(s) →` : 'done →', OUT);
+  app.exit(failed ? 1 : 0);
+});

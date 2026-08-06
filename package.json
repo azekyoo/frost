@@ -6,6 +6,7 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
+    "shots": "electron tools/shots.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },

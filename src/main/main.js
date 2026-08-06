@@ -5,12 +5,25 @@ const { spawnSync } = require('child_process');
 const chokidar = require('chokidar');
 const pty = require('@lydell/node-pty');
 
+// Set by tools/shots.js to render the README screenshots: an isolated config
+// directory, a wallpaper to use instead of the desktop's, and fixed window
+// bounds. Ignored in normal use.
+const SHOT = (() => {
+  try {
+    return process.env.FROST_SHOT ? JSON.parse(process.env.FROST_SHOT) : null;
+  } catch {
+    return null;
+  }
+})();
+
 // Installed builds live somewhere unwritable (Program Files, or a read-only
 // asar), so their config goes to %APPDATA%. Running from source keeps using the
 // repo's config/ folder, which keeps the dev loop and .gitignore intact.
-const CONFIG_DIR = app.isPackaged
-  ? path.join(app.getPath('userData'), 'config')
-  : path.join(__dirname, '..', '..', 'config');
+const CONFIG_DIR =
+  SHOT?.configDir ||
+  (app.isPackaged
+    ? path.join(app.getPath('userData'), 'config')
+    : path.join(__dirname, '..', '..', 'config'));
 const THEME_FILE = path.join(CONFIG_DIR, 'theme.json');
 const CSS_FILE = path.join(CONFIG_DIR, 'theme.css');
 const AGENTS_FILE = path.join(CONFIG_DIR, 'agents.json');
@@ -228,6 +241,9 @@ let currentMaterial = 'acrylic';
 // Wallpaper for the 'glass' material — the app blurs it itself, DWM stays out.
 function getWallpaperDataUrl() {
   try {
+    if (SHOT?.wallpaper && fs.existsSync(SHOT.wallpaper)) {
+      return 'data:image/png;base64,' + fs.readFileSync(SHOT.wallpaper).toString('base64');
+    }
     const r = spawnSync('reg', ['query', 'HKCU\\Control Panel\\Desktop', '/v', 'WallPaper'], {
       encoding: 'utf8'
     });
@@ -360,7 +376,8 @@ function createWindow() {
     };
   }
 
-  if (boundsVisible(saved.bounds)) Object.assign(opts, saved.bounds);
+  if (SHOT?.bounds) Object.assign(opts, SHOT.bounds);
+  else if (boundsVisible(saved.bounds)) Object.assign(opts, saved.bounds);
 
   win = new BrowserWindow(opts);
   win.isFramelessMode = glass;

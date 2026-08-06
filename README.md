@@ -21,7 +21,7 @@
 
 ---
 
-![Agent mode — live status, terminal, and diff watch](assets/screenshot-agent.png)
+![Split panes over a glass backdrop, tabs showing directory and branch](assets/screenshot-hero.png)
 
 ## Why
 
@@ -79,6 +79,8 @@ running and supervising Claude Code agents with live status and diff watching.
   (Windows Terminal parity), tabs, split panes, font picker listing your
   installed monospace fonts
 
+![Agent mode — live status, terminal, and diff watch](assets/screenshot-agent.png)
+
 ## Install
 
 Grab `Frost-Setup-<version>.exe` from
@@ -112,7 +114,14 @@ npm install
 npm start            # run it
 npm run dist         # installer + portable exe into dist/
 npm run pack         # unpacked build only, faster
+npm run shots        # re-render the screenshots above
 ```
+
+`npm run shots` drives real Frost instances over the debugging protocol — real
+keystrokes into a real shell, real program output — then composites each capture
+onto a generated landscape so the `glass` backdrop is shown doing its job.
+Nothing in those images is mocked, and it leaves your own config, window layout
+and desktop untouched. Pass a name to render one: `npm run shots -- palette`.
 
 Requires Node 22.12+, which is what Electron 43 asks for. Tagged builds come out
 of [CI](.github/workflows/release.yml) on `windows-latest`, so you only need this
@@ -122,6 +131,8 @@ to hack on Frost.
 
 `Ctrl+Shift+P` opens the command palette, which lists every command next to the
 key it currently answers to — that, not this table, is the authoritative list.
+
+![Command palette, filtered, showing each command's current key](assets/screenshot-palette.png)
 
 | Keys | Action |
 |------|--------|
@@ -184,6 +195,9 @@ for an installed build, in the repo's `config/` when running from source:
   `agentWrapper` says which dialect the session-local `claude` wrapper is
   written in: `powershell`, `bash`, or `none` (no agent auto-detect in that
   shell — agent tabs then use the first profile that supports it)
+
+  ![The shell profile menu, listing detected shells](assets/screenshot-profiles.png)
+
 - `config/theme.css` — raw CSS, injected last, overrides anything
 - `config/keybindings.json` — key overrides (see [Shortcuts](#shortcuts))
 - `config/agents.json` — saved repos ("spaces") for agent mode
