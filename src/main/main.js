@@ -354,51 +354,128 @@ const CLAUDE_WRAPPER =
   'Set-Content -LiteralPath $env:FROST_LAUNCH -Value ("end|" + (Get-Location).Path) -Encoding UTF8 ' +
   '}';
 
-// Same wrapper for bash-family shells (Git Bash, MSYS). Sourced as the rc file
-// so the user's own ~/.bashrc still loads. `type -P` skips functions, otherwise
-// the wrapper would resolve to itself and recurse.
-const BASH_WRAPPER = [
-  '# Frost session rc — exists only inside terminals Frost spawns.',
-  '[ -f /etc/bash.bashrc ] && . /etc/bash.bashrc',
-  '[ -f ~/.bashrc ] && . ~/.bashrc',
-  'claude() {',
-  '  local exe; exe=$(type -P claude) || exe=""',
-  '  if [ -z "$exe" ]; then echo "claude not found" >&2; return 1; fi',
-  '  local here; here=$(pwd -W 2>/dev/null || pwd)',
-  '  printf "start|%s" "$here" > "$FROST_LAUNCH"',
-  '  "$exe" --settings "$FROST_HOOKS" "$@"',
-  '  printf "end|%s" "$here" > "$FROST_LAUNCH"',
-  '}',
-  ''
-].join('\n');
+// Reports the shell's cwd to the app on every prompt via OSC 9;9 (the sequence
+// Windows Terminal uses). Wraps whatever `prompt` the user's profile installed
+// — starship, oh-my-posh — instead of replacing it: -Command runs after the
+// profile has loaded.
+const PS_CWD_HOOK =
+  '$global:__frostPrompt = $function:prompt; ' +
+  'function global:prompt { ' +
+  '$out = try { & $global:__frostPrompt } catch { "PS " + (Get-Location).Path + "> " }; ' +
+  'try { $l = Get-Location; if ($l.Provider.Name -eq "FileSystem") { ' +
+  '[Console]::Write([char]27 + "]9;9;" + $l.ProviderPath + [char]7) } } catch {}; ' +
+  '$out }';
 
-function bashWrapperFile() {
-  const f = path.join(STATUS_DIR, 'frost-bashrc');
-  fs.writeFileSync(f, BASH_WRAPPER);
+function psStartup(withClaude) {
+  return withClaude ? CLAUDE_WRAPPER + '; ' + PS_CWD_HOOK : PS_CWD_HOOK;
+}
+
+// Same two jobs for bash-family shells (Git Bash, MSYS), delivered as an rc
+// file so the user's own ~/.bashrc still loads. `type -P` skips functions,
+// otherwise the claude wrapper would resolve to itself and recurse.
+function bashRc(withClaude) {
+  const lines = [
+    '# Frost session rc — exists only inside terminals Frost spawns.',
+    '[ -f /etc/bash.bashrc ] && . /etc/bash.bashrc',
+    '[ -f ~/.bashrc ] && . ~/.bashrc'
+  ];
+  if (withClaude) {
+    lines.push(
+      'claude() {',
+      '  local exe; exe=$(type -P claude) || exe=""',
+      '  if [ -z "$exe" ]; then echo "claude not found" >&2; return 1; fi',
+      '  local here; here=$(pwd -W 2>/dev/null || pwd)',
+      '  printf "start|%s" "$here" > "$FROST_LAUNCH"',
+      '  "$exe" --settings "$FROST_HOOKS" "$@"',
+      '  printf "end|%s" "$here" > "$FROST_LAUNCH"',
+      '}'
+    );
+  }
+  lines.push(
+    // pwd -W gives the Windows path under MSYS, so Frost gets a path it can stat
+    // BEL-terminated: keeps the format string free of backslash escaping traps
+    "__frost_cwd() { local p; p=$(pwd -W 2>/dev/null || pwd); printf '\\033]9;9;%s\\007' \"$p\"; }",
+    'PROMPT_COMMAND="__frost_cwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"',
+    ''
+  );
+  return lines.join('\n');
+}
+
+function bashRcFile(withClaude) {
+  const f = path.join(STATUS_DIR, withClaude ? 'frost-bashrc-agent' : 'frost-bashrc');
+  fs.writeFileSync(f, bashRc(withClaude));
   return f;
 }
+
+// ---------- git branch for tab titles ----------
+// Read .git/HEAD straight off disk: this runs on every shell prompt, and
+// spawning git there would block the main process on each keystroke-to-prompt.
+
+const branchCache = new Map(); // cwd -> { branch, at }
+
+function findGitDir(from) {
+  let dir = path.resolve(from);
+  for (;;) {
+    const p = path.join(dir, '.git');
+    try {
+      const st = fs.statSync(p);
+      if (st.isDirectory()) return p;
+      if (st.isFile()) {
+        // worktree or submodule: .git is a file pointing at the real gitdir
+        const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(p, 'utf8'));
+        if (m) return path.resolve(dir, m[1].trim());
+      }
+    } catch {}
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+}
+
+function branchFor(cwd) {
+  if (!cwd) return null;
+  const hit = branchCache.get(cwd);
+  if (hit && Date.now() - hit.at < 1000) return hit.branch;
+  let branch = null;
+  const gitDir = findGitDir(cwd);
+  if (gitDir) {
+    try {
+      const head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim();
+      const m = /^ref:\s*refs\/heads\/(.+)$/.exec(head);
+      branch = m ? m[1] : head.slice(0, 7); // detached: short sha
+    } catch {}
+  }
+  if (branchCache.size > 200) branchCache.clear();
+  branchCache.set(cwd, { branch, at: Date.now() });
+  return branch;
+}
+
+ipcMain.handle('git:branch', (_e, cwd) => branchFor(cwd));
 
 ipcMain.handle('pty:create', (_e, { cols, rows, cwd, run, profileId }) => {
   const id = String(++ptyCounter);
   const profile = findProfile(profileId);
   const autoDetect = (readTheme() || DEFAULT_THEME).autoDetectAgents !== false;
-  const wrapper = autoDetect ? profile.agentWrapper || 'none' : 'none';
+  // agentWrapper names the shell dialect: it decides both how the `claude`
+  // wrapper is written and how the cwd hook is installed. 'none' = neither.
+  const dialect = profile.agentWrapper || 'none';
+  const withClaude = autoDetect && dialect !== 'none';
   let args = Array.isArray(profile.args) ? [...profile.args] : [];
   let env = { ...process.env, ...(profile.env || {}) };
-  if (wrapper !== 'none') {
-    const agentId = 'pty' + id;
-    const hooks = hookSettingsFile(agentId);
-    const launch = path.join(STATUS_DIR, 'ln-' + agentId);
-    if (wrapper === 'bash') {
+  if (dialect !== 'none') {
+    if (withClaude) {
+      const agentId = 'pty' + id;
+      const hooks = hookSettingsFile(agentId);
+      const launch = path.join(STATUS_DIR, 'ln-' + agentId);
       // bash eats backslashes in redirect targets — hand it msys-style paths
-      env.FROST_HOOKS = hooks.replace(/\\/g, '/');
-      env.FROST_LAUNCH = launch.replace(/\\/g, '/');
-      args = ['--rcfile', bashWrapperFile(), '-i'];
-    } else {
-      env.FROST_HOOKS = hooks;
-      env.FROST_LAUNCH = launch;
-      args = ['-NoLogo', '-NoExit', '-Command', CLAUDE_WRAPPER];
+      const fix = dialect === 'bash' ? (s) => s.replace(/\\/g, '/') : (s) => s;
+      env.FROST_HOOKS = fix(hooks);
+      env.FROST_LAUNCH = fix(launch);
     }
+    args =
+      dialect === 'bash'
+        ? ['--rcfile', bashRcFile(withClaude), '-i']
+        : ['-NoLogo', '-NoExit', '-Command', psStartup(withClaude)];
   }
   const startCwd =
     (cwd && fs.existsSync(cwd) && cwd) ||
@@ -459,7 +536,8 @@ ipcMain.on('pty:kill', (_e, { id }) => {
 ipcMain.handle('theme:get', () => ({
   theme: readTheme() || DEFAULT_THEME,
   css: readCss(),
-  frameless: Boolean(win && win.isFramelessMode)
+  frameless: Boolean(win && win.isFramelessMode),
+  home: app.getPath('home')
 }));
 
 // ---------- agent mode ----------

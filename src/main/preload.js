@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
   fontsList: () => ipcRenderer.invoke('fonts:list'),
   profilesList: () => ipcRenderer.invoke('profiles:list'),
+  gitBranch: (cwd) => ipcRenderer.invoke('git:branch', cwd),
   agentsGetConfig: () => ipcRenderer.invoke('agents:getConfig'),
   agentsAddSpace: () => ipcRenderer.invoke('agents:addSpace'),
   agentsRemoveSpace: (path) => ipcRenderer.invoke('agents:removeSpace', path),

@@ -3,7 +3,8 @@
 const state = {
   theme: null,
   tabs: [],
-  activeTab: null
+  activeTab: null,
+  home: null
 };
 
 let tabCounter = 0;
@@ -136,6 +137,78 @@ function allLeaves(node, out = []) {
   return out;
 }
 
+// ---------- pane titles ----------
+// A pane's label is, in order of preference: a title the running program set
+// (OSC 0/2 — claude, ssh, vim), else cwd + git branch reported by the shell's
+// prompt hook (OSC 9;9), else the profile name.
+
+function displayDir(cwd) {
+  if (state.home && cwd.toLowerCase() === state.home.toLowerCase()) return '~';
+  const base = cwd.replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+  return base || cwd;
+}
+
+function paneLabel(node) {
+  if (node.oscTitle) return node.oscTitle;
+  if (node.cwd) {
+    const dir = displayDir(node.cwd);
+    return node.branch ? `${dir} · ${node.branch}` : dir;
+  }
+  return node.profileName || 'shell';
+}
+
+function refreshPaneTitle(node) {
+  const tab = tabOfPane(node);
+  if (!tab || tab.kind === 'agents' || tab.activePane !== node) return;
+  const label = paneLabel(node);
+  if (label === tab.title && node.cwd === tab.titleCwd) return;
+  tab.title = label;
+  tab.titleCwd = node.cwd;
+  renderTabs();
+}
+
+function setPaneCwd(node, cwd) {
+  if (!cwd) return;
+  // A prompt fired, so the shell is back in control: whatever title was set
+  // before is stale — either a program that has now exited, or ConPTY's
+  // startup title (which is the shell's own command line).
+  const wasTitled = node.oscTitle !== null;
+  node.oscTitle = null;
+  const moved = cwd !== node.cwd;
+  node.cwd = cwd;
+  if (moved || wasTitled) {
+    if (moved) node.branch = null;
+    refreshPaneTitle(node);
+  }
+  if (!moved && Date.now() - (node.branchAt || 0) < 1000) {
+    // same directory, checked a moment ago — a `git checkout` lands next prompt
+    return;
+  }
+  node.branchAt = Date.now();
+  api.gitBranch(cwd).then((branch) => {
+    if (node.cwd !== cwd || branch === node.branch) return;
+    node.branch = branch;
+    refreshPaneTitle(node);
+  });
+}
+
+// OSC 9;9;<path> — Windows Terminal's cwd sequence, what our prompt hooks emit.
+// OSC 7;file://host/<path> — the same thing from anything already emitting it.
+function attachCwdTracking(node) {
+  node.term.parser.registerOscHandler(9, (data) => {
+    if (!data.startsWith('9;')) return false; // OSC 9 also carries notify/progress
+    setPaneCwd(node, data.slice(2).trim());
+    return true;
+  });
+  node.term.parser.registerOscHandler(7, (data) => {
+    const m = /^file:\/\/[^/]*(\/.*)$/.exec(data);
+    if (!m) return false;
+    // /C:/Users/... -> C:/Users/...
+    setPaneCwd(node, decodeURIComponent(m[1]).replace(/^\/([A-Za-z]:)/, '$1'));
+    return true;
+  });
+}
+
 // ---------- buffer search ----------
 
 const SEARCH_DECORATIONS = {
@@ -263,9 +336,21 @@ async function createPane(opts = {}) {
   }
   term.open(hostEl);
 
-  const node = { type: 'leaf', id, ptyId: null, term, fit, webgl: null, el: paneEl };
+  const node = {
+    type: 'leaf',
+    id,
+    ptyId: null,
+    term,
+    fit,
+    webgl: null,
+    el: paneEl,
+    cwd: null,
+    branch: null,
+    oscTitle: null
+  };
   applyGpu(node);
   attachPaneSearch(node);
+  attachCwdTracking(node);
 
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
@@ -333,11 +418,11 @@ async function createPane(opts = {}) {
   term.onData((d) => api.ptyInput(ptyId, d));
 
   term.onTitleChange((title) => {
-    const tab = tabOfPane(node);
-    if (tab && tab.activePane === node) {
-      tab.title = title || 'pwsh';
-      renderTabs();
-    }
+    const t = (title || '').trim();
+    // Titles that are just a path get dropped: that's ConPTY echoing the shell
+    // command line, or a prompt theme naming the cwd — which we render better.
+    node.oscTitle = t && !/^([A-Za-z]:[\\/]|\/|~[\\/])/.test(t) ? t : null;
+    refreshPaneTitle(node);
   });
 
   return node;
@@ -416,14 +501,15 @@ function focusPane(node) {
   document.querySelectorAll('.pane.focused').forEach((p) => p.classList.remove('focused'));
   node.el.classList.add('focused');
   node.term.focus();
+  refreshPaneTitle(node);
 }
 
 async function splitPane(dir) {
   const tab = state.activeTab;
   if (!tab || !tab.activePane) return;
   const target = tab.activePane;
-  // a split keeps the shell you were already in
-  const newLeaf = await createPane({ profileId: target.profileId });
+  // a split keeps the shell and directory you were already in
+  const newLeaf = await createPane({ profileId: target.profileId, cwd: target.cwd });
   const parent = tab.root === target ? null : findParent(tab.root, target);
 
   if (parent && parent.dir === dir) {
@@ -488,7 +574,7 @@ function removePane(node, { killPty = true } = {}) {
 
 // ---------- tabs ----------
 
-async function newTab(profileId) {
+async function newTab({ profileId, cwd } = {}) {
   const tab = {
     id: 'tab-' + ++tabCounter,
     title: '',
@@ -497,7 +583,7 @@ async function newTab(profileId) {
     contentEl: document.createElement('div')
   };
   tab.contentEl.className = 'tab-content';
-  const leaf = await createPane({ profileId });
+  const leaf = await createPane({ profileId, cwd });
   tab.title = leaf.profileName || 'shell';
   tab.root = leaf;
   state.tabs.push(tab);
@@ -567,6 +653,8 @@ function renderTabs() {
         dot.className = 'tab-dot st-' + worstAgentStatus(tab);
         t.appendChild(dot);
       }
+      const pane = tab.activePane;
+      t.title = [pane?.cwd, pane?.profileName].filter(Boolean).join('\n') || tab.title;
       const title = document.createElement('span');
       title.className = 'title';
       title.textContent = tab.title;
@@ -586,6 +674,7 @@ function renderTabs() {
       return t;
     })
   );
+  document.title = state.activeTab ? `${state.activeTab.title} — Frost` : 'Frost';
 }
 
 // ---------- shell profiles ----------
@@ -623,7 +712,7 @@ function openProfileMenu(anchor) {
       }
       item.addEventListener('click', () => {
         closeProfileMenu();
-        newTab(p.id);
+        newTab({ profileId: p.id });
       });
       return item;
     })
@@ -1068,7 +1157,13 @@ function matchShortcut(ev) {
   // Ctrl+Shift+1..9 — new tab with the Nth shell profile
   if (ctrlShift && /^Digit[1-9]$/.test(ev.code)) {
     const p = profiles[+ev.code.slice(5) - 1];
-    return p ? () => newTab(p.id) : null;
+    return p ? () => newTab({ profileId: p.id }) : null;
+  }
+  if (ctrlShift && ev.code === 'KeyD') {
+    return () => {
+      const pane = state.activeTab?.activePane;
+      if (pane) newTab({ profileId: pane.profileId, cwd: pane.cwd });
+    };
   }
   if (ctrlShift && ev.code === 'KeyW') {
     return () => state.activeTab?.activePane && removePane(state.activeTab.activePane);
@@ -1137,7 +1232,7 @@ function toggleSettings() {
   if (el.settings.classList.contains('open') && diag) {
     const node = state.activeTab ? firstLeaf(state.activeTab.root) : null;
     diag.textContent = node
-      ? `diag — renderer: ${node.webgl ? 'webgl' : 'dom'} · unicode: ${node.term.unicode.activeVersion} · ${node.term.cols}x${node.term.rows}`
+      ? `diag — renderer: ${node.webgl ? 'webgl' : 'dom'} · unicode: ${node.term.unicode.activeVersion} · ${node.term.cols}x${node.term.rows} · cwd: ${node.cwd || '(none reported)'} · branch: ${node.branch || '-'} · title: ${node.oscTitle || '-'}`
       : 'diag — no terminal';
   }
 }
@@ -1360,7 +1455,8 @@ document.getElementById('btn-max').addEventListener('click', () => api.winMaximi
 document.getElementById('btn-close').addEventListener('click', () => api.winClose());
 
 (async () => {
-  const { theme, css, frameless } = await api.themeGet();
+  const { theme, css, frameless, home } = await api.themeGet();
+  state.home = home || null;
   glassState.active = Boolean(frameless);
   if (frameless) {
     document.body.classList.add('frameless');

@@ -27,6 +27,12 @@ running and supervising Claude Code agents with live status and diff watching.
   own (shell, args, cwd, env) by editing that list. The `▾` button next to `+`
   lists them, `Ctrl+Shift+1…9` opens the Nth, and splitting a pane keeps the
   shell you were already in
+- **Tab titles that say something** — each tab shows `directory · branch`, live.
+  The shell reports its cwd on every prompt (OSC 9;9, injected by wrapping
+  whatever prompt your profile already installed — starship and oh-my-posh keep
+  working), and the branch is read straight out of `.git/HEAD`, so no `git`
+  process runs per prompt. A program that sets its own title (claude, ssh, vim)
+  still wins. Splits and `Ctrl+Shift+D` inherit the current directory
 - **Backdrop materials**
   - `acrylic` / `mica` / `tabbed` — native Windows backdrops
   - `acrylic-always` — native acrylic that **never dims on unfocus** (Frost
@@ -74,8 +80,9 @@ Requires Node 18+, Windows 11 for the acrylic/mica materials
 | `Ctrl+Shift+T` | New tab (default profile) |
 | `Ctrl+Shift+1` … `9` | New tab with the Nth shell profile |
 | `Ctrl+Shift+A` | New agent tab |
+| `Ctrl+Shift+D` | Duplicate tab (same shell, same directory) |
 | `Ctrl+Shift+W` | Close pane (last pane closes tab) |
-| `Alt+Shift+=` / `Alt+Shift+-` | Split right / down |
+| `Alt+Shift+=` / `Alt+Shift+-` | Split right / down (inherits directory) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
