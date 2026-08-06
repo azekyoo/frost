@@ -213,6 +213,112 @@ function attachCwdTracking(node) {
   });
 }
 
+// ---------- clickable paths and URLs ----------
+// Ctrl+click, matching Windows Terminal and VS Code: a bare click in a terminal
+// is for selecting text, and opening an editor by accident is worse than one
+// extra modifier.
+
+// Trailing punctuation is almost always prose, not part of the name — but a
+// closing bracket can be either (`foo[0].js`), so only strip pairs we opened.
+function trimCandidate(token) {
+  let out = token.replace(/^[('"`\[<{]+/, '');
+  out = out.replace(/[)'"`\]>},;.]+$/, (tail) => (/^\.\w+$/.test(tail) ? tail : ''));
+  return out;
+}
+
+// Splits src/foo.js:12:5 — and grep's src/foo.js:12:matched text — into the
+// path and whatever line/column were appended.
+function splitLocation(token) {
+  const m = /^(.*?):(\d+)(?::(\d+))?(?::.*)?$/.exec(token);
+  if (m && m[1]) return { path: m[1], line: +m[2], column: m[3] ? +m[3] : 1 };
+  return { path: token, line: 0, column: 1 };
+}
+
+// Worth asking the main process about: has a separator, or looks like a
+// filename with an extension. Existence is what actually decides.
+function looksLikePath(value) {
+  if (!value || value.length < 2 || value.length > 400) return false;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value)) return false; // a URL, handled elsewhere
+  return /[\\/]/.test(value) || /^[\w.@$+-]+\.[A-Za-z][\w]{0,9}$/.test(value);
+}
+
+function lineText(term, y) {
+  const line = term.buffer.active.getLine(y - 1);
+  return line ? line.translateToString(true) : '';
+}
+
+function attachLinks(node) {
+  const term = node.term;
+
+  // URLs: the addon finds them, we decide what opening means. window.open would
+  // be handled by the main process anyway, but going through openExternal keeps
+  // the scheme allowlist in one place.
+  term.loadAddon(
+    new WebLinksAddon.WebLinksAddon((ev, uri) => {
+      if (!ev.ctrlKey) return;
+      api.openExternal(uri).then((ok) => {
+        if (!ok) toast('Refused to open ' + uri.slice(0, 60));
+      });
+    })
+  );
+
+  term.registerLinkProvider({
+    provideLinks(y, callback) {
+      const text = lineText(term, y);
+      if (!text) return callback(undefined);
+
+      // Python tracebacks put the line number in a separate word
+      const py = /File "([^"]+)", line (\d+)/.exec(text);
+      const found = [];
+      const seen = new Set();
+      const consider = (raw, index, loc) => {
+        if (!raw || seen.has(index)) return;
+        seen.add(index);
+        found.push({ raw, index, loc });
+      };
+
+      // The traceback match spans the quoted path, so tokens inside it are
+      // skipped — two overlapping links on the same text renders as a mess.
+      let covered = null;
+      if (py) {
+        consider(py[0], py.index, { path: py[1], line: +py[2], column: 1 });
+        covered = [py.index, py.index + py[0].length];
+      }
+      const token = /[^\s]+/g;
+      let m;
+      while ((m = token.exec(text))) {
+        if (covered && m.index >= covered[0] && m.index < covered[1]) continue;
+        const trimmed = trimCandidate(m[0]);
+        if (!trimmed) continue;
+        const loc = splitLocation(trimmed);
+        if (!looksLikePath(loc.path)) continue;
+        consider(trimmed, m.index + m[0].indexOf(trimmed), loc);
+      }
+      if (!found.length) return callback(undefined);
+
+      api.resolvePaths(node.cwd, [...new Set(found.map((f) => f.loc.path))]).then((resolved) => {
+        const links = [];
+        for (const { raw, index, loc } of found) {
+          if (!resolved[loc.path]) continue;
+          links.push({
+            range: { start: { x: index + 1, y }, end: { x: index + raw.length, y } },
+            text: raw,
+            activate(ev) {
+              if (!ev.ctrlKey) return;
+              api
+                .openPath({ cwd: node.cwd, target: loc.path, line: loc.line, column: loc.column })
+                .then((res) => {
+                  if (res?.error && !res.opened) toast(res.error);
+                });
+            }
+          });
+        }
+        callback(links.length ? links : undefined);
+      });
+    }
+  });
+}
+
 // ---------- buffer search ----------
 
 const SEARCH_DECORATIONS = {
@@ -327,7 +433,6 @@ async function createPane(opts = {}) {
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
-  term.loadAddon(new WebLinksAddon.WebLinksAddon());
   // Modern character widths (emoji = 2 cols). theme.unicodeVersion picks the
   // active table ('11' or '6') and hot-reloads for live A/B testing.
   // Never let a broken addon kill terminal creation.
@@ -355,6 +460,7 @@ async function createPane(opts = {}) {
   applyGpu(node);
   attachPaneSearch(node);
   attachCwdTracking(node);
+  attachLinks(node);
 
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
@@ -1719,6 +1825,7 @@ const s = {
   autoDetect: document.getElementById('s-autodetect'),
   copyOnSelect: document.getElementById('s-copyonselect'),
   startDir: document.getElementById('s-startdir'),
+  editor: document.getElementById('s-editor'),
   tintColor: document.getElementById('s-tint-color'),
   tintAlpha: document.getElementById('s-tint-alpha'),
   tintAlphaVal: document.getElementById('s-tint-alpha-val'),
@@ -1835,6 +1942,7 @@ function syncSettingsUI() {
   s.autoDetect.checked = t.autoDetectAgents !== false;
   s.copyOnSelect.checked = t.copyOnSelect !== false;
   s.startDir.value = t.startDir || '';
+  s.editor.value = t.editor || '';
   s.tintColor.value = tint.hex;
   s.tintAlpha.value = Math.round(tint.alpha * 100);
   s.tintAlphaVal.textContent = Math.round(tint.alpha * 100) + '%';
@@ -1877,6 +1985,7 @@ function onSettingChange() {
   t.autoDetectAgents = s.autoDetect.checked;
   t.copyOnSelect = s.copyOnSelect.checked;
   t.startDir = s.startDir.value.trim();
+  t.editor = s.editor.value.trim();
   t.tint = `rgba(${r}, ${g}, ${b}, ${alpha})`;
   t.accent = s.accent.value;
   t.font = t.font || {};

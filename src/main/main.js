@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, nativeTheme, screen, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const chokidar = require('chokidar');
 const pty = require('@lydell/node-pty');
 
@@ -101,7 +101,10 @@ const ptys = new Map();
 function whichExe(name) {
   const r = spawnSync('where.exe', [name], { encoding: 'utf8' });
   if (r.status === 0 && r.stdout && r.stdout.trim()) {
-    return r.stdout.trim().split(/\r?\n/)[0];
+    const hits = r.stdout.trim().split(/\r?\n/);
+    // prefer a real executable over a shim: `where code` lists an extensionless
+    // launcher script that Node can't spawn without a shell
+    return hits.find((h) => /\.exe$/i.test(h)) || hits[0];
   }
   return null;
 }
@@ -406,6 +409,16 @@ function createWindow() {
       } catch {}
     }
   });
+
+  // Belt and braces around anything a link in terminal output might attempt:
+  // never open a window for it, and never let the app itself navigate away.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      if (SAFE_SCHEMES.has(new URL(url).protocol)) shell.openExternal(url);
+    } catch {}
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (event) => event.preventDefault());
 
   for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) {
     win.on(ev, saveWindowStateSoon);
@@ -1045,6 +1058,149 @@ ipcMain.handle('theme:save', (_e, theme) => {
 });
 
 ipcMain.handle('keys:get', () => readKeys() || []);
+
+// ---------- opening things out of the terminal ----------
+// Terminal output is untrusted: it's whatever a program, a repo, or a remote
+// host printed. So nothing here is ever handed to a shell, and only schemes
+// that can't launch a local handler are opened.
+
+const SAFE_SCHEMES = new Set(['http:', 'https:', 'mailto:']);
+
+ipcMain.handle('shell:openExternal', async (_e, target) => {
+  let url;
+  try {
+    url = new URL(String(target));
+  } catch {
+    return false;
+  }
+  // file:, and anything registered to an application (ms-msdt:, steam:, ...),
+  // would turn a line of terminal output into a way to start a program
+  if (!SAFE_SCHEMES.has(url.protocol)) return false;
+  await shell.openExternal(url.href);
+  return true;
+});
+
+// Editor command as an argv template; {file} {line} {column} are substituted as
+// whole arguments, never spliced into a string that a shell would parse.
+//
+// `app` is the real executable to look for. What's on PATH is usually a shim —
+// VS Code installs an extensionless `bin/code` next to `Code.exe` — and Node
+// can't spawn a shim without going through a shell, which is exactly what we're
+// avoiding. So each editor also says which .exe to find alongside it.
+const EDITOR_CANDIDATES = [
+  { exe: 'code', app: 'Code.exe', args: ['--goto', '{file}:{line}:{column}'] },
+  { exe: 'code-insiders', app: 'Code - Insiders.exe', args: ['--goto', '{file}:{line}:{column}'] },
+  { exe: 'cursor', app: 'Cursor.exe', args: ['--goto', '{file}:{line}:{column}'] },
+  { exe: 'windsurf', app: 'Windsurf.exe', args: ['--goto', '{file}:{line}:{column}'] },
+  { exe: 'subl', app: 'subl.exe', args: ['{file}:{line}:{column}'] },
+  { exe: 'idea', app: 'idea64.exe', args: ['--line', '{line}', '{file}'] },
+  { exe: 'nvim-qt', app: 'nvim-qt.exe', args: ['--', '+{line}', '{file}'] }
+];
+
+// Walks from whatever is on PATH to something spawnable.
+function resolveExecutable(name, appExe) {
+  if (/[\\/]/.test(name)) return fs.existsSync(name) ? name : null;
+  const hit = whichExe(name);
+  if (hit && /\.exe$/i.test(hit)) return hit;
+  if (!hit) return null;
+  const dir = path.dirname(hit);
+  for (const rel of [path.join('..', appExe || name + '.exe'), appExe || name + '.exe']) {
+    const candidate = path.resolve(dir, rel);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+let editorCache = null;
+
+function resolveEditor() {
+  const configured = readTheme()?.editor;
+  if (typeof configured === 'string' && configured.trim()) {
+    // split on whitespace, honouring "quoted paths with spaces"
+    const parts = configured.match(/"[^"]+"|\S+/g) || [];
+    if (parts.length) {
+      const [name, ...args] = parts.map((p) => p.replace(/^"|"$/g, ''));
+      // a template with no placeholder still needs the file appended
+      if (!args.some((a) => a.includes('{file}'))) args.push('{file}');
+      const exe = resolveExecutable(name);
+      if (exe) return { exe, args };
+      return false;
+    }
+  }
+  if (editorCache !== null) return editorCache;
+  editorCache = false;
+  for (const candidate of EDITOR_CANDIDATES) {
+    const exe = resolveExecutable(candidate.exe, candidate.app);
+    if (exe) {
+      editorCache = { exe, args: candidate.args };
+      break;
+    }
+  }
+  return editorCache;
+}
+
+// Turns a candidate found in terminal output into an absolute path, but only if
+// it actually exists as a file. Existence is the filter that keeps ordinary
+// words from being underlined as links.
+function resolveTarget(cwd, candidate) {
+  if (!candidate || candidate.length > 400) return null;
+  // Legal in a Windows filename but shell metacharacters, so a file could be
+  // named to inject if anything downstream ever reaches a command line.
+  if (/[\0<>|"*?&^%`$]/.test(candidate)) return null;
+  let target = candidate;
+  if (target.startsWith('~/') || target.startsWith('~\\')) {
+    target = path.join(app.getPath('home'), target.slice(2));
+  } else if (/^\/[a-zA-Z]\//.test(target)) {
+    // msys/Git Bash style: /c/dev/x -> C:\dev\x
+    target = target[1] + ':' + target.slice(2);
+  }
+  const base = cwd && fs.existsSync(cwd) ? cwd : startDir();
+  const abs = path.resolve(base, target);
+  try {
+    return fs.statSync(abs).isFile() ? abs : null;
+  } catch {
+    return null;
+  }
+}
+
+ipcMain.handle('paths:resolve', (_e, { cwd, candidates }) => {
+  const out = {};
+  for (const candidate of Array.isArray(candidates) ? candidates.slice(0, 64) : []) {
+    const abs = resolveTarget(cwd, candidate);
+    if (abs) out[candidate] = abs;
+  }
+  return out;
+});
+
+ipcMain.handle('paths:open', (_e, { cwd, target, line, column }) => {
+  const abs = resolveTarget(cwd, target);
+  if (!abs) return { error: 'not found: ' + target };
+  const editor = resolveEditor();
+  if (!editor) {
+    // no editor on PATH: let Windows decide what opens it
+    shell.openPath(abs);
+    return { opened: 'shell' };
+  }
+  const args = editor.args.map((a) =>
+    a
+      .replace('{file}', abs)
+      .replace('{line}', String(Math.max(1, line || 1)))
+      .replace('{column}', String(Math.max(1, column || 1)))
+  );
+  try {
+    // no shell, argv only — a path from terminal output must never be parsed
+    // as a command line
+    const child = spawn(editor.exe, args, { detached: true, stdio: 'ignore', shell: false });
+    // spawn reports failure asynchronously, and an unhandled 'error' here takes
+    // the whole main process down
+    child.on('error', () => shell.openPath(abs));
+    child.unref();
+    return { opened: path.basename(editor.exe) };
+  } catch (e) {
+    shell.openPath(abs);
+    return { opened: 'shell', error: String(e) };
+  }
+});
 
 ipcMain.handle('session:get', () => {
   const s = readWindowState();

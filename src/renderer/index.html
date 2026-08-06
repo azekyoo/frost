@@ -111,6 +111,16 @@
         </label>
 
         <label class="field">
+          <span>Editor for Ctrl+click on a file path</span>
+          <input type="text" id="s-editor" spellcheck="false" placeholder="auto-detect (code, cursor, subl, idea&hellip;)" />
+        </label>
+        <p class="hint">
+          An argv template &mdash; <b>{file}</b>, <b>{line}</b> and <b>{column}</b> are
+          filled in as whole arguments, never through a shell. Leave empty to use
+          the first editor found on PATH.
+        </p>
+
+        <label class="field">
           <span>Font (installed monospace)</span>
           <select id="s-font-family"></select>
         </label>

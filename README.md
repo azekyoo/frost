@@ -43,6 +43,12 @@ running and supervising Claude Code agents with live status and diff watching.
   working), and the branch is read straight out of `.git/HEAD`, so no `git`
   process runs per prompt. A program that sets its own title (claude, ssh, vim)
   still wins. Splits and `Ctrl+Shift+D` inherit the current directory
+- **Ctrl+click a path or a URL** — `src/search.js:45:12` from a stack trace, a
+  grep hit, a `File "app.py", line 118` traceback or a bare `README.md` opens in
+  your editor at that line; links open in your browser. Candidates are only
+  underlined once they're confirmed to exist on disk, so prose doesn't light up.
+  Nothing found in terminal output is ever passed through a shell, and only
+  `http`, `https` and `mailto` are ever opened
 - **Command palette and keys that are yours** — `Ctrl+Shift+P` lists every
   command beside the key it currently answers to. Rebind any of them in
   `keybindings.json`, which hot-reloads. Bindings match on physical key position,
@@ -156,6 +162,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Ctrl+Shift+K` | Clear buffer |
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
+| `Ctrl+click` | Open a file path in your editor, or a URL in your browser |
 | Right-click | Copy selection, else paste |
 
 Every one of them is remappable in `config/keybindings.json`:
@@ -203,6 +210,12 @@ for an installed build, in the repo's `config/` when running from source:
 
   ![The shell profile menu, listing detected shells](assets/screenshot-profiles.png)
 
+  `editor` is the command Ctrl+click uses, as an argv template — for example
+  `"editor": "code --goto {file}:{line}:{column}"`. `{file}`, `{line}` and
+  `{column}` are substituted as whole arguments and never handed to a shell.
+  Empty means the first of `code`, `code-insiders`, `cursor`, `windsurf`, `subl`,
+  `idea` or `nvim-qt` found on PATH, falling back to whatever Windows associates
+  with the file
 - `config/theme.css` — raw CSS, injected last, overrides anything
 - `config/keybindings.json` — key overrides (see [Shortcuts](#shortcuts))
 - `config/agents.json` — saved repos ("spaces") for agent mode
