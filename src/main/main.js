@@ -738,17 +738,31 @@ function readAgentsCfg() {
   }
 }
 
+// Shells disagree on how to spell a directory: PowerShell reports
+// C:\dev\repo, the bash wrapper's `pwd -W` reports C:/dev/repo. Same place, and
+// comparing them as strings meant one repo could appear twice — once live, once
+// as a resumable session.
+function canonPath(p) {
+  if (!p) return p;
+  return path.resolve(String(p).trim()).replace(/[\\/]+$/, '');
+}
+
+const samePath = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+
 function readSessions() {
   try {
-    return JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+    // normalise on read so entries written before this still dedupe
+    return raw.map((s) => ({ ...s, cwd: canonPath(s.cwd) }));
   } catch {
     return [];
   }
 }
 
 function upsertSession(entry) {
-  const sessions = readSessions().filter((s) => s.cwd !== entry.cwd);
-  sessions.unshift(entry);
+  const cwd = canonPath(entry.cwd);
+  const sessions = readSessions().filter((s) => !samePath(s.cwd, cwd));
+  sessions.unshift({ ...entry, cwd });
   fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions.slice(0, 30), null, 2));
 }
 
@@ -763,7 +777,8 @@ function gitInfo(cwd) {
   };
 }
 
-function registerDetected(agentId, cwd) {
+function registerDetected(agentId, rawCwd) {
+  const cwd = canonPath(rawCwd);
   const ptyId = agentId.slice(3); // 'pty<N>' -> '<N>'
   const info = gitInfo(cwd);
   const rec = {
@@ -799,8 +814,16 @@ function registerDetected(agentId, cwd) {
 
 function effectiveStatus(rec) {
   if (rec.exited) return 'exited';
-  if (rec.hook === 'blocked' && rec.hookT > rec.lastInput) return 'blocked';
-  if (rec.hook === 'done' && rec.hookT > rec.lastInput) return 'done';
+  // Claude Code's hooks report the turn's real state, so they win over the
+  // output heuristic. Typing only invalidates "blocked" — answering the prompt
+  // is what unblocks it — while "done" holds until the next prompt is sent.
+  if (rec.hook === 'blocked') return rec.hookT > rec.lastInput ? 'blocked' : 'working';
+  if (rec.hook === 'working') {
+    // don't stay "working" forever if a session died without firing Stop
+    return Date.now() - rec.lastData > 60000 ? 'idle' : 'working';
+  }
+  if (rec.hook === 'done') return 'done';
+  // no hook yet: a shell that hasn't run claude, or a turn that hasn't started
   return Date.now() - rec.lastData < 2500 ? 'working' : 'idle';
 }
 
@@ -1008,7 +1031,8 @@ ipcMain.handle('agents:spawn', (_e, { spacePath, task, useWorktree }) => {
 ipcMain.handle('agents:getSessions', () => readSessions());
 
 ipcMain.handle('agents:removeSession', (_e, cwd) => {
-  const sessions = readSessions().filter((s) => s.cwd !== cwd);
+  const target = canonPath(cwd);
+  const sessions = readSessions().filter((s) => !samePath(s.cwd, target));
   fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
   return sessions;
 });

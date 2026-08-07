@@ -1360,9 +1360,11 @@ function renderAgentList(tab) {
     row.addEventListener('click', () => selectAgent(tab, agent.id));
     rows.push(row);
   }
-  const liveCwds = new Set([...globalAgents.values()].map((a) => a.cwd));
+  // compared case-insensitively: main canonicalises the separators, but Windows
+  // paths can still differ in case for the same directory
+  const liveCwds = new Set([...globalAgents.values()].map((a) => String(a.cwd || '').toLowerCase()));
   for (const s of sessions) {
-    if (liveCwds.has(s.cwd)) continue;
+    if (liveCwds.has(String(s.cwd || '').toLowerCase())) continue;
     const row = document.createElement('div');
     row.className = 'agent-row dormant';
     row.title = `Resume last Claude session in ${s.cwd}`;
