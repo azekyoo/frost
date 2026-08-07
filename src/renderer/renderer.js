@@ -1478,7 +1478,20 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
     activateTab(homeTab);
     if (homeTab.kind === 'agents') selectAgent(homeTab, agentId);
     else focusPane(agent.leaf);
+    return;
   }
+
+  // Its pane is gone, so there is nothing to show and the entry is stale. This
+  // used to do nothing at all, which read as the click being ignored. Say so and
+  // stop listing it, rather than leaving a row that can never open.
+  globalAgents.delete(agentId);
+  agentsByPty.delete(agent.ptyId);
+  for (const t of agentTabs()) {
+    if (t.selected === agentId) t.selected = null;
+    if (t.diffKey === 'agent:' + agentId) t.diffKey = null;
+  }
+  renderAgentLists();
+  toast(`${agent.name} is no longer running`, { error: true });
 }
 
 // Resuming is slow: claude has to boot before it registers as an agent, and the
