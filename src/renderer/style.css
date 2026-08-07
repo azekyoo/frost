@@ -617,9 +617,17 @@ body.frameless #win-controls {
 }
 
 .space-name {
+  /* grows so the buttons line up down the column instead of trailing whatever
+     length each name happens to be */
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.space-row button {
+  flex: none;
 }
 
 .agents-layout .hint {
