@@ -730,7 +730,13 @@ body.frameless #win-controls {
   white-space: nowrap;
 }
 
-.wt-open,
+.wt-actions {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+
+.wt-act,
 .rail-prune {
   border: 1px solid var(--hairline);
   background: transparent;
@@ -743,10 +749,21 @@ body.frameless #win-controls {
   flex: none;
 }
 
-.wt-open:hover,
+.wt-act:hover,
 .rail-prune:hover {
   background: var(--surface-2);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.wt-act:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* destructive, so it reads as such before it's clicked */
+.wt-act:last-child:hover {
+  border-color: color-mix(in srgb, #f85149 55%, transparent);
+  color: #ffb4ae;
 }
 
 .agent-dot,

@@ -1303,6 +1303,108 @@ ipcMain.handle('worktrees:prune', () => {
   return pruned;
 });
 
+// Finds the repo a worktree belongs to, so operations run against the right
+// checkout rather than whichever space happened to be listed first.
+function ownerOf(wtPath) {
+  for (const space of readAgentsCfg().spaces || []) {
+    if (!fs.existsSync(space.path)) continue;
+    const all = parseWorktrees(space.path);
+    const hit = all.find((w) => samePath(canonPath(w.path), canonPath(wtPath)));
+    if (hit) return { space, all, main: all[0], wt: hit };
+  }
+  return null;
+}
+
+const git = (cwd, args) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
+const isDirty = (cwd) => Boolean((git(cwd, ['status', '--porcelain']).stdout || '').trim());
+
+function confirm(event, { message, detail, action, danger }) {
+  const w = windowOf(event) || win;
+  const choice = dialog.showMessageBoxSync(w, {
+    type: danger ? 'warning' : 'question',
+    buttons: [action, 'Cancel'],
+    defaultId: danger ? 1 : 0,
+    cancelId: 1,
+    noLink: true,
+    message,
+    detail
+  });
+  return choice === 0;
+}
+
+// Merge a worktree's branch into the repo's base branch. Everything that could
+// leave the repo in a half-finished state is checked first and refused with an
+// explanation, rather than attempted and abandoned partway.
+ipcMain.handle('worktrees:merge', (event, wtPath) => {
+  const found = ownerOf(wtPath);
+  if (!found) return { error: 'That worktree no longer belongs to a known space.' };
+  const { space, main, wt } = found;
+  const base = main.branch;
+  if (!wt.branch) return { error: 'This worktree has a detached HEAD, so there is no branch to merge.' };
+  if (!base) return { error: 'The repository itself is on a detached HEAD; check out a branch first.' };
+  if (isDirty(wt.path)) {
+    return { error: `${path.basename(wt.path)} has uncommitted changes. Commit or discard them first.` };
+  }
+  const ahead = countCommits(wt.path, `${base}..${wt.branch}`);
+  if (!ahead) return { error: `${wt.branch} has nothing that ${base} doesn't already have.` };
+  if (isDirty(space.path)) {
+    return { error: `${space.name} has uncommitted changes on ${base}. Commit or stash them first.` };
+  }
+
+  if (!confirm(event, {
+    message: `Merge ${wt.branch} into ${base}?`,
+    detail: `${ahead} commit${ahead > 1 ? 's' : ''} from ${path.basename(wt.path)} will be merged into ${base} in ${space.name}.`,
+    action: 'Merge'
+  })) return { cancelled: true };
+
+  const r = git(space.path, ['merge', '--no-ff', wt.branch, '-m', `Merge ${wt.branch}`]);
+  if (r.status !== 0) {
+    // leave nothing half-applied behind
+    git(space.path, ['merge', '--abort']);
+    return { error: (r.stdout || r.stderr || 'merge failed').trim().split('\n').slice(0, 4).join(' ') };
+  }
+  return { merged: ahead, base, branch: wt.branch };
+});
+
+// Remove the checkout and delete the branch. Anything not merged is spelled out
+// before it goes, and git's own refusal is honoured unless the user insists.
+ipcMain.handle('worktrees:discard', (event, wtPath) => {
+  const found = ownerOf(wtPath);
+  if (!found) return { error: 'That worktree no longer belongs to a known space.' };
+  const { space, main, wt } = found;
+  const base = main.branch || 'HEAD';
+  const exists = fs.existsSync(wt.path);
+  const unmerged = exists && wt.branch ? countCommits(wt.path, `${base}..${wt.branch}`) : 0;
+  const dirty = exists && isDirty(wt.path);
+
+  const losses = [];
+  if (unmerged) losses.push(`${unmerged} commit${unmerged > 1 ? 's' : ''} not in ${base}`);
+  if (dirty) losses.push('uncommitted changes');
+
+  if (!confirm(event, {
+    message: `Discard ${path.basename(wt.path)}?`,
+    detail: losses.length
+      ? `This deletes the worktree and the branch ${wt.branch}.\n\nYou would lose ${losses.join(' and ')}. This cannot be undone.`
+      : `This deletes the worktree and the branch ${wt.branch}. Its work is already in ${base}.`,
+    action: 'Discard',
+    danger: losses.length > 0
+  })) return { cancelled: true };
+
+  const force = losses.length > 0;
+  let r = git(space.path, ['worktree', 'remove', ...(force ? ['--force'] : []), wt.path]);
+  if (r.status !== 0 && exists) {
+    return { error: (r.stderr || 'could not remove the worktree').trim() };
+  }
+  if (!exists) git(space.path, ['worktree', 'prune']);
+  if (wt.branch) {
+    const b = git(space.path, ['branch', force ? '-D' : '-d', wt.branch]);
+    if (b.status !== 0) {
+      return { removed: true, warning: `Worktree removed; branch ${wt.branch} kept: ${(b.stderr || '').trim()}` };
+    }
+  }
+  return { removed: true, branch: wt.branch };
+});
+
 ipcMain.on('worktrees:selectDiff', (_e, payload) => {
   const { cwd, base, mode } = payload || {};
   if (!cwd || !fs.existsSync(cwd)) {

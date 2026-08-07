@@ -1528,13 +1528,55 @@ function renderWorktrees(tab) {
     // only bother naming the space when more than one is configured
     name.textContent = spaces.size > 1 ? `${wt.space}/${wt.name}` : wt.name;
 
-    const open = document.createElement('button');
-    open.className = 'wt-open';
-    open.textContent = 'open';
-    open.title = 'Open a tab in this worktree';
-    open.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      newTab({ cwd: wt.path });
+    const actions = document.createElement('span');
+    actions.className = 'wt-actions';
+
+    const act = (label, title, run) => {
+      const b = document.createElement('button');
+      b.className = 'wt-act';
+      b.textContent = label;
+      b.title = title;
+      b.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        b.disabled = true;
+        try {
+          await run();
+        } finally {
+          b.disabled = false;
+        }
+      });
+      actions.appendChild(b);
+      return b;
+    };
+
+    if (wt.exists) {
+      act('open', 'Open a tab in this worktree', () => newTab({ cwd: wt.path }));
+      act(
+        'merge',
+        `Merge ${wt.branch || 'this branch'} into ${wt.base}`,
+        async () => {
+          const res = await api.worktreesMerge(wt.path);
+          if (res?.cancelled) return;
+          if (res?.error) return toast(res.error, 5200);
+          toast(`Merged ${res.branch} into ${res.base}`);
+          refreshWorktrees();
+        }
+      );
+    }
+    act('discard', 'Delete this worktree and its branch', async () => {
+      const res = await api.worktreesDiscard(wt.path);
+      if (res?.cancelled) return;
+      if (res?.error) return toast(res.error, 5200);
+      if (res?.warning) toast(res.warning, 5200);
+      else toast(`Discarded ${wt.name}`);
+      // the diff panel may have been showing what we just deleted
+      if (tab.diffKey === 'wt:' + wt.path) {
+        tab.diffKey = null;
+        tab.els.diffTitle.textContent = 'Diff watch';
+        tab.els.diffBody.innerHTML = '<p class="hint">No agent selected</p>';
+        api.agentsSelectDiff(null);
+      }
+      refreshWorktrees();
     });
 
     const meta = document.createElement('span');
@@ -1549,7 +1591,7 @@ function renderWorktrees(tab) {
     if (wt.locked) bits.push('locked');
     meta.textContent = bits.join(' · ');
 
-    row.append(name, open, meta);
+    row.append(name, actions, meta);
     if (wt.exists) row.addEventListener('click', () => selectWorktree(tab, wt));
     else row.classList.add('gone');
     return row;

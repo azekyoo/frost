@@ -92,7 +92,10 @@ running and supervising Claude Code agents with live status and diff watching.
   - **it tells you when it needs you** — a Windows notification and a taskbar
     flash when an agent goes blocked or finishes, raised only while Frost is in
     the background; clicking the notification jumps to that agent
-  - optional worktree isolation per agent for parallel work on one repo
+  - optional worktree isolation per agent for parallel work on one repo, listed
+    in a **Worktrees** section with its branch, how far ahead of the base branch
+    it is and whether it's dirty — review it in the diff panel long after the
+    agent has gone, then open, merge or discard it without leaving Frost
   - status comes from Claude Code hooks injected per-session via `--settings` —
     your global Claude config is never touched. Kill switch in settings
 - **Terminal quality**: GPU renderer with builtin box-drawing glyphs,

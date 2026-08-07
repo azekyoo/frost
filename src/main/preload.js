@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('api', {
   worktreesList: () => ipcRenderer.invoke('worktrees:list'),
   worktreesPrune: () => ipcRenderer.invoke('worktrees:prune'),
   worktreesSelectDiff: (opts) => ipcRenderer.send('worktrees:selectDiff', opts),
+  worktreesMerge: (path) => ipcRenderer.invoke('worktrees:merge', path),
+  worktreesDiscard: (path) => ipcRenderer.invoke('worktrees:discard', path),
   onAgentStatus: (cb) => ipcRenderer.on('agent:status', (_e, m) => cb(m)),
   onAgentDiff: (cb) => ipcRenderer.on('agent:diff', (_e, m) => cb(m)),
   onAgentDetected: (cb) => ipcRenderer.on('agent:detected', (_e, m) => cb(m)),
