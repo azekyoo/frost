@@ -318,7 +318,9 @@ function applyWindowTheme(theme) {
   nativeTheme.themeSource = theme.colorMode || 'dark';
   const material = theme.material || 'acrylic';
   for (const w of liveWindows()) {
-    if (w.isFramelessMode) continue;
+    // A frameless window is the glass one and paints its own backdrop; 'glass'
+    // is not a DWM material, so there is nothing to hand Windows either way.
+    if (w.isFramelessMode || material === 'glass') continue;
     try {
       w.setBackgroundMaterial(material === 'acrylic-always' ? 'acrylic' : material);
     } catch {}
@@ -516,22 +518,22 @@ function promptGlassRestart(material) {
   const target = focusedWindow();
   if (!target) return;
   const keepsTabs = (readTheme() || {}).restoreSession !== false;
-  const choice = dialog.showMessageBoxSync(target, {
-    type: 'question',
-    buttons: ['Restart now', 'Later'],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-    message: `Restart Frost to switch to the ${material} backdrop?`,
+  // Asked in the app's own dialog rather than a Windows message box: this is a
+  // question about Frost's own appearance and a system dialog is a jarring way
+  // to ask it.
+  target.webContents.send('app:needsRestart', {
+    title: `Restart to switch to the ${material} backdrop`,
     detail: keepsTabs
-      ? 'Windows only lets an app choose a transparent window at startup, so this one takes effect on restart. Your tabs and window layout will come back.'
-      : 'Windows only lets an app choose a transparent window at startup, so this one takes effect on restart. Session restore is off, so your tabs will not be reopened.'
+      ? 'Windows only lets an app choose a transparent window when it starts, so this change takes effect on restart. Your tabs and window layout will come back.'
+      : 'Windows only lets an app choose a transparent window when it starts, so this change takes effect on restart. Session restore is off, so your tabs will not be reopened.'
   });
-  if (choice !== 0) return;
+}
+
+ipcMain.on('app:relaunch', () => {
   flushWindowState();
   app.relaunch();
   app.exit(0);
-}
+});
 
 function watchConfig() {
   const timers = {};

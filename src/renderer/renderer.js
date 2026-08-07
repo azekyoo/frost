@@ -126,7 +126,12 @@ function applyTheme(theme, css) {
       : `rgba(6, 8, 14, ${readability})`;
   r.setProperty('--scrim', scrim);
   r.setProperty('--win-radius', (theme.windowRadius ?? 12) + 'px');
-  document.body.classList.toggle('glass', glassState.active && theme.material === 'glass');
+  // Keyed to how the window was actually created, not to the material that has
+  // been picked. A frameless transparent window has to paint its own backdrop
+  // whatever the setting says — dropping it the moment another material is
+  // chosen just exposes a see-through window and makes the change look applied
+  // when nothing has been applied at all.
+  document.body.classList.toggle('glass', glassState.active);
   if (typeof css === 'string') el.customCss.textContent = css;
 
   for (const node of panesByPty.values()) {
@@ -2067,6 +2072,50 @@ function matchShortcut(ev) {
 }
 
 buildKeymap();
+
+// ---------- modal ----------
+// For the rare question that must not be missed. A toast was wrong for this:
+// it faded after a couple of seconds and the setting looked broken.
+
+const modal = {
+  root: document.getElementById('modal'),
+  title: document.querySelector('#modal .modal-title'),
+  detail: document.querySelector('#modal .modal-detail'),
+  confirm: document.querySelector('#modal .modal-confirm'),
+  later: document.querySelector('#modal .modal-later')
+};
+
+function closeModal() {
+  modal.root.classList.remove('open');
+  activePane()?.term.focus();
+}
+
+function askModal({ title, detail, confirmLabel = 'Restart now' }, onConfirm) {
+  modal.title.textContent = title;
+  modal.detail.textContent = detail;
+  modal.confirm.textContent = confirmLabel;
+  modal.root.classList.add('open');
+  modal.confirm.focus();
+  modal.onConfirm = onConfirm;
+}
+
+modal.confirm.addEventListener('click', () => {
+  const run = modal.onConfirm;
+  closeModal();
+  run?.();
+});
+modal.later.addEventListener('click', closeModal);
+modal.root.addEventListener('mousedown', (ev) => {
+  if (ev.target === modal.root) closeModal();
+});
+window.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' && modal.root.classList.contains('open')) {
+    ev.preventDefault();
+    closeModal();
+  }
+});
+
+api.onNeedsRestart(({ title, detail }) => askModal({ title, detail }, () => api.appRelaunch()));
 
 // ---------- command palette ----------
 // Doubles as the shortcut reference: every command shows the key it answers to,

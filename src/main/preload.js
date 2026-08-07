@@ -50,6 +50,8 @@ contextBridge.exposeInMainWorld('api', {
   winMaximize: () => ipcRenderer.send('win:maximize'),
   winClose: () => ipcRenderer.send('win:close'),
   winNew: () => ipcRenderer.send('win:new'),
+  appRelaunch: () => ipcRenderer.send('app:relaunch'),
+  onNeedsRestart: (cb) => ipcRenderer.on('app:needsRestart', (_e, m) => cb(m)),
   agentsClaimTab: () => ipcRenderer.invoke('agents:claimTab'),
   agentsReleaseTab: () => ipcRenderer.send('agents:releaseTab')
 });
