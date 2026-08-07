@@ -2081,6 +2081,7 @@ const modal = {
   root: document.getElementById('modal'),
   title: document.querySelector('#modal .modal-title'),
   detail: document.querySelector('#modal .modal-detail'),
+  note: document.querySelector('#modal .modal-note'),
   confirm: document.querySelector('#modal .modal-confirm'),
   later: document.querySelector('#modal .modal-later')
 };
@@ -2090,9 +2091,11 @@ function closeModal() {
   activePane()?.term.focus();
 }
 
-function askModal({ title, detail, confirmLabel = 'Restart now' }, onConfirm) {
+function askModal({ title, detail, note, confirmLabel = 'Restart now' }, onConfirm) {
   modal.title.textContent = title;
   modal.detail.textContent = detail;
+  modal.note.textContent = note || '';
+  modal.note.style.display = note ? '' : 'none';
   modal.confirm.textContent = confirmLabel;
   modal.root.classList.add('open');
   modal.confirm.focus();
@@ -2115,7 +2118,7 @@ window.addEventListener('keydown', (ev) => {
   }
 });
 
-api.onNeedsRestart(({ title, detail }) => askModal({ title, detail }, () => api.appRelaunch()));
+api.onNeedsRestart((info) => askModal(info, () => api.appRelaunch()));
 
 // ---------- command palette ----------
 // Doubles as the shortcut reference: every command shows the key it answers to,

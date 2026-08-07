@@ -514,18 +514,36 @@ function createWindow({ isPrimary = false } = {}) {
 // or back. Changing across that boundary therefore needs a new window, and this
 // used to be a toast that faded after a couple of seconds, so the setting simply
 // appeared to do nothing.
+const MATERIAL_NAMES = {
+  glass: 'Glass',
+  acrylic: 'Acrylic',
+  'acrylic-always': 'Acrylic (always on)',
+  mica: 'Mica',
+  tabbed: 'Tabbed',
+  none: 'None'
+};
+
+// Asked in the app's own dialog rather than a Windows message box: this is a
+// question about Frost's own appearance, and the reason differs by direction —
+// one way we're giving up a transparent window, the other we need one.
 function promptGlassRestart(material) {
   const target = focusedWindow();
   if (!target) return;
+  const to = MATERIAL_NAMES[material] || material;
+  const leavingGlass = Boolean(target.isFramelessMode);
+  const detail = leavingGlass
+    ? `Glass gives Frost a transparent window so it can blur your wallpaper itself. ${to} is drawn by Windows behind a solid window, and Windows fixes whether a window is transparent when it creates it — so this one has to be replaced.`
+    : `Glass needs a transparent window so Frost can blur your wallpaper itself, instead of letting Windows draw the backdrop. Windows fixes whether a window is transparent when it creates it, so this one has to be replaced.`;
+
   const keepsTabs = (readTheme() || {}).restoreSession !== false;
-  // Asked in the app's own dialog rather than a Windows message box: this is a
-  // question about Frost's own appearance and a system dialog is a jarring way
-  // to ask it.
+  const note = keepsTabs
+    ? 'Restarting reopens your tabs in the same directories, but it closes their shells: anything still running stops, and the text already on screen is cleared.'
+    : 'Restarting closes every shell — anything still running stops and the text on screen is cleared. Session restore is off, so your tabs will not be reopened either.';
+
   target.webContents.send('app:needsRestart', {
-    title: `Restart to switch to the ${material} backdrop`,
-    detail: keepsTabs
-      ? 'Windows only lets an app choose a transparent window when it starts, so this change takes effect on restart. Your tabs and window layout will come back.'
-      : 'Windows only lets an app choose a transparent window when it starts, so this change takes effect on restart. Session restore is off, so your tabs will not be reopened.'
+    title: leavingGlass ? `Restart to switch from Glass to ${to}` : `Restart to switch to Glass`,
+    detail,
+    note
   });
 }
 
