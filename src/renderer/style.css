@@ -1512,3 +1512,9 @@ body.frameless #win-controls {
   line-height: 1.5;
   color: color-mix(in srgb, var(--fg) 58%, transparent);
 }
+
+/* a resume already under way: no second click, and it says so */
+.agent-row.busy {
+  pointer-events: none;
+  opacity: 0.6;
+}

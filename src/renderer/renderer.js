@@ -1445,6 +1445,7 @@ function registerAgent({ agentId, ptyId, cwd, name, branch, git }) {
     status: 'working'
   };
   pendingNames.delete(ptyId);
+  resuming.delete(String(cwd || '').toLowerCase());
   globalAgents.set(agentId, agent);
   agentsByPty.set(ptyId, agent);
   // if an agent tab hosts this pane in its center, select it there
@@ -1480,14 +1481,45 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
   }
 }
 
+// Resuming is slow: claude has to boot before it registers as an agent, and the
+// row stays on screen until it does. Without a guard a second click starts a
+// second session in the same directory.
+const resuming = new Set(); // lowercased cwds with a resume in flight
+
+const sameDir = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+
 async function resumeSession(tab, session) {
-  const leaf = await createPane({
-    cwd: session.cwd,
-    run: 'claude --continue',
-    profileId: agentProfileId()
-  });
-  addCenterLeaf(tab, leaf, true);
-  pendingNames.set(leaf.ptyId, session.name);
+  const cwd = session.cwd;
+  const key = String(cwd || '').toLowerCase();
+
+  const live = [...globalAgents.values()].find((a) => sameDir(a.cwd, cwd));
+  if (live) return selectAgent(tab, live.id);
+
+  // Only a pane this resumed counts. Matching any pane that happens to sit in
+  // the directory would focus an ordinary shell and never resume anything —
+  // the agent tab's own starting pane is usually already there.
+  const open = [...tab.centerLeaves].find((l) => sameDir(l.resumedCwd, cwd));
+  if (open) return setCenterVisible(tab, open);
+
+  if (resuming.has(key)) return;
+  resuming.add(key);
+  renderAgentList(tab);
+  try {
+    const leaf = await createPane({
+      cwd,
+      run: 'claude --continue',
+      profileId: agentProfileId()
+    });
+    leaf.resumedCwd = cwd;
+    addCenterLeaf(tab, leaf, true);
+    pendingNames.set(leaf.ptyId, session.name);
+  } finally {
+    // released when the agent registers; this is the backstop for a claude that
+    // never starts, so the row doesn't stay stuck forever
+    setTimeout(() => {
+      if (resuming.delete(key)) renderAgentLists();
+    }, 30000);
+  }
 }
 
 function renderAgentList(tab) {
@@ -1510,16 +1542,17 @@ function renderAgentList(tab) {
   for (const s of sessions) {
     if (liveCwds.has(String(s.cwd || '').toLowerCase())) continue;
     const row = document.createElement('div');
-    row.className = 'agent-row dormant';
-    row.title = `Resume last Claude session in ${s.cwd}`;
+    const busy = resuming.has(String(s.cwd || '').toLowerCase());
+    row.className = 'agent-row dormant' + (busy ? ' busy' : '');
+    row.title = busy ? `Resuming in ${s.cwd}` : `Resume last Claude session in ${s.cwd}`;
     row.innerHTML = `
       <span class="agent-dot st-exited"></span>
       <span class="agent-name"></span>
       <button class="session-remove" title="Forget this session">×</button>
       <span class="agent-meta"></span>`;
     row.querySelector('.agent-name').textContent = s.name;
-    row.querySelector('.agent-meta').textContent = `${s.branch} · resume`;
-    row.addEventListener('click', () => resumeSession(tab, s));
+    row.querySelector('.agent-meta').textContent = `${s.branch} · ${busy ? 'resuming…' : 'resume'}`;
+    if (!busy) row.addEventListener('click', () => resumeSession(tab, s));
     row.querySelector('.session-remove').addEventListener('click', async (ev) => {
       ev.stopPropagation();
       sessions = await api.agentsRemoveSession(s.cwd);
