@@ -631,6 +631,8 @@ function focusPane(node) {
   tab.activePane = node;
   document.querySelectorAll('.pane.focused').forEach((p) => p.classList.remove('focused'));
   node.el.classList.add('focused');
+  // focusing can make a TUI redraw; that repaint isn't the agent working
+  if (node.ptyId) api.ptyMute(node.ptyId);
   node.term.focus();
   refreshPaneTitle(node);
 }
@@ -1051,6 +1053,7 @@ function addCenterLeaf(tab, leaf, show) {
 
 function setCenterVisible(tab, leaf) {
   for (const l of tab.centerLeaves) l.el.style.display = l === leaf ? '' : 'none';
+  if (leaf.ptyId) api.ptyMute(leaf.ptyId);
   requestAnimationFrame(() => {
     leaf.fit.fit();
     leaf.term.focus();

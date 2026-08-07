@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   ptyInput: (id, data) => ipcRenderer.send('pty:input', { id, data }),
   ptyResize: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),
   ptyKill: (id) => ipcRenderer.send('pty:kill', { id }),
+  ptyMute: (id, ms) => ipcRenderer.send('pty:mute', { id, ms }),
   onPtyData: (cb) => ipcRenderer.on('pty:data', (_e, m) => cb(m)),
   onPtyExit: (cb) => ipcRenderer.on('pty:exit', (_e, m) => cb(m)),
   themeGet: () => ipcRenderer.invoke('theme:get'),

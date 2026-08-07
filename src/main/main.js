@@ -661,10 +661,17 @@ ipcMain.handle('pty:create', (_e, { cols, rows, cwd, run, profileId }) => {
   ptys.set(id, p);
   p.onData((data) => {
     const rec = agentByPty.get(id);
-    // A resize makes ConPTY repaint, and that repaint is not the agent doing
-    // work — counting it flips an idle agent to "working" every time you click
-    // between them.
-    if (rec && Date.now() > (rec.muteUntil || 0)) rec.lastData = Date.now();
+    // A resize or a focus change makes ConPTY repaint, and that repaint is not
+    // the agent doing work — counting it flipped an idle agent to "working"
+    // every time you clicked between them.
+    if (rec && Date.now() > (rec.muteUntil || 0)) {
+      const now = Date.now();
+      // A burst arriving after a quiet spell starts a new activity window. An
+      // idle TUI redrawing its clock is one short burst; real work streams for
+      // longer, which is how the two are told apart.
+      if (now - (rec.lastData || 0) > 1500) rec.busySince = now;
+      rec.lastData = now;
+    }
     if (win) win.webContents.send('pty:data', { id, data });
   });
   p.onExit(({ exitCode }) => {
@@ -700,6 +707,13 @@ ipcMain.on('pty:resize', (_e, { id, cols, rows }) => {
   // ignore the redraw this is about to provoke
   if (rec) rec.muteUntil = Date.now() + 900;
   p.resize(cols, rows);
+});
+
+// Focusing a pane makes the program redraw — TUIs that enable focus reporting
+// get told about it — which is Frost's doing, not the agent's.
+ipcMain.on('pty:mute', (_e, { id, ms }) => {
+  const rec = agentByPty.get(id);
+  if (rec) rec.muteUntil = Date.now() + Math.min(3000, Math.max(200, ms || 1200));
 });
 
 ipcMain.on('pty:kill', (_e, { id }) => {
@@ -823,8 +837,12 @@ function effectiveStatus(rec) {
     return Date.now() - rec.lastData > 60000 ? 'idle' : 'working';
   }
   if (rec.hook === 'done') return 'done';
-  // no hook yet: a shell that hasn't run claude, or a turn that hasn't started
-  return Date.now() - rec.lastData < 2500 ? 'working' : 'idle';
+  // No hook yet: a shell that hasn't run claude, or a turn that hasn't started.
+  // Output has to have been flowing for a moment, not just arrived once, so a
+  // single repaint can't pass for work.
+  const recent = Date.now() - rec.lastData < 2500;
+  const sustained = rec.lastData - (rec.busySince || rec.lastData) > 400;
+  return recent && sustained ? 'working' : 'idle';
 }
 
 function broadcastStatuses() {
