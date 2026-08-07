@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld('api', {
   profilesList: () => ipcRenderer.invoke('profiles:list'),
   gitBranch: (cwd) => ipcRenderer.invoke('git:branch', cwd),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  notifyCommand: (info) => ipcRenderer.send('notify:command', info),
+  onAgentReveal: (cb) => ipcRenderer.on('agent:reveal', (_e, id) => cb(id)),
   resolvePaths: (cwd, candidates) => ipcRenderer.invoke('paths:resolve', { cwd, candidates }),
   openPath: (opts) => ipcRenderer.invoke('paths:open', opts),
   agentsGetConfig: () => ipcRenderer.invoke('agents:getConfig'),

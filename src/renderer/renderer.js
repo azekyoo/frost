@@ -170,8 +170,20 @@ function refreshPaneTitle(node) {
   renderTabs();
 }
 
+// A prompt means whatever was running has finished. Paired with the moment
+// Enter was pressed, that's the command's duration — no shell integration
+// beyond the cwd hook needed. Main decides whether it's worth a notification,
+// since only it knows if the window has focus.
+function reportCommandDuration(node) {
+  if (!node.enterAt) return;
+  const seconds = (Date.now() - node.enterAt) / 1000;
+  node.enterAt = 0;
+  if (seconds >= 2) api.notifyCommand({ seconds, cwd: node.cwd });
+}
+
 function setPaneCwd(node, cwd) {
   if (!cwd) return;
+  reportCommandDuration(node);
   // A prompt fired, so the shell is back in control: whatever title was set
   // before is stale — either a program that has now exited, or ConPTY's
   // startup title (which is the shell's own command line).
@@ -525,7 +537,11 @@ async function createPane(opts = {}) {
   node.profileId = profileId;
   node.profileName = profileName;
   panesByPty.set(ptyId, node);
-  term.onData((d) => api.ptyInput(ptyId, d));
+  term.onData((d) => {
+    // Enter starts the clock that the next prompt stops
+    if (d.includes('\r')) node.enterAt = Date.now();
+    api.ptyInput(ptyId, d);
+  });
 
   term.onTitleChange((title) => {
     const t = (title || '').trim();
@@ -1370,6 +1386,23 @@ api.onAgentDetected((msg) => {
   registerAgent(msg);
 });
 
+// Clicking a notification should land you on the agent it was about.
+api.onAgentReveal((agentId) => {
+  const agent = globalAgents.get(agentId);
+  if (!agent) return;
+  const host = agentTabs().find((t) => t.centerLeaves.has(agent.leaf));
+  if (host) {
+    activateTab(host);
+    selectAgent(host, agentId);
+    return;
+  }
+  const tab = tabOfPane(agent.leaf);
+  if (tab) {
+    activateTab(tab);
+    focusPane(agent.leaf);
+  }
+});
+
 api.onAgentEnded(({ agentId, sessions: s }) => {
   if (s) sessions = s;
   const agent = globalAgents.get(agentId);
@@ -1822,6 +1855,10 @@ const s = {
   gpu: document.getElementById('s-gpu'),
   defaultProfile: document.getElementById('s-profile'),
   restoreSession: document.getElementById('s-restore'),
+  notifyBlocked: document.getElementById('s-notify-blocked'),
+  notifyDone: document.getElementById('s-notify-done'),
+  notifySeconds: document.getElementById('s-notify-seconds'),
+  notifySecondsVal: document.getElementById('s-notify-seconds-val'),
   autoDetect: document.getElementById('s-autodetect'),
   copyOnSelect: document.getElementById('s-copyonselect'),
   startDir: document.getElementById('s-startdir'),
@@ -1939,6 +1976,12 @@ function syncSettingsUI() {
   if (profiles.length) s.defaultProfile.value = t.defaultProfile || profiles[0].id;
   s.gpu.checked = t.gpuRenderer !== false;
   s.restoreSession.checked = t.restoreSession !== false;
+  const notify = t.notify || {};
+  s.notifyBlocked.checked = notify.agentBlocked !== false;
+  s.notifyDone.checked = notify.agentDone !== false;
+  const secs = notify.commandSeconds ?? 20;
+  s.notifySeconds.value = secs;
+  s.notifySecondsVal.textContent = secs ? secs + 's' : 'Off';
   s.autoDetect.checked = t.autoDetectAgents !== false;
   s.copyOnSelect.checked = t.copyOnSelect !== false;
   s.startDir.value = t.startDir || '';
@@ -1982,6 +2025,11 @@ function onSettingChange() {
   if (s.defaultProfile.value) t.defaultProfile = s.defaultProfile.value;
   t.gpuRenderer = s.gpu.checked;
   t.restoreSession = s.restoreSession.checked;
+  t.notify = {
+    agentBlocked: s.notifyBlocked.checked,
+    agentDone: s.notifyDone.checked,
+    commandSeconds: +s.notifySeconds.value
+  };
   t.autoDetectAgents = s.autoDetect.checked;
   t.copyOnSelect = s.copyOnSelect.checked;
   t.startDir = s.startDir.value.trim();

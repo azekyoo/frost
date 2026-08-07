@@ -171,6 +171,30 @@
       </div>
 
       <div class="group">
+        <h3>Notifications</h3>
+
+        <label class="field row">
+          <input type="checkbox" id="s-notify-blocked" />
+          <span>When an agent needs you</span>
+        </label>
+
+        <label class="field row">
+          <input type="checkbox" id="s-notify-done" />
+          <span>When an agent finishes</span>
+        </label>
+
+        <label class="field">
+          <span>When a command takes longer than <em id="s-notify-seconds-val"></em></span>
+          <input type="range" id="s-notify-seconds" min="0" max="120" step="5" />
+        </label>
+
+        <p class="hint">
+          Only while Frost is in the background &mdash; inside the app the tab dot
+          already tells you. Set the slider to <b>Off</b> to skip command timing.
+        </p>
+      </div>
+
+      <div class="group">
         <h3>Cursor</h3>
 
         <label class="field">

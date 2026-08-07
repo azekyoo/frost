@@ -1,4 +1,13 @@
-const { app, BrowserWindow, ipcMain, shell, nativeTheme, screen, dialog } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  Notification,
+  ipcMain,
+  shell,
+  nativeTheme,
+  screen,
+  dialog
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, spawnSync } = require('child_process');
@@ -53,6 +62,7 @@ const DEFAULT_THEME = {
   gpuRenderer: true,
   autoDetectAgents: true,
   restoreSession: true,
+  notify: { agentBlocked: true, agentDone: true, commandSeconds: 20 },
   copyOnSelect: true,
   unicodeVersion: '11',
   tint: 'rgba(0, 0, 0, 0.00)',
@@ -397,6 +407,12 @@ function createWindow() {
   win.on('restore', sendBounds);
   win.on('show', sendBounds);
   win.on('focus', sendBounds);
+
+  win.on('focus', () => {
+    try {
+      win.flashFrame(false);
+    } catch {}
+  });
 
   // Windows dims/disables the acrylic backdrop when the window deactivates.
   // Re-applying the material right after blur makes DWM repaint it in its
@@ -782,11 +798,17 @@ function effectiveStatus(rec) {
 
 function broadcastStatuses() {
   if (!win) return;
+  const settings = notifySettings();
   for (const [id, rec] of agents) {
     const s = effectiveStatus(rec);
-    if (s !== rec.status) {
-      rec.status = s;
-      win.webContents.send('agent:status', { agentId: id, status: s });
+    if (s === rec.status) continue;
+    rec.status = s;
+    win.webContents.send('agent:status', { agentId: id, status: s });
+    const name = rec.cwd ? path.basename(rec.cwd) : 'agent';
+    if (s === 'blocked' && settings.agentBlocked !== false) {
+      notify({ title: `${name} needs you`, body: 'The agent is waiting on an answer.', agentId: id });
+    } else if (s === 'done' && settings.agentDone !== false) {
+      notify({ title: `${name} is done`, body: 'The agent finished its turn.', agentId: id });
     }
   }
 }
@@ -1059,6 +1081,46 @@ ipcMain.handle('theme:save', (_e, theme) => {
 
 ipcMain.handle('keys:get', () => readKeys() || []);
 
+// ---------- notifications ----------
+// Only ever raised when the window doesn't have focus. Inside Frost the tab dot
+// already tells you, and a toast for something you're looking at is noise.
+
+function notifySettings() {
+  const configured = (readTheme() || {}).notify;
+  return { ...DEFAULT_THEME.notify, ...(configured || {}) };
+}
+
+function notify({ title, body, agentId }) {
+  if (!win || win.isFocused() || !Notification.isSupported()) return;
+  const toast = new Notification({
+    title,
+    body,
+    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png')
+  });
+  toast.on('click', () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+    if (agentId) win.webContents.send('agent:reveal', agentId);
+  });
+  toast.show();
+  // Flashing the taskbar button covers the case where notifications are muted
+  // by focus assist; Windows stops it as soon as the window is activated.
+  try {
+    win.flashFrame(true);
+  } catch {}
+}
+
+ipcMain.on('notify:command', (_e, { seconds, cwd }) => {
+  const settings = notifySettings();
+  const threshold = Number(settings.commandSeconds) || 0;
+  if (!threshold || seconds < threshold) return;
+  notify({
+    title: `Command finished after ${Math.round(seconds)}s`,
+    body: cwd ? path.basename(cwd) : 'Frost'
+  });
+});
+
 // ---------- opening things out of the terminal ----------
 // Terminal output is untrusted: it's whatever a program, a repo, or a remote
 // host printed. So nothing here is ever handed to a shell, and only schemes
@@ -1233,6 +1295,10 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.whenReady().then(() => {
+  // Windows attributes toasts by this id and matches it against the installed
+  // shortcut. It has to equal electron-builder's appId or notifications are
+  // filed under "Electron" — or dropped entirely.
+  app.setAppUserModelId('dev.azekyoo.frost');
   ensureConfig();
   initAgentInfra();
   createWindow();

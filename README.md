@@ -49,6 +49,10 @@ running and supervising Claude Code agents with live status and diff watching.
   underlined once they're confirmed to exist on disk, so prose doesn't light up.
   Nothing found in terminal output is ever passed through a shell, and only
   `http`, `https` and `mailto` are ever opened
+- **Tells you when a long command finishes** — if a command ran longer than your
+  threshold and Frost is in the background, you get a notification and a taskbar
+  flash. Timed from the same prompt hook that drives tab titles, so there's no
+  extra shell integration to install
 - **Command palette and keys that are yours** — `Ctrl+Shift+P` lists every
   command beside the key it currently answers to. Rebind any of them in
   `keybindings.json`, which hot-reloads. Bindings match on physical key position,
@@ -77,6 +81,9 @@ running and supervising Claude Code agents with live status and diff watching.
     (everything since the agent started, survives commits) or **Uncommitted**
   - sessions persist: after a restart, one click re-opens the repo and runs
     `claude --continue`
+  - **it tells you when it needs you** — a Windows notification and a taskbar
+    flash when an agent goes blocked or finishes, raised only while Frost is in
+    the background; clicking the notification jumps to that agent
   - optional worktree isolation per agent for parallel work on one repo
   - status comes from Claude Code hooks injected per-session via `--settings` —
     your global Claude config is never touched. Kill switch in settings
@@ -209,6 +216,11 @@ for an installed build, in the repo's `config/` when running from source:
   shell — agent tabs then use the first profile that supports it)
 
   ![The shell profile menu, listing detected shells](assets/screenshot-profiles.png)
+
+  `notify` controls background alerts:
+  `{ "agentBlocked": true, "agentDone": true, "commandSeconds": 20 }`.
+  `commandSeconds` is the threshold for the long-command notification, and `0`
+  turns it off.
 
   `editor` is the command Ctrl+click uses, as an argv template — for example
   `"editor": "code --goto {file}:{line}:{column}"`. `{file}`, `{line}` and
