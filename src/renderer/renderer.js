@@ -895,7 +895,23 @@ function renderTabs() {
     })
   );
   document.title = state.activeTab ? `${state.activeTab.title} — Frost` : 'Frost';
+  // With many tabs the strip scrolls, so the one you just switched to has to be
+  // brought into view or it may be off-screen entirely.
+  el.tabstrip.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
+
+// A tab strip is horizontal, so a vertical wheel should scroll it sideways —
+// otherwise a mouse without a tilt wheel can't reach the overflow at all.
+el.tabstrip.addEventListener(
+  'wheel',
+  (ev) => {
+    if (!ev.deltaY || ev.shiftKey) return;
+    if (el.tabstrip.scrollWidth <= el.tabstrip.clientWidth) return;
+    ev.preventDefault();
+    el.tabstrip.scrollLeft += ev.deltaY;
+  },
+  { passive: false }
+);
 
 // ---------- session persistence ----------
 // The layout is pushed to the main process on every change rather than on exit,

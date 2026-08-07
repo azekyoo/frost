@@ -125,16 +125,28 @@ body.glass #glass-tint {
   display: flex;
   align-items: center;
   gap: 4px;
-  overflow: hidden;
+  /* shrink before the buttons do, then scroll: squeezing tabs into unreadable
+     slivers is worse than having to scroll to one */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none; /* the active tab is scrolled into view instead */
   -webkit-app-region: no-drag;
+}
+
+#tabstrip::-webkit-scrollbar {
+  height: 0;
 }
 
 .tab {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex: 0 0 auto;
   max-width: 220px;
-  min-width: 0;
+  min-width: 104px;
   height: 28px;
   padding: 0 4px 0 12px;
   border-radius: 7px;
