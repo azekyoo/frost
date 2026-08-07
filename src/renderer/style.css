@@ -92,7 +92,9 @@ body.glass #glass-tint {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: var(--tint);
+  /* the tint sits on top of the readability scrim, so a clear tint still leaves
+     text legible over a bright wallpaper */
+  background: linear-gradient(var(--tint), var(--tint)), var(--scrim, transparent);
   pointer-events: none;
 }
 

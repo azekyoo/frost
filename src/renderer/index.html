@@ -78,6 +78,16 @@
           <span>Tint opacity <em id="s-tint-alpha-val"></em></span>
           <input type="range" id="s-tint-alpha" min="0" max="100" step="1" />
         </label>
+
+        <label class="field">
+          <span>Readability <em id="s-readability-val"></em></span>
+          <input type="range" id="s-readability" min="0" max="80" step="1" />
+        </label>
+        <p class="hint">
+          How far the glass backdrop is darkened behind text, on top of the tint.
+          A clear tint over a bright wallpaper is unreadable without it; set it to
+          0 if you want the wallpaper completely untouched.
+        </p>
       </div>
 
       <div class="group">
@@ -153,6 +163,11 @@
           <input type="checkbox" id="s-gpu" />
           <span>GPU renderer (builtin glyphs)</span>
         </label>
+        <p class="hint">
+          Faster, and draws box-drawing characters itself. It rasterises glyphs
+          into a texture, so a line height above ~1.2 can soften them slightly;
+          turn it off for the sharpest text, at the cost of speed.
+        </p>
 
         <label class="field row">
           <input type="checkbox" id="s-restore" />

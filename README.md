@@ -77,7 +77,10 @@ running and supervising Claude Code agents with live status and diff watching.
   - `acrylic-always` — native acrylic that **never dims on unfocus** (Frost
     re-applies the backdrop on blur)
   - `glass` — Frost's own backdrop: truly transparent window, wallpaper blurred
-    in-app. Blur 0–100px, tint from fully clear to opaque, zero Windows frost
+    in-app. Blur 0–100px, tint from fully clear to opaque, zero Windows frost.
+    A separate **readability** floor darkens the backdrop behind text, so a clear
+    tint stays legible over a bright wallpaper; set it to 0 to leave the
+    wallpaper completely untouched
 - **Hot-reload everything** — save `config/theme.json` or `config/theme.css`
   and the running window updates instantly. `theme.css` is raw CSS injected
   last: restyle anything
@@ -215,7 +218,7 @@ lands on the same key on every keyboard layout.
 Created with defaults on first run, all hot-reloading. In `%APPDATA%\Frost\config`
 for an installed build, in the repo's `config/` when running from source:
 
-- `config/theme.json` — material, colors, blur, tint, fonts, cursor, padding,
+- `config/theme.json` — material, colors, blur, tint, `glassReadability`, fonts, cursor, padding,
   corner radii, start directory, ANSI palette, agent auto-detect, and
   `profiles` / `defaultProfile`:
 

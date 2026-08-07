@@ -93,6 +93,15 @@ function applyTheme(theme, css) {
   r.setProperty('--radius', (theme.cornerRadius ?? 8) + 'px');
   r.setProperty('--font', theme.font?.family || 'Consolas, monospace');
   r.setProperty('--glass-blur', (theme.glassBlur ?? 40) + 'px');
+  // A scrim under the user's tint. Tint is an aesthetic choice and can legally
+  // be fully transparent; text still has to be readable over whatever wallpaper
+  // happens to be behind it, so the floor is kept separate from the tint.
+  const readability = Math.min(1, Math.max(0, theme.glassReadability ?? 0.3));
+  const scrim =
+    (theme.colorMode || 'dark') === 'light'
+      ? `rgba(238, 240, 246, ${readability})`
+      : `rgba(6, 8, 14, ${readability})`;
+  r.setProperty('--scrim', scrim);
   r.setProperty('--win-radius', (theme.windowRadius ?? 12) + 'px');
   document.body.classList.toggle('glass', glassState.active && theme.material === 'glass');
   if (typeof css === 'string') el.customCss.textContent = css;
@@ -2167,6 +2176,8 @@ const s = {
   material: document.getElementById('s-material'),
   colorMode: document.getElementById('s-colormode'),
   glassBlur: document.getElementById('s-glass-blur'),
+  readability: document.getElementById('s-readability'),
+  readabilityVal: document.getElementById('s-readability-val'),
   glassBlurVal: document.getElementById('s-glass-blur-val'),
   contrast: document.getElementById('s-contrast'),
   gpu: document.getElementById('s-gpu'),
@@ -2289,6 +2300,9 @@ function syncSettingsUI() {
   s.colorMode.value = t.colorMode || 'dark';
   s.glassBlur.value = t.glassBlur ?? 40;
   s.glassBlurVal.textContent = (t.glassBlur ?? 40) + 'px';
+  const readability = Math.round((t.glassReadability ?? 0.3) * 100);
+  s.readability.value = readability;
+  s.readabilityVal.textContent = readability + '%';
   s.contrast.value = String(t.minContrast ?? 4.5);
   if (profiles.length) s.defaultProfile.value = t.defaultProfile || profiles[0].id;
   s.gpu.checked = t.gpuRenderer !== false;
@@ -2338,6 +2352,7 @@ function onSettingChange() {
   t.material = s.material.value;
   t.colorMode = s.colorMode.value;
   t.glassBlur = +s.glassBlur.value;
+  t.glassReadability = +s.readability.value / 100;
   t.minContrast = parseFloat(s.contrast.value);
   if (s.defaultProfile.value) t.defaultProfile = s.defaultProfile.value;
   t.gpuRenderer = s.gpu.checked;

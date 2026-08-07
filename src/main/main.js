@@ -58,6 +58,9 @@ const DEFAULT_THEME = {
   material: 'glass',
   colorMode: 'dark',
   glassBlur: 33,
+  // Floor on how much the glass backdrop is darkened behind text. Tint alone is
+  // a look; this is legibility, and a wallpaper can be arbitrarily bright.
+  glassReadability: 0.3,
   minContrast: 4.5,
   gpuRenderer: true,
   autoDetectAgents: true,
