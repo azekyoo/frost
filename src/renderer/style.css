@@ -92,16 +92,11 @@ body.glass #glass-tint {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: var(--tint);
+  /* Scrim then tint, across the whole window. Scoping the scrim to the terminal
+     left a visible line where it met the titlebar; an even wash reads as one
+     surface, and the slider lets anyone dial it to taste. */
+  background: linear-gradient(var(--tint), var(--tint)), var(--scrim, transparent);
   pointer-events: none;
-}
-
-/* The readability floor belongs behind terminal text, not behind the whole
-   window: the titlebar is chrome, and the agent rail and diff panel paint their
-   own surfaces. Darkening those only costs the glassiness without buying any
-   legibility. */
-body.glass #content {
-  background: var(--scrim, transparent);
 }
 
 /* ---------- titlebar ---------- */
