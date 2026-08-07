@@ -9,7 +9,8 @@
     "shots": "electron tools/shots.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "test:status": "electron tools/statustest.js"
+    "test:status": "electron tools/statustest.js",
+    "test:windows": "electron tools/windowtest.js"
   },
   "license": "MIT",
   "author": "azekyoo",

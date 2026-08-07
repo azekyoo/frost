@@ -61,6 +61,10 @@ running and supervising Claude Code agents with live status and diff watching.
   command beside the key it currently answers to. Rebind any of them in
   `keybindings.json`, which hot-reloads. Bindings match on physical key position,
   so they land in the same place on any layout
+- **Several windows** — `Ctrl+Shift+N`. Each window owns its own tabs and
+  shells; the agent view stays unique across the app, so asking for it from a
+  second window brings the one that has it to the front instead of splitting
+  your agents in two
 - **Opens where you're working** — `frost .` opens a tab in that directory, and
   the installer adds **Open Frost here** to the folder right-click menu. If Frost
   is already running you get a new tab, not a second window
@@ -166,6 +170,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | Keys | Action |
 |------|--------|
 | `Ctrl+Shift+P` | Command palette |
+| `Ctrl+Shift+N` | New window |
 | `Ctrl+Shift+T` | New tab (default profile) |
 | `Ctrl+Shift+1` … `9` | New tab with the Nth shell profile |
 | `Ctrl+1` … `8` / `Ctrl+9` | Go to tab N / last tab |

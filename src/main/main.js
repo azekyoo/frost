@@ -103,6 +103,14 @@ const DEFAULT_THEME = {
 let win = null;
 let ptyCounter = 0;
 const ptys = new Map();
+// A shell belongs to the window that asked for it, so its output must go there
+// and nowhere else.
+const ptyOwners = new Map(); // ptyId -> WebContents
+
+function sendToOwner(id, channel, payload) {
+  const owner = ptyOwners.get(id);
+  if (owner && !owner.isDestroyed()) owner.send(channel, payload);
+}
 
 // ---------- shell profiles ----------
 // A profile is { id, name, shell, args[], cwd?, env?, agentWrapper }.
@@ -271,26 +279,48 @@ function getWallpaperDataUrl() {
   }
 }
 
-function glassBounds() {
-  const bounds = win.getContentBounds();
-  const display = screen.getDisplayMatching(win.getBounds()).bounds;
-  return { bounds, display };
+// ---------- window registry ----------
+// Frost can have several windows. `win` is kept as the primary one — the window
+// whose layout is saved and restored, and the fallback for anything that isn't
+// tied to a particular sender.
+
+const windows = new Set();
+
+const liveWindows = () => [...windows].filter((w) => !w.isDestroyed());
+
+// Everything the whole app cares about — themes, keys, agent lists — goes to
+// every window, since none of that is per-window state.
+function broadcast(channel, payload) {
+  for (const w of liveWindows()) w.webContents.send(channel, payload);
+}
+
+const windowOf = (event) => BrowserWindow.fromWebContents(event.sender);
+
+function focusedWindow() {
+  return BrowserWindow.getFocusedWindow() || (win && !win.isDestroyed() ? win : liveWindows()[0]) || null;
+}
+
+const anyWindowFocused = () => liveWindows().some((w) => w.isFocused());
+
+function glassBounds(target) {
+  const w = target && !target.isDestroyed() ? target : win;
+  if (!w) return { bounds: null, display: null };
+  return { bounds: w.getContentBounds(), display: screen.getDisplayMatching(w.getBounds()).bounds };
 }
 
 function applyWindowTheme(theme) {
-  if (!win || !theme) return;
-  const material = theme.material || 'acrylic';
+  if (!theme) return;
   // The acrylic/mica base layer follows the app's color mode:
   // light mode = whitish frost, dark mode = dark smoke.
   nativeTheme.themeSource = theme.colorMode || 'dark';
-  if (!win.isFramelessMode) {
+  const material = theme.material || 'acrylic';
+  for (const w of liveWindows()) {
+    if (w.isFramelessMode) continue;
     try {
-      win.setBackgroundMaterial(material === 'acrylic-always' ? 'acrylic' : material);
+      w.setBackgroundMaterial(material === 'acrylic-always' ? 'acrylic' : material);
     } catch {}
-  }
-  if (!win.isFramelessMode) {
     try {
-      win.setTitleBarOverlay({
+      w.setTitleBarOverlay({
         color: '#00000000',
         symbolColor: theme.terminal?.foreground || '#ffffff',
         height: 38
@@ -352,7 +382,11 @@ function saveWindowStateSoon() {
   sessionTimer = setTimeout(flushWindowState, 500);
 }
 
-function createWindow() {
+// Only one window may host the agent tab: agents are global, so a second one
+// would render an identical list and both would fight over the diff watcher.
+let agentWindow = null;
+
+function createWindow({ isPrimary = false } = {}) {
   const theme = readTheme() || DEFAULT_THEME;
   const material = theme.material || 'acrylic';
   const alwaysOn = material === 'acrylic-always';
@@ -390,67 +424,84 @@ function createWindow() {
     };
   }
 
+  // Only the primary window restores geometry; a second window is a deliberate
+  // new surface and gets offset so it doesn't land exactly on the first.
   if (SHOT?.bounds) Object.assign(opts, SHOT.bounds);
-  else if (boundsVisible(saved.bounds)) Object.assign(opts, saved.bounds);
+  else if (isPrimary && boundsVisible(saved.bounds)) Object.assign(opts, saved.bounds);
+  else if (!isPrimary) {
+    const from = focusedWindow();
+    if (from) {
+      const b = from.getBounds();
+      Object.assign(opts, { x: b.x + 34, y: b.y + 34, width: b.width, height: b.height });
+    }
+  }
 
-  win = new BrowserWindow(opts);
-  win.isFramelessMode = glass;
+  const w = new BrowserWindow(opts);
+  w.isFramelessMode = glass;
+  windows.add(w);
+  if (isPrimary) win = w;
 
   const sendBounds = () => {
     // skip while minimized: bounds are bogus (-16000) and would park the
     // glass wallpaper offscreen until the next move/resize
-    if (win && win.isFramelessMode && !win.isMinimized()) {
-      win.webContents.send('win:bounds', glassBounds());
+    if (!w.isDestroyed() && w.isFramelessMode && !w.isMinimized()) {
+      w.webContents.send('win:bounds', glassBounds(w));
     }
   };
-  win.on('move', sendBounds);
-  win.on('resize', sendBounds);
-  win.on('restore', sendBounds);
-  win.on('show', sendBounds);
-  win.on('focus', sendBounds);
+  w.on('move', sendBounds);
+  w.on('resize', sendBounds);
+  w.on('restore', sendBounds);
+  w.on('show', sendBounds);
+  w.on('focus', sendBounds);
 
-  win.on('focus', () => {
+  w.on('focus', () => {
     try {
-      win.flashFrame(false);
+      w.flashFrame(false);
     } catch {}
   });
 
   // Windows dims/disables the acrylic backdrop when the window deactivates.
   // Re-applying the material right after blur makes DWM repaint it in its
   // active look — keeps the blur constant when unfocused.
-  win.on('blur', () => {
+  w.on('blur', () => {
     if (currentMaterial === 'acrylic-always') {
       try {
-        win.setBackgroundMaterial('none');
-        win.setBackgroundMaterial('acrylic');
+        w.setBackgroundMaterial('none');
+        w.setBackgroundMaterial('acrylic');
       } catch {}
     }
   });
 
   // Belt and braces around anything a link in terminal output might attempt:
   // never open a window for it, and never let the app itself navigate away.
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  w.webContents.setWindowOpenHandler(({ url }) => {
     try {
       if (SAFE_SCHEMES.has(new URL(url).protocol)) shell.openExternal(url);
     } catch {}
     return { action: 'deny' };
   });
-  win.webContents.on('will-navigate', (event) => event.preventDefault());
+  w.webContents.on('will-navigate', (event) => event.preventDefault());
 
-  for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) {
-    win.on(ev, saveWindowStateSoon);
+  if (isPrimary) {
+    for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) {
+      w.on(ev, saveWindowStateSoon);
+    }
+    w.on('close', flushWindowState);
   }
-  win.on('close', flushWindowState);
 
   currentMaterial = material;
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  win.once('ready-to-show', () => {
-    if (saved.maximized) win.maximize();
-    win.show();
+  w.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  w.once('ready-to-show', () => {
+    if (isPrimary && saved.maximized) w.maximize();
+    w.show();
   });
-  win.on('closed', () => {
-    win = null;
+  w.on('closed', () => {
+    windows.delete(w);
+    if (agentWindow === w) agentWindow = null;
+    // hand primary status on, so the last window standing still saves its state
+    if (win === w) win = liveWindows()[0] || null;
   });
+  return w;
 }
 
 function watchConfig() {
@@ -463,7 +514,7 @@ function watchConfig() {
         timers.keys = setTimeout(() => {
           if (!win) return;
           const keys = readKeys();
-          win.webContents.send(
+          broadcast(
             'keys:changed',
             keys ? { keys } : { error: 'keybindings.json: invalid JSON — keeping previous keys' }
           );
@@ -475,13 +526,13 @@ function watchConfig() {
         if (!win) return;
         const theme = readTheme();
         if (!theme) {
-          win.webContents.send('theme:changed', { error: 'theme.json: invalid JSON — keeping previous theme' });
+          broadcast('theme:changed', { error: 'theme.json: invalid JSON — keeping previous theme' });
           return;
         }
         const crossesGlass =
           (theme.material === 'glass') !== (currentMaterial === 'glass');
         applyWindowTheme(theme);
-        win.webContents.send('theme:changed', {
+        broadcast('theme:changed', {
           theme,
           css: readCss(),
           notice: crossesGlass ? 'Restart the app to switch Glass mode on/off' : undefined
@@ -640,8 +691,9 @@ function branchFor(cwd) {
 
 ipcMain.handle('git:branch', (_e, cwd) => branchFor(cwd));
 
-ipcMain.handle('pty:create', (_e, { cols, rows, cwd, run, profileId }) => {
+ipcMain.handle('pty:create', (event, { cols, rows, cwd, run, profileId }) => {
   const id = String(++ptyCounter);
+  ptyOwners.set(id, event.sender);
   const profile = findProfile(profileId);
   const autoDetect = (readTheme() || DEFAULT_THEME).autoDetectAgents !== false;
   // agentWrapper names the shell dialect: it decides both how the `claude`
@@ -690,11 +742,12 @@ ipcMain.handle('pty:create', (_e, { cols, rows, cwd, run, profileId }) => {
       if (now - (rec.lastData || 0) > 1500) rec.busySince = now;
       rec.lastData = now;
     }
-    if (win) win.webContents.send('pty:data', { id, data });
+    sendToOwner(id, 'pty:data', { id, data });
   });
   p.onExit(({ exitCode }) => {
     ptys.delete(id);
-    if (win) win.webContents.send('pty:exit', { id, exitCode });
+    sendToOwner(id, 'pty:exit', { id, exitCode });
+    ptyOwners.delete(id);
   });
   if (run) {
     // let the shell finish its prompt, then type the command for the user
@@ -736,16 +789,17 @@ ipcMain.on('pty:mute', (_e, { id, ms }) => {
 
 ipcMain.on('pty:kill', (_e, { id }) => {
   const p = ptys.get(id);
+  ptyOwners.delete(id);
   if (p) {
     ptys.delete(id);
     p.kill();
   }
 });
 
-ipcMain.handle('theme:get', () => ({
+ipcMain.handle('theme:get', (event) => ({
   theme: readTheme() || DEFAULT_THEME,
   css: readCss(),
-  frameless: Boolean(win && win.isFramelessMode),
+  frameless: Boolean(windowOf(event)?.isFramelessMode),
   home: app.getPath('home'),
   openDir: dirFromArgv(process.argv)
 }));
@@ -832,7 +886,7 @@ function registerDetected(agentId, rawCwd) {
     upsertSession({ name, cwd, branch: info.branch, lastSeen: Date.now() });
   }
   if (win) {
-    win.webContents.send('agent:detected', {
+    broadcast('agent:detected', {
       agentId,
       ptyId,
       cwd,
@@ -864,13 +918,13 @@ function effectiveStatus(rec) {
 }
 
 function broadcastStatuses() {
-  if (!win) return;
+  if (!liveWindows().length) return;
   const settings = notifySettings();
   for (const [id, rec] of agents) {
     const s = effectiveStatus(rec);
     if (s === rec.status) continue;
     rec.status = s;
-    win.webContents.send('agent:status', { agentId: id, status: s });
+    broadcast('agent:status', { agentId: id, status: s });
     const name = rec.cwd ? path.basename(rec.cwd) : 'agent';
     if (s === 'blocked' && settings.agentBlocked !== false) {
       notify({ title: `${name} needs you`, body: 'The agent is waiting on an answer.', agentId: id });
@@ -937,7 +991,7 @@ function initAgentInfra() {
             agents.delete(agentId);
             agentByPty.delete(rec.ptyId);
           }
-          if (win) win.webContents.send('agent:ended', { agentId, sessions: readSessions() });
+          broadcast('agent:ended', { agentId, sessions: readSessions() });
         }
       }
     });
@@ -968,15 +1022,15 @@ ipcMain.handle('fonts:list', () => {
   return [...names].sort((a, b) => a.localeCompare(b));
 });
 
-ipcMain.handle('dialog:pickDir', async () => {
-  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
+ipcMain.handle('dialog:pickDir', async (event) => {
+  const r = await dialog.showOpenDialog(windowOf(event) || win, { properties: ['openDirectory'] });
   return r.canceled || !r.filePaths.length ? null : r.filePaths[0];
 });
 
 ipcMain.handle('agents:getConfig', () => readAgentsCfg());
 
-ipcMain.handle('agents:addSpace', async () => {
-  const r = await dialog.showOpenDialog(win, {
+ipcMain.handle('agents:addSpace', async (event) => {
+  const r = await dialog.showOpenDialog(windowOf(event) || win, {
     title: 'Add a repository as a space',
     properties: ['openDirectory']
   });
@@ -1115,9 +1169,7 @@ function watchDiff({ key, cwd, base, mode }) {
       maxBuffer: 16 * 1024 * 1024
     });
     const s = spawnSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' });
-    if (win) {
-      win.webContents.send('agent:diff', { key, patch: d.stdout || '', status: s.stdout || '' });
-    }
+    broadcast('agent:diff', { key, patch: d.stdout || '', status: s.stdout || '' });
   };
   runDiff();
   diffWatcher = chokidar
@@ -1140,9 +1192,7 @@ ipcMain.on('agents:selectDiff', (_e, payload) => {
     return;
   }
   if (!rec.git) {
-    if (win) {
-      win.webContents.send('agent:diff', { key: 'agent:' + agentId, patch: '', status: '', nogit: true });
-    }
+    broadcast('agent:diff', { key: 'agent:' + agentId, patch: '', status: '', nogit: true });
     return;
   }
   watchDiff({ key: 'agent:' + agentId, cwd: rec.cwd, base: rec.baseCommit, mode });
@@ -1186,6 +1236,23 @@ function countCommits(cwd, range) {
   const r = spawnSync('git', ['-C', cwd, 'rev-list', '--count', range], { encoding: 'utf8' });
   return r.status === 0 ? Number((r.stdout || '0').trim()) || 0 : 0;
 }
+
+// Agent tabs are unique across the app, not per window. A window asking for one
+// either takes ownership or is told which window already has it.
+ipcMain.handle('agents:claimTab', (event) => {
+  const me = windowOf(event);
+  if (agentWindow && !agentWindow.isDestroyed() && agentWindow !== me) {
+    if (agentWindow.isMinimized()) agentWindow.restore();
+    agentWindow.focus();
+    return { owned: false };
+  }
+  agentWindow = me;
+  return { owned: true };
+});
+
+ipcMain.on('agents:releaseTab', (event) => {
+  if (agentWindow === windowOf(event)) agentWindow = null;
+});
 
 ipcMain.handle('worktrees:list', () => {
   const rows = [];
@@ -1257,18 +1324,20 @@ ipcMain.on('diag:report', (_e, data) => {
   } catch {}
 });
 
-ipcMain.handle('glass:info', () => ({
+ipcMain.handle('glass:info', (event) => ({
   wallpaper: getWallpaperDataUrl(),
-  ...glassBounds()
+  ...glassBounds(windowOf(event))
 }));
 
-ipcMain.on('win:minimize', () => win?.minimize());
-ipcMain.on('win:maximize', () => {
-  if (!win) return;
-  if (win.isMaximized()) win.unmaximize();
-  else win.maximize();
+ipcMain.on('win:minimize', (event) => windowOf(event)?.minimize());
+ipcMain.on('win:maximize', (event) => {
+  const w = windowOf(event);
+  if (!w) return;
+  if (w.isMaximized()) w.unmaximize();
+  else w.maximize();
 });
-ipcMain.on('win:close', () => win?.close());
+ipcMain.on('win:close', (event) => windowOf(event)?.close());
+ipcMain.on('win:new', () => createWindow());
 
 ipcMain.handle('theme:save', (_e, theme) => {
   fs.writeFileSync(THEME_FILE, JSON.stringify(theme, null, 2));
@@ -1287,24 +1356,27 @@ function notifySettings() {
 }
 
 function notify({ title, body, agentId }) {
-  if (!win || win.isFocused() || !Notification.isSupported()) return;
+  if (!liveWindows().length || anyWindowFocused() || !Notification.isSupported()) return;
   const toast = new Notification({
     title,
     body,
     icon: path.join(__dirname, '..', '..', 'assets', 'icon.png')
   });
   toast.on('click', () => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.focus();
-    if (agentId) win.webContents.send('agent:reveal', agentId);
+    const target = (agentWindow && !agentWindow.isDestroyed() && agentWindow) || focusedWindow();
+    if (!target) return;
+    if (target.isMinimized()) target.restore();
+    target.focus();
+    if (agentId) target.webContents.send('agent:reveal', agentId);
   });
   toast.show();
   // Flashing the taskbar button covers the case where notifications are muted
   // by focus assist; Windows stops it as soon as the window is activated.
-  try {
-    win.flashFrame(true);
-  } catch {}
+  for (const w of liveWindows()) {
+    try {
+      w.flashFrame(true);
+    } catch {}
+  }
 }
 
 ipcMain.on('notify:command', (_e, { seconds, cwd, exit }) => {
@@ -1483,11 +1555,12 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', (_e, argv) => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.focus();
+    const target = focusedWindow();
+    if (!target) return;
+    if (target.isMinimized()) target.restore();
+    target.focus();
     const dir = dirFromArgv(argv);
-    if (dir) win.webContents.send('session:openDir', dir);
+    if (dir) target.webContents.send('session:openDir', dir);
   });
 }
 
@@ -1500,7 +1573,7 @@ app.whenReady().then(() => {
   if (app.isPackaged) app.setAppUserModelId('dev.azekyoo.frost');
   ensureConfig();
   initAgentInfra();
-  createWindow();
+  createWindow({ isPrimary: true });
   watchConfig();
 });
 

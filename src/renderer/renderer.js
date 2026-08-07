@@ -836,6 +836,7 @@ function closeTab(tab, { killPtys = true } = {}) {
       } catch {}
     }
     api.agentsSelectDiff(null);
+    api.agentsReleaseTab();
   } else if (killPtys) {
     allLeaves(tab.root).forEach(destroyLeaf);
   }
@@ -1099,6 +1100,10 @@ async function newAgentTab() {
     activateTab(existing);
     return existing;
   }
+  // Another window may already hold it; main focuses that one and tells us to
+  // stand down rather than opening a duplicate here.
+  const claim = await api.agentsClaimTab();
+  if (!claim?.owned) return null;
   const tab = {
     id: 'tab-' + ++tabCounter,
     kind: 'agents',
@@ -1122,6 +1127,7 @@ async function newAgentTab() {
   sessions = await api.agentsGetSessions();
   renderAgentList(tab);
   await refreshWorktrees();
+  return tab;
 }
 
 function addCenterLeaf(tab, leaf, show) {
@@ -1830,6 +1836,7 @@ function setFontSize(px) {
   saveTheme();
 }
 
+cmd('window.new', 'New window', () => api.winNew());
 cmd('tab.new', 'New tab', () => newTab());
 cmd('tab.newProfile', 'New tab: Nth shell profile', ({ index, profile }) => {
   const p = profile ? profiles.find((x) => x.id === profile) : profiles[(index || 1) - 1];
@@ -1892,6 +1899,7 @@ cmd('app.openCss', 'Edit theme.css', () => api.themeOpenFile('css'));
 
 const DEFAULT_BINDINGS = [
   { keys: 'ctrl+shift+t', command: 'tab.new' },
+  { keys: 'ctrl+shift+n', command: 'window.new' },
   { keys: 'ctrl+shift+a', command: 'tab.agent' },
   { keys: 'ctrl+shift+d', command: 'tab.duplicate' },
   { keys: 'ctrl+shift+w', command: 'pane.close' },

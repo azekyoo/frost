@@ -46,5 +46,8 @@ contextBridge.exposeInMainWorld('api', {
   onWinBounds: (cb) => ipcRenderer.on('win:bounds', (_e, m) => cb(m)),
   winMinimize: () => ipcRenderer.send('win:minimize'),
   winMaximize: () => ipcRenderer.send('win:maximize'),
-  winClose: () => ipcRenderer.send('win:close')
+  winClose: () => ipcRenderer.send('win:close'),
+  winNew: () => ipcRenderer.send('win:new'),
+  agentsClaimTab: () => ipcRenderer.invoke('agents:claimTab'),
+  agentsReleaseTab: () => ipcRenderer.send('agents:releaseTab')
 });
