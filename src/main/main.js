@@ -1012,39 +1012,33 @@ ipcMain.on('agents:track', (_e, { agentId, ptyId }) => {
   agentByPty.set(ptyId, rec);
 });
 
-ipcMain.on('agents:selectDiff', (_e, payload) => {
+// One diff view at a time, keyed so the renderer can tell whose diff arrived.
+// `key` identifies the subject — an agent, or a worktree being reviewed after
+// its agent has gone.
+function watchDiff({ key, cwd, base, mode }) {
   if (diffWatcher) {
     diffWatcher.close();
     diffWatcher = null;
   }
   clearTimeout(diffTimer);
-  const { agentId, mode } = payload || {};
-  const rec = agentId && agents.get(agentId);
-  if (!rec) return;
-  if (!rec.git) {
-    if (win) win.webContents.send('agent:diff', { agentId, patch: '', status: '', nogit: true });
-    return;
-  }
+  if (!key || !cwd) return;
+
   const runDiff = () => {
-    // session = everything since the agent started (survives commits);
-    // uncommitted = working tree vs HEAD only
-    const target = mode === 'uncommitted' ? 'HEAD' : rec.baseCommit;
-    const d = spawnSync('git', ['-C', rec.cwd, 'diff', target], {
+    // session = everything since the base commit (survives the agent
+    // committing); uncommitted = working tree vs HEAD only
+    const target = mode === 'uncommitted' ? 'HEAD' : base;
+    const d = spawnSync('git', ['-C', cwd, 'diff', target], {
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024
     });
-    const s = spawnSync('git', ['-C', rec.cwd, 'status', '--porcelain'], { encoding: 'utf8' });
+    const s = spawnSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' });
     if (win) {
-      win.webContents.send('agent:diff', {
-        agentId,
-        patch: d.stdout || '',
-        status: s.stdout || ''
-      });
+      win.webContents.send('agent:diff', { key, patch: d.stdout || '', status: s.stdout || '' });
     }
   };
   runDiff();
   diffWatcher = chokidar
-    .watch(rec.cwd, {
+    .watch(cwd, {
       ignored: (p) => /node_modules|[\\/]\.git([\\/]|$)/.test(p),
       ignoreInitial: true,
       depth: 8
@@ -1053,6 +1047,125 @@ ipcMain.on('agents:selectDiff', (_e, payload) => {
       clearTimeout(diffTimer);
       diffTimer = setTimeout(runDiff, 400);
     });
+}
+
+ipcMain.on('agents:selectDiff', (_e, payload) => {
+  const { agentId, mode } = payload || {};
+  const rec = agentId && agents.get(agentId);
+  if (!rec) {
+    watchDiff({});
+    return;
+  }
+  if (!rec.git) {
+    if (win) {
+      win.webContents.send('agent:diff', { key: 'agent:' + agentId, patch: '', status: '', nogit: true });
+    }
+    return;
+  }
+  watchDiff({ key: 'agent:' + agentId, cwd: rec.cwd, base: rec.baseCommit, mode });
+});
+
+// ---------- worktrees ----------
+// Agents can be isolated in a worktree under <repo>/.frost, which Frost also
+// adds to .git/info/exclude — so those checkouts are invisible to git status and
+// pile up unnoticed. This is the read-only half: see them, open them, review
+// what they contain, and drop registrations whose directory is already gone.
+
+function parseWorktrees(spacePath) {
+  const r = spawnSync('git', ['-C', spacePath, 'worktree', 'list', '--porcelain'], {
+    encoding: 'utf8'
+  });
+  if (r.status !== 0) return [];
+  const out = [];
+  let current = null;
+  for (const line of (r.stdout || '').split(/\r?\n/)) {
+    if (line.startsWith('worktree ')) {
+      current = { path: path.normalize(line.slice(9).trim()), branch: null, head: null };
+      out.push(current);
+    } else if (!current) {
+      continue;
+    } else if (line.startsWith('branch ')) {
+      current.branch = line.slice(7).trim().replace(/^refs\/heads\//, '');
+    } else if (line.startsWith('HEAD ')) {
+      current.head = line.slice(5).trim();
+    } else if (line === 'detached') {
+      current.branch = null;
+    } else if (line.startsWith('prunable')) {
+      current.prunable = true;
+    } else if (line === 'locked' || line.startsWith('locked ')) {
+      current.locked = true;
+    }
+  }
+  return out;
+}
+
+function countCommits(cwd, range) {
+  const r = spawnSync('git', ['-C', cwd, 'rev-list', '--count', range], { encoding: 'utf8' });
+  return r.status === 0 ? Number((r.stdout || '0').trim()) || 0 : 0;
+}
+
+ipcMain.handle('worktrees:list', () => {
+  const rows = [];
+  for (const space of readAgentsCfg().spaces || []) {
+    if (!fs.existsSync(space.path)) continue;
+    const all = parseWorktrees(space.path);
+    // the first entry is the repo's own checkout, which isn't a worktree to manage
+    const [main, ...rest] = all;
+    const base = main?.branch || 'HEAD';
+    for (const wt of rest) {
+      const exists = fs.existsSync(wt.path);
+      const dirty = exists
+        ? Boolean((spawnSync('git', ['-C', wt.path, 'status', '--porcelain'], { encoding: 'utf8' }).stdout || '').trim())
+        : false;
+      rows.push({
+        ...wt,
+        exists,
+        dirty,
+        base,
+        space: space.name,
+        spacePath: space.path,
+        name: path.basename(wt.path),
+        // .frost/ is where Frost puts them; anything else is the user's own
+        mine: isFrostWorktree(space.path, wt.path),
+        ahead: exists && wt.branch ? countCommits(wt.path, `${base}..HEAD`) : 0
+      });
+    }
+  }
+  return rows;
+});
+
+function isFrostWorktree(spacePath, wtPath) {
+  const rel = path.relative(path.join(spacePath, '.frost'), wtPath);
+  return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+// Drops registrations for worktrees whose directory no longer exists. Nothing
+// recoverable is touched: git only forgets bookkeeping for checkouts already gone.
+ipcMain.handle('worktrees:prune', () => {
+  const pruned = [];
+  for (const space of readAgentsCfg().spaces || []) {
+    if (!fs.existsSync(space.path)) continue;
+    const before = parseWorktrees(space.path).filter((w) => !fs.existsSync(w.path)).length;
+    if (!before) continue;
+    const r = spawnSync('git', ['-C', space.path, 'worktree', 'prune'], { encoding: 'utf8' });
+    if (r.status === 0) pruned.push({ space: space.name, count: before });
+  }
+  return pruned;
+});
+
+ipcMain.on('worktrees:selectDiff', (_e, payload) => {
+  const { cwd, base, mode } = payload || {};
+  if (!cwd || !fs.existsSync(cwd)) {
+    watchDiff({});
+    return;
+  }
+  // Compare against where this branch left the base, so the view is the
+  // worktree's own work rather than everything that landed on base since.
+  const merge = spawnSync('git', ['-C', cwd, 'merge-base', base || 'HEAD', 'HEAD'], {
+    encoding: 'utf8'
+  });
+  const baseCommit = (merge.stdout || '').trim() || base || 'HEAD';
+  watchDiff({ key: 'wt:' + cwd, cwd, base: baseCommit, mode });
 });
 
 ipcMain.on('diag:report', (_e, data) => {

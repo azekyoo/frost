@@ -1034,6 +1034,7 @@ async function newAgentTab() {
   renderSpaces(tab, cfg);
   sessions = await api.agentsGetSessions();
   renderAgentList(tab);
+  await refreshWorktrees();
 }
 
 function addCenterLeaf(tab, leaf, show) {
@@ -1066,6 +1067,13 @@ function buildAgentLayout(tab) {
         <div class="rail-head"><h4>Agents</h4></div>
         <div class="agents-list"></div>
       </div>
+      <div class="rail-section">
+        <div class="rail-head">
+          <h4>Worktrees</h4>
+          <button class="rail-prune" title="Forget worktrees whose folder is gone">prune</button>
+        </div>
+        <div class="worktrees-list"></div>
+      </div>
     </div>
     <div class="agents-center">
       <div class="agents-empty">cd into a repo and run <b>claude</b> — it becomes an agent automatically.</div>
@@ -1085,6 +1093,7 @@ function buildAgentLayout(tab) {
   tab.els = {
     spacesList: layout.querySelector('.spaces-list'),
     agentsList: layout.querySelector('.agents-list'),
+    worktreesList: layout.querySelector('.worktrees-list'),
     center: layout.querySelector('.agents-center'),
     empty: layout.querySelector('.agents-empty'),
     diffTitle: layout.querySelector('.diff-title'),
@@ -1094,8 +1103,14 @@ function buildAgentLayout(tab) {
     btn.addEventListener('click', () => {
       tab.diffMode = btn.dataset.mode;
       layout.querySelectorAll('.diff-toggle button').forEach((b) => b.classList.toggle('active', b === btn));
-      if (tab.selected) api.agentsSelectDiff({ agentId: tab.selected, mode: tab.diffMode });
+      reselectDiff(tab);
     });
+  });
+  layout.querySelector('.rail-prune').addEventListener('click', async () => {
+    const pruned = await api.worktreesPrune();
+    const total = pruned.reduce((n, p) => n + p.count, 0);
+    toast(total ? `Forgot ${total} missing worktree${total > 1 ? 's' : ''}` : 'Nothing to prune');
+    refreshWorktrees();
   });
   layout.querySelector('.rail-add').addEventListener('click', async () => {
     const cfg = await api.agentsAddSpace();
@@ -1105,6 +1120,7 @@ function buildAgentLayout(tab) {
       return;
     }
     renderSpaces(tab, cfg);
+    refreshWorktrees();
   });
 }
 
@@ -1129,6 +1145,7 @@ function renderSpaces(tab, cfg) {
         ev.stopPropagation();
         const cfg = await api.agentsRemoveSpace(space.path);
         renderSpaces(tab, cfg);
+        refreshWorktrees();
       });
       row.append(name, btn, del);
       return row;
@@ -1181,6 +1198,7 @@ async function spawnAgent(tab, space, task, useWorktree = false) {
   }
   const leaf = await createPane({ cwd: res.cwd, run: res.run, profileId: agentProfileId() });
   addCenterLeaf(tab, leaf, true);
+  if (useWorktree) refreshWorktrees();
   pendingNames.set(leaf.ptyId, task);
   if (res.agentId) {
     // auto-detect off: agent pre-registered by the main process
@@ -1229,9 +1247,11 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
       for (const l of tab.centerLeaves) l.el.style.display = l === agent.leaf ? '' : 'none';
       agent.leaf.fit.fit();
     }
+    tab.diffKey = 'agent:' + agentId;
     tab.els.diffTitle.textContent = `${agent.name} · ${agent.branch}`;
     api.agentsSelectDiff({ agentId, mode: tab.diffMode });
     renderAgentList(tab);
+    renderWorktrees(tab);
     return;
   }
   // pane lives elsewhere (normal tab or another agent tab) — jump to it
@@ -1294,6 +1314,87 @@ function renderAgentList(tab) {
     p.className = 'hint';
     p.textContent = 'No agents yet — run claude in the terminal';
     tab.els.agentsList.appendChild(p);
+  }
+}
+
+// ---------- worktrees ----------
+// An agent isolated in a worktree leaves behind a checkout under <repo>/.frost
+// and a branch. This lists them so the work can be found and reviewed after the
+// agent is gone, instead of only while it's selected.
+
+let worktrees = [];
+
+async function refreshWorktrees() {
+  worktrees = await api.worktreesList();
+  for (const tab of agentTabs()) renderWorktrees(tab);
+}
+
+// Re-issues the diff request for whatever the tab is currently showing, so the
+// Session/Uncommitted toggle works for agents and worktrees alike.
+function reselectDiff(tab) {
+  if (!tab.diffKey) return;
+  if (tab.diffKey.startsWith('agent:')) {
+    api.agentsSelectDiff({ agentId: tab.diffKey.slice(6), mode: tab.diffMode });
+  } else if (tab.diffKey.startsWith('wt:')) {
+    const wt = worktrees.find((w) => 'wt:' + w.path === tab.diffKey);
+    if (wt) api.worktreesSelectDiff({ cwd: wt.path, base: wt.base, mode: tab.diffMode });
+  }
+}
+
+function selectWorktree(tab, wt) {
+  tab.selected = null;
+  tab.diffKey = 'wt:' + wt.path;
+  tab.els.diffTitle.textContent = `${wt.name} · ${wt.branch || 'detached'}`;
+  api.worktreesSelectDiff({ cwd: wt.path, base: wt.base, mode: tab.diffMode });
+  renderAgentList(tab);
+  renderWorktrees(tab);
+}
+
+function renderWorktrees(tab) {
+  const spaces = new Set(worktrees.map((w) => w.space));
+  const rows = worktrees.map((wt) => {
+    const row = document.createElement('div');
+    row.className = 'wt-row' + (tab.diffKey === 'wt:' + wt.path ? ' selected' : '');
+    row.title = wt.path;
+
+    const name = document.createElement('span');
+    name.className = 'wt-name';
+    // only bother naming the space when more than one is configured
+    name.textContent = spaces.size > 1 ? `${wt.space}/${wt.name}` : wt.name;
+
+    const open = document.createElement('button');
+    open.className = 'wt-open';
+    open.textContent = 'open';
+    open.title = 'Open a tab in this worktree';
+    open.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      newTab({ cwd: wt.path });
+    });
+
+    const meta = document.createElement('span');
+    meta.className = 'wt-meta';
+    const bits = [wt.branch || 'detached'];
+    if (!wt.exists) bits.push('folder missing');
+    else {
+      if (wt.ahead) bits.push(`${wt.ahead} commit${wt.ahead > 1 ? 's' : ''}`);
+      if (wt.dirty) bits.push('uncommitted');
+      if (!wt.ahead && !wt.dirty) bits.push('no changes');
+    }
+    if (wt.locked) bits.push('locked');
+    meta.textContent = bits.join(' · ');
+
+    row.append(name, open, meta);
+    if (wt.exists) row.addEventListener('click', () => selectWorktree(tab, wt));
+    else row.classList.add('gone');
+    return row;
+  });
+
+  tab.els.worktreesList.replaceChildren(...rows);
+  if (!rows.length) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = 'No worktrees — tick "isolate in worktree" when spawning an agent';
+    tab.els.worktreesList.appendChild(p);
   }
 }
 
@@ -1364,9 +1465,9 @@ api.onAgentStatus(({ agentId, status }) => {
   renderAgentLists();
 });
 
-api.onAgentDiff(({ agentId, patch, status, nogit }) => {
+api.onAgentDiff(({ key, patch, status, nogit }) => {
   for (const tab of agentTabs()) {
-    if (tab.selected !== agentId) continue;
+    if (tab.diffKey !== key) continue;
     if (nogit) {
       tab.els.diffBody.innerHTML = '<p class="hint">Not a git repository — no diff available</p>';
     } else {
@@ -1411,9 +1512,11 @@ api.onAgentEnded(({ agentId, sessions: s }) => {
     agentsByPty.delete(agent.ptyId);
     for (const tab of agentTabs()) {
       if (tab.selected === agentId) tab.selected = null;
+      if (tab.diffKey === 'agent:' + agentId) tab.diffKey = null;
     }
   }
   renderAgentLists();
+  refreshWorktrees();
 });
 
 // ---------- keys ----------
@@ -2093,8 +2196,10 @@ api.onPtyExit(({ id }) => {
     globalAgents.delete(agent.id);
     for (const tab of agentTabs()) {
       if (tab.selected === agent.id) tab.selected = null;
+      if (tab.diffKey === 'agent:' + agent.id) tab.diffKey = null;
     }
     renderAgentLists();
+    refreshWorktrees();
   }
   const node = panesByPty.get(id);
   if (!node) return;

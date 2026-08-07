@@ -663,6 +663,66 @@ body.frameless #win-controls {
   background: var(--surface-2);
 }
 
+/* ---------- worktree rows ---------- */
+
+.wt-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 7px;
+  align-items: center;
+  padding: 5px 7px;
+  border-radius: 6px;
+  cursor: default;
+  font-size: 12px;
+  transition: background 0.12s var(--ease);
+}
+
+.wt-row:hover {
+  background: var(--surface-1);
+}
+
+.wt-row.selected {
+  background: var(--surface-2);
+}
+
+.wt-row.gone {
+  opacity: 0.5;
+}
+
+.wt-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wt-meta {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  opacity: 0.6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wt-open,
+.rail-prune {
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  border-radius: 5px;
+  font: inherit;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  cursor: pointer;
+  flex: none;
+}
+
+.wt-open:hover,
+.rail-prune:hover {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
 .agent-dot,
 .tab-dot {
   width: 8px;
