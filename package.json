@@ -11,7 +11,8 @@
     "dist": "electron-builder",
     "test:status": "electron tools/statustest.js",
     "test:windows": "electron tools/windowtest.js",
-    "test:backdrop": "electron tools/backdroptest.js"
+    "test:backdrop": "electron tools/backdroptest.js",
+    "test:restore": "electron tools/restoretest.js"
   },
   "license": "MIT",
   "author": "azekyoo",

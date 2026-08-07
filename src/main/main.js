@@ -338,14 +338,22 @@ function applyWindowTheme(theme) {
 // window.json is written continuously rather than on close, so a crash or a
 // kill still leaves the last layout on disk.
 
-let sessionLayout = null; // last { tabs, activeTab } the renderer reported
+const sessionLayouts = new Map(); // frostId -> { tabs, activeTab } as reported
+const lastBounds = new Map(); // frostId -> bounds, for windows that are minimised
+const pendingLayouts = new Map(); // frostId -> the layout a new window should restore
 let sessionTimer = null;
+let windowCounter = 0;
+let quitting = false;
 
+// window.json holds one entry per window. Files written before that was true had
+// a single window's fields at the top level, so they're read as one window.
 function readWindowState() {
   try {
-    return JSON.parse(fs.readFileSync(WINDOW_FILE, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(WINDOW_FILE, 'utf8'));
+    if (Array.isArray(raw.windows)) return raw.windows;
+    return raw.tabs || raw.bounds ? [raw] : [];
   } catch {
-    return {};
+    return [];
   }
 }
 
@@ -366,19 +374,18 @@ function boundsVisible(b) {
 function flushWindowState() {
   clearTimeout(sessionTimer);
   sessionTimer = null;
-  if (!win) return;
-  const prev = readWindowState();
-  const layout = sessionLayout || { tabs: prev.tabs || [], activeTab: prev.activeTab || 0 };
-  const out = { ...layout };
-  if (!win.isMinimized()) {
-    out.bounds = win.getNormalBounds();
-    out.maximized = win.isMaximized();
-  } else {
-    out.bounds = prev.bounds;
-    out.maximized = prev.maximized;
-  }
+  const live = liveWindows();
+  // Nothing left to describe — during shutdown every window is gone, and an
+  // empty file would throw away the layout we're trying to preserve.
+  if (!live.length) return;
+  const windows = live.map((w) => {
+    // A minimised window reports nonsense bounds, so keep the last real ones.
+    if (!w.isMinimized()) lastBounds.set(w.frostId, { bounds: w.getNormalBounds(), maximized: w.isMaximized() });
+    const geometry = lastBounds.get(w.frostId) || {};
+    return { ...geometry, ...(sessionLayouts.get(w.frostId) || { tabs: [], activeTab: 0 }) };
+  });
   try {
-    fs.writeFileSync(WINDOW_FILE, JSON.stringify(out, null, 2));
+    fs.writeFileSync(WINDOW_FILE, JSON.stringify({ windows }, null, 2));
   } catch {}
 }
 
@@ -391,14 +398,13 @@ function saveWindowStateSoon() {
 // would render an identical list and both would fight over the diff watcher.
 let agentWindow = null;
 
-function createWindow({ isPrimary = false } = {}) {
+function createWindow({ isPrimary = false, restore = null } = {}) {
   const theme = readTheme() || DEFAULT_THEME;
   const material = theme.material || 'acrylic';
   const alwaysOn = material === 'acrylic-always';
   const glass = material === 'glass';
   nativeTheme.themeSource = theme.colorMode || 'dark';
 
-  const saved = readWindowState();
   const opts = {
     width: 1100,
     height: 700,
@@ -429,11 +435,11 @@ function createWindow({ isPrimary = false } = {}) {
     };
   }
 
-  // Only the primary window restores geometry; a second window is a deliberate
-  // new surface and gets offset so it doesn't land exactly on the first.
+  // A window restores its own geometry when it has some; one opened by hand is
+  // offset from the current window so it doesn't land exactly on top of it.
   if (SHOT?.bounds) Object.assign(opts, SHOT.bounds);
-  else if (isPrimary && boundsVisible(saved.bounds)) Object.assign(opts, saved.bounds);
-  else if (!isPrimary) {
+  else if (boundsVisible(restore?.bounds)) Object.assign(opts, restore.bounds);
+  else {
     const from = focusedWindow();
     if (from) {
       const b = from.getBounds();
@@ -443,8 +449,11 @@ function createWindow({ isPrimary = false } = {}) {
 
   const w = new BrowserWindow(opts);
   w.isFramelessMode = glass;
+  w.frostId = ++windowCounter;
   windows.add(w);
   if (isPrimary) win = w;
+  // Held until the renderer asks for it, since only it can rebuild the panes.
+  if (restore?.tabs?.length) pendingLayouts.set(w.frostId, restore);
 
   const sendBounds = () => {
     // skip while minimized: bounds are bogus (-16000) and would park the
@@ -487,24 +496,29 @@ function createWindow({ isPrimary = false } = {}) {
   });
   w.webContents.on('will-navigate', (event) => event.preventDefault());
 
-  if (isPrimary) {
-    for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) {
-      w.on(ev, saveWindowStateSoon);
-    }
-    w.on('close', flushWindowState);
+  for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) {
+    w.on(ev, saveWindowStateSoon);
   }
+  // Written while the window still exists, so its geometry is captured.
+  w.on('close', flushWindowState);
 
   currentMaterial = material;
   w.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   w.once('ready-to-show', () => {
-    if (isPrimary && saved.maximized) w.maximize();
+    if (restore?.maximized) w.maximize();
     w.show();
   });
   w.on('closed', () => {
     windows.delete(w);
+    sessionLayouts.delete(w.frostId);
+    lastBounds.delete(w.frostId);
+    pendingLayouts.delete(w.frostId);
     if (agentWindow === w) agentWindow = null;
     // hand primary status on, so the last window standing still saves its state
     if (win === w) win = liveWindows()[0] || null;
+    // Closing one of several windows should drop it from the saved set; closing
+    // the last one should not, or quitting would erase everything.
+    if (!quitting && liveWindows().length) saveWindowStateSoon();
   });
   return w;
 }
@@ -1691,13 +1705,18 @@ ipcMain.handle('paths:open', (_e, { cwd, target, line, column }) => {
   }
 });
 
-ipcMain.handle('session:get', () => {
-  const s = readWindowState();
-  return { tabs: Array.isArray(s.tabs) ? s.tabs : [], activeTab: s.activeTab || 0 };
+ipcMain.handle('session:get', (event) => {
+  const w = windowOf(event);
+  const mine = w && pendingLayouts.get(w.frostId);
+  if (w) pendingLayouts.delete(w.frostId); // restored once, not on every reload
+  return { tabs: mine?.tabs || [], activeTab: mine?.activeTab || 0 };
 });
 
-ipcMain.on('session:layout', (_e, layout) => {
-  sessionLayout = layout && Array.isArray(layout.tabs) ? layout : null;
+ipcMain.on('session:layout', (event, layout) => {
+  const w = windowOf(event);
+  if (!w) return;
+  if (layout && Array.isArray(layout.tabs)) sessionLayouts.set(w.frostId, layout);
+  else sessionLayouts.delete(w.frostId);
   saveWindowStateSoon();
 });
 
@@ -1735,11 +1754,22 @@ app.whenReady().then(() => {
   if (app.isPackaged) app.setAppUserModelId('dev.azekyoo.frost');
   ensureConfig();
   initAgentInfra();
-  createWindow({ isPrimary: true });
+
+  // Every window that was open comes back, each with its own geometry and tabs.
+  // A directory given on the command line is the point of that launch, so it
+  // gets a single fresh window instead.
+  const restoring = (readTheme() || {}).restoreSession !== false;
+  const saved = restoring && !dirFromArgv(process.argv) ? readWindowState() : [];
+  createWindow({ isPrimary: true, restore: saved[0] || null });
+  for (const entry of saved.slice(1, 8)) createWindow({ restore: entry });
+
   watchConfig();
 });
 
-app.on('before-quit', flushWindowState);
+app.on('before-quit', () => {
+  flushWindowState();
+  quitting = true; // after the flush: closing windows must not rewrite it
+});
 
 app.on('window-all-closed', () => {
   for (const p of ptys.values()) {

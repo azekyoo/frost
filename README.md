@@ -68,8 +68,8 @@ running and supervising Claude Code agents with live status and diff watching.
 - **Opens where you're working** — `frost .` opens a tab in that directory, and
   the installer adds **Open Frost here** to the folder right-click menu. If Frost
   is already running you get a new tab, not a second window
-- **Picks up where you left off** — window size, position and maximized state
-  come back, along with your tabs and split layout, each pane reopened in the
+- **Picks up where you left off** — every window comes back with its own size,
+  position, maximized state, tabs and split layout, each pane reopened in the
   directory it was in. Written continuously, so a crash doesn't lose it. Toggle
   in settings; agent tabs stay out of it and keep their own resume list
 - **Backdrop materials**
