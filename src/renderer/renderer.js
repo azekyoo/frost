@@ -2478,7 +2478,7 @@ api.onPtyExit(({ id }) => {
   removePane(node, { killPty: false });
 });
 
-api.onThemeChanged(async ({ theme, css, error, notice }) => {
+api.onThemeChanged(async ({ theme, css, error }) => {
   if (error) {
     toast(error, { error: true });
     return;
@@ -2487,7 +2487,6 @@ api.onThemeChanged(async ({ theme, css, error, notice }) => {
   profiles = await api.profilesList();
   applyTheme(theme, css);
   populateProfileSelect();
-  if (notice) toast(notice);
 });
 
 // ---------- boot ----------

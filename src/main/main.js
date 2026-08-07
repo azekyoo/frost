@@ -507,6 +507,32 @@ function createWindow({ isPrimary = false } = {}) {
   return w;
 }
 
+// Whether the window is transparent is fixed when it is created — Windows gives
+// no way to convert a frameless transparent window into one with a DWM backdrop
+// or back. Changing across that boundary therefore needs a new window, and this
+// used to be a toast that faded after a couple of seconds, so the setting simply
+// appeared to do nothing.
+function promptGlassRestart(material) {
+  const target = focusedWindow();
+  if (!target) return;
+  const keepsTabs = (readTheme() || {}).restoreSession !== false;
+  const choice = dialog.showMessageBoxSync(target, {
+    type: 'question',
+    buttons: ['Restart now', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+    message: `Restart Frost to switch to the ${material} backdrop?`,
+    detail: keepsTabs
+      ? 'Windows only lets an app choose a transparent window at startup, so this one takes effect on restart. Your tabs and window layout will come back.'
+      : 'Windows only lets an app choose a transparent window at startup, so this one takes effect on restart. Session restore is off, so your tabs will not be reopened.'
+  });
+  if (choice !== 0) return;
+  flushWindowState();
+  app.relaunch();
+  app.exit(0);
+}
+
 function watchConfig() {
   const timers = {};
   chokidar
@@ -535,12 +561,11 @@ function watchConfig() {
         const crossesGlass =
           (theme.material === 'glass') !== (currentMaterial === 'glass');
         applyWindowTheme(theme);
-        broadcast('theme:changed', {
-          theme,
-          css: readCss(),
-          notice: crossesGlass ? 'Restart the app to switch Glass mode on/off' : undefined
-        });
+        broadcast('theme:changed', { theme, css: readCss() });
         currentMaterial = theme.material || 'acrylic';
+        // Do this last: it can restart the app, and the renderer should have the
+        // new theme first in case the user declines.
+        if (crossesGlass) promptGlassRestart(theme.material || 'acrylic');
       }, 60);
     });
 }

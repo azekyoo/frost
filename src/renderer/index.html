@@ -42,7 +42,7 @@
           <select id="s-material">
             <option value="acrylic">Acrylic</option>
             <option value="acrylic-always">Acrylic (always on)</option>
-            <option value="glass">Glass (custom blur, no frost)</option>
+            <option value="glass">Glass (custom blur, no frost) &mdash; needs restart</option>
             <option value="mica">Mica</option>
             <option value="tabbed">Tabbed (Mica Alt)</option>
             <option value="none">None</option>
@@ -57,6 +57,11 @@
             <option value="system">Follow Windows</option>
           </select>
         </label>
+
+        <p class="hint">
+          Switching in or out of Glass needs a restart: Windows only lets an app
+          choose a transparent window when it starts. Frost will offer to do it.
+        </p>
 
         <label class="field" id="f-glass-blur">
           <span>Glass blur <em id="s-glass-blur-val"></em></span>
