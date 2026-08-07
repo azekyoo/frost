@@ -179,7 +179,7 @@ function reportCommandDuration(node) {
   if (!node.enterAt) return;
   const seconds = (Date.now() - node.enterAt) / 1000;
   node.enterAt = 0;
-  if (seconds >= 2) api.notifyCommand({ seconds, cwd: node.cwd });
+  if (seconds >= 2) api.notifyCommand({ seconds, cwd: node.cwd, exit: node.lastExit });
 }
 
 function setPaneCwd(node, cwd) {
@@ -207,6 +207,77 @@ function setPaneCwd(node, cwd) {
     node.branch = branch;
     refreshPaneTitle(node);
   });
+}
+
+// ---------- command marks ----------
+// The prompt hooks emit OSC 133: A where a prompt starts, D;<exit> when the
+// command that was typed at the previous prompt finishes. That gives every
+// command a position in the scrollback and a result, which is what makes
+// jumping between them and colouring the scrollbar possible.
+
+const MARK_LIMIT = 500;
+const MARK_OK = '#2ea043';
+const MARK_FAIL = '#f85149';
+
+function attachCommandMarks(node) {
+  node.marks = [];
+  node.lastExit = null;
+
+  node.term.parser.registerOscHandler(133, (data) => {
+    const [kind, arg] = String(data).split(';');
+
+    if (kind === 'A') {
+      const marker = node.term.registerMarker(0);
+      if (!marker) return true;
+      node.marks.push({ marker, exit: null, decoration: null });
+      // scrollback is finite, and so is the number of marks worth keeping
+      while (node.marks.length > MARK_LIMIT) {
+        const old = node.marks.shift();
+        old.decoration?.dispose();
+        old.marker.dispose();
+      }
+      return true;
+    }
+
+    if (kind === 'D') {
+      // D closes the command typed at the previous prompt, which is the mark
+      // made just before it
+      const mark = node.marks[node.marks.length - 1];
+      if (!mark || mark.exit !== null) return true;
+      const exit = Number(arg);
+      mark.exit = Number.isFinite(exit) ? exit : 0;
+      node.lastExit = mark.exit;
+      try {
+        mark.decoration = node.term.registerDecoration({
+          marker: mark.marker,
+          overviewRulerOptions: { color: mark.exit === 0 ? MARK_OK : MARK_FAIL, position: 'left' }
+        });
+      } catch {}
+      return true;
+    }
+
+    return false; // B, C and anything else aren't ours to claim
+  });
+}
+
+// Scrolls to the nearest command prompt above or below what's on screen.
+function jumpToMark(node, dir) {
+  if (!node?.marks?.length) return;
+  const term = node.term;
+  const top = term.buffer.active.viewportY;
+  const lines = node.marks
+    .filter((m) => !m.marker.isDisposed)
+    .map((m) => m.marker.line)
+    .sort((a, b) => a - b);
+  const target =
+    dir < 0
+      ? [...lines].reverse().find((line) => line < top - 1)
+      : lines.find((line) => line > top + 1);
+  if (target === undefined) {
+    toast(dir < 0 ? 'No earlier command' : 'No later command');
+    return;
+  }
+  term.scrollToLine(Math.max(0, target));
 }
 
 // OSC 9;9;<path> — Windows Terminal's cwd sequence, what our prompt hooks emit.
@@ -473,6 +544,7 @@ async function createPane(opts = {}) {
   applyGpu(node);
   attachPaneSearch(node);
   attachCwdTracking(node);
+  attachCommandMarks(node);
   attachLinks(node);
 
   term.attachCustomKeyEventHandler((ev) => {
@@ -1805,6 +1877,8 @@ cmd('view.clear', 'Clear buffer', () => {
   const pane = activePane();
   if (pane) pane.term.clear();
 });
+cmd('command.previous', 'Jump to previous command', () => jumpToMark(activePane(), -1));
+cmd('command.next', 'Jump to next command', () => jumpToMark(activePane(), 1));
 cmd('view.scrollToTop', 'Scroll to top', () => activePane()?.term.scrollToTop());
 cmd('view.scrollToBottom', 'Scroll to bottom', () => activePane()?.term.scrollToBottom());
 
@@ -1837,6 +1911,8 @@ const DEFAULT_BINDINGS = [
   { keys: 'ctrl+,', command: 'app.settings' },
   { keys: 'ctrl+f', command: 'view.search' },
   { keys: 'ctrl+shift+k', command: 'view.clear' },
+  { keys: 'ctrl+shift+up', command: 'command.previous' },
+  { keys: 'ctrl+shift+down', command: 'command.next' },
   { keys: 'ctrl+shift+p', command: 'app.palette' },
   // Ctrl+1..8 pick a tab, Ctrl+Shift+1..9 open the Nth shell profile
   ...Array.from({ length: 8 }, (_, i) => ({

@@ -528,12 +528,22 @@ const CLAUDE_WRAPPER =
 // Windows Terminal uses). Wraps whatever `prompt` the user's profile installed
 // — starship, oh-my-posh — instead of replacing it: -Command runs after the
 // profile has loaded.
+// Also emits OSC 133 command marks: D;<exit> closes the command that just ran,
+// A marks where this prompt begins. Together they let Frost show how each
+// command ended and jump between them. $? has to be read before anything else
+// in the function, or it reports on our own statements instead.
 const PS_CWD_HOOK =
   '$global:__frostPrompt = $function:prompt; ' +
   'function global:prompt { ' +
+  '$__ok = $?; $__ec = $LASTEXITCODE; ' +
+  '$__code = if ($__ok) { 0 } elseif ($__ec) { $__ec } else { 1 }; ' +
   '$out = try { & $global:__frostPrompt } catch { "PS " + (Get-Location).Path + "> " }; ' +
   'try { $l = Get-Location; if ($l.Provider.Name -eq "FileSystem") { ' +
   '[Console]::Write([char]27 + "]9;9;" + $l.ProviderPath + [char]7) } } catch {}; ' +
+  'try { ' +
+  'if ($global:__frostSeen) { [Console]::Write([char]27 + "]133;D;" + $__code + [char]7) }; ' +
+  '$global:__frostSeen = $true; ' +
+  '[Console]::Write([char]27 + "]133;A" + [char]7) } catch {}; ' +
   '$out }';
 
 function psStartup(withClaude) {
@@ -565,7 +575,15 @@ function bashRc(withClaude) {
     // pwd -W gives the Windows path under MSYS, so Frost gets a path it can stat
     // BEL-terminated: keeps the format string free of backslash escaping traps
     "__frost_cwd() { local p; p=$(pwd -W 2>/dev/null || pwd); printf '\\033]9;9;%s\\007' \"$p\"; }",
-    'PROMPT_COMMAND="__frost_cwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}"',
+    // $? first, before anything else can overwrite it
+    '__frost_prompt() {',
+    '  local ec=$?',
+    "  if [ -n \"$__frost_seen\" ]; then printf '\\033]133;D;%s\\007' \"$ec\"; fi",
+    '  __frost_seen=1',
+    "  printf '\\033]133;A\\007'",
+    '  __frost_cwd',
+    '}',
+    'PROMPT_COMMAND="__frost_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}"',
     ''
   );
   return lines.join('\n');
@@ -1289,12 +1307,13 @@ function notify({ title, body, agentId }) {
   } catch {}
 }
 
-ipcMain.on('notify:command', (_e, { seconds, cwd }) => {
+ipcMain.on('notify:command', (_e, { seconds, cwd, exit }) => {
   const settings = notifySettings();
   const threshold = Number(settings.commandSeconds) || 0;
   if (!threshold || seconds < threshold) return;
+  const how = exit === 0 ? 'finished' : Number.isFinite(exit) ? `failed (exit ${exit})` : 'finished';
   notify({
-    title: `Command finished after ${Math.round(seconds)}s`,
+    title: `Command ${how} after ${Math.round(seconds)}s`,
     body: cwd ? path.basename(cwd) : 'Frost'
   });
 });

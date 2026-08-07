@@ -49,6 +49,10 @@ running and supervising Claude Code agents with live status and diff watching.
   underlined once they're confirmed to exist on disk, so prose doesn't light up.
   Nothing found in terminal output is ever passed through a shell, and only
   `http`, `https` and `mailto` are ever opened
+- **Knows where your commands are** — the prompt hooks emit command marks, so
+  Frost knows where each command started and how it ended. Failed commands get a
+  red tick in the scrollbar, successful ones green, and `Ctrl+Shift+↑` / `↓`
+  jump between them however far you've scrolled
 - **Tells you when a long command finishes** — if a command ran longer than your
   threshold and Frost is in the background, you get a notification and a taskbar
   flash. Timed from the same prompt hook that drives tab titles, so there's no
@@ -174,6 +178,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / reset |
 | `Ctrl+F` | Search buffer |
 | `Ctrl+Shift+K` | Clear buffer |
+| `Ctrl+Shift+↑` / `↓` | Jump to previous / next command |
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
 | `Ctrl+click` | Open a file path in your editor, or a URL in your browser |
