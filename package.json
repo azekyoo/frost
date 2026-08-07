@@ -10,7 +10,8 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "test:status": "electron tools/statustest.js",
-    "test:windows": "electron tools/windowtest.js"
+    "test:windows": "electron tools/windowtest.js",
+    "test:backdrop": "electron tools/backdroptest.js"
   },
   "license": "MIT",
   "author": "azekyoo",

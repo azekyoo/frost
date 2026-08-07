@@ -560,14 +560,18 @@ function watchConfig() {
           broadcast('theme:changed', { error: 'theme.json: invalid JSON — keeping previous theme' });
           return;
         }
-        const crossesGlass =
-          (theme.material === 'glass') !== (currentMaterial === 'glass');
+        // Compared against what the windows actually are, not against the last
+        // material that was asked for. Declining the restart leaves the setting
+        // ahead of reality, and comparing to it meant the next change looked
+        // like an ordinary switch while still being unappliable.
+        const wantsGlass = (theme.material || 'acrylic') === 'glass';
+        const mismatched = liveWindows().some((w) => Boolean(w.isFramelessMode) !== wantsGlass);
         applyWindowTheme(theme);
         broadcast('theme:changed', { theme, css: readCss() });
         currentMaterial = theme.material || 'acrylic';
-        // Do this last: it can restart the app, and the renderer should have the
-        // new theme first in case the user declines.
-        if (crossesGlass) promptGlassRestart(theme.material || 'acrylic');
+        // Last, because it can restart the app and the renderer should have the
+        // new theme first in case the answer is Later.
+        if (mismatched) promptGlassRestart(theme.material || 'acrylic');
       }, 60);
     });
 }
