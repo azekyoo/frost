@@ -1,6 +1,7 @@
 const {
   app,
   BrowserWindow,
+  nativeImage,
   Notification,
   ipcMain,
   shell,
@@ -102,6 +103,28 @@ const DEFAULT_THEME = {
     brightWhite: '#f2f2f2'
   }
 };
+
+// Windows wants a real file for a window icon. Inside the asar it can be read
+// but not always applied, and when it isn't, Electron falls back to its own
+// default icon — which is why a packaged Frost could show the Electron logo on
+// the taskbar while the Start Menu shortcut, which the installer stamps, was
+// right. Packaged builds therefore ship it as a resource on disk.
+const ICON_FILE = app.isPackaged
+  ? path.join(process.resourcesPath, 'icon.ico')
+  : path.join(__dirname, '..', '..', 'assets', 'icon.ico');
+
+const NOTIFY_ICON_FILE = app.isPackaged
+  ? path.join(process.resourcesPath, 'icon.png')
+  : path.join(__dirname, '..', '..', 'assets', 'icon.png');
+
+function appIcon() {
+  try {
+    const image = nativeImage.createFromPath(ICON_FILE);
+    return image.isEmpty() ? undefined : image;
+  } catch {
+    return undefined;
+  }
+}
 
 let win = null;
 let ptyCounter = 0;
@@ -411,7 +434,7 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
     minWidth: 480,
     minHeight: 300,
     show: false,
-    icon: path.join(__dirname, '..', '..', 'assets', 'icon.ico'),
+    icon: appIcon(),
     backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -448,6 +471,14 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   }
 
   const w = new BrowserWindow(opts);
+  // Set again after creation: the constructor option is silently ignored in some
+  // configurations, and this path is the one that reliably sticks.
+  const icon = appIcon();
+  if (icon) {
+    try {
+      w.setIcon(icon);
+    } catch {}
+  }
   w.isFramelessMode = glass;
   w.frostId = ++windowCounter;
   windows.add(w);
@@ -1532,7 +1563,7 @@ function notify({ title, body, agentId }) {
   const toast = new Notification({
     title,
     body,
-    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png')
+    icon: NOTIFY_ICON_FILE
   });
   toast.on('click', () => {
     const target = (agentWindow && !agentWindow.isDestroyed() && agentWindow) || focusedWindow();
@@ -1742,16 +1773,12 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.whenReady().then(() => {
-  // Windows attributes toasts by this id, matching it against an installed
-  // shortcut, so it has to equal electron-builder's appId. Only set when
-  // packaged: a dev run has no such shortcut, and an id pointing at nothing
-  // risks toasts being dropped rather than merely mislabelled. Dev
-  // notifications are filed under Electron instead, which costs nothing.
-  //
-  // (This does not affect the taskbar icon. A dev run is electron.exe, and
-  // Windows takes the taskbar icon from the executable — only a packaged build
-  // shows Frost's own.)
-  if (app.isPackaged) app.setAppUserModelId('dev.azekyoo.frost');
+  // No setAppUserModelId. It groups the taskbar button under an id of our
+  // choosing, and Windows then resolves that button's icon through the id rather
+  // than from the window — which showed the Electron logo on an installed build
+  // whose window icon was verifiably correct. Left unset, Windows identifies
+  // Frost by its executable, and both the executable and the window carry the
+  // right icon. Notifications still appear without it; that was checked.
   ensureConfig();
   initAgentInfra();
 
