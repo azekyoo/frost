@@ -1,7 +1,7 @@
 {
   "name": "frost",
   "productName": "Frost",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Fully customizable acrylic terminal for Windows with agent mode",
   "main": "src/main/main.js",
   "scripts": {
