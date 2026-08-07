@@ -128,7 +128,14 @@ npm start            # run it
 npm run dist         # installer + portable exe into dist/
 npm run pack         # unpacked build only, faster
 npm run shots        # re-render the screenshots above
+npm run test:status  # end-to-end check of agent status reporting
 ```
+
+`npm run test:status` drives a real Frost over the debugging protocol: it opens
+an agent tab in the demo repo, runs `claude` for real, prompts it, and prints
+every status transition with a timestamp — then clicks between panes and idles,
+asserting neither invents activity. It costs one short Claude turn. Point it at
+another repo with `FROST_SHOT_REPO`.
 
 `npm run shots` drives real Frost instances over the debugging protocol — real
 keystrokes into a real shell, real program output — then composites each capture
