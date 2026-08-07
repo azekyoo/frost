@@ -531,9 +531,13 @@ function promptGlassRestart(material) {
   if (!target) return;
   const to = MATERIAL_NAMES[material] || material;
   const leavingGlass = Boolean(target.isFramelessMode);
+  // Each sentence earns the next: what Glass is, what the other thing is, why
+  // they can't coexist, what the button does. It used to end on "this one has to
+  // be replaced", which left the reader to work out both that "this one" meant
+  // the window and that replacing it meant restarting.
   const detail = leavingGlass
-    ? `Glass gives Frost a transparent window so it can blur your wallpaper itself. ${to} is drawn by Windows behind a solid window, and Windows fixes whether a window is transparent when it creates it — so this one has to be replaced.`
-    : `Glass needs a transparent window so Frost can blur your wallpaper itself, instead of letting Windows draw the backdrop. Windows fixes whether a window is transparent when it creates it, so this one has to be replaced.`;
+    ? `Glass gives Frost a transparent window so it can blur your wallpaper itself. ${to} is drawn by Windows behind a solid window — and a window can't switch between the two once it's open. Restarting opens a fresh one.`
+    : `Glass needs a transparent window so Frost can blur your wallpaper itself, rather than letting Windows draw the backdrop. A window can't switch between the two once it's open. Restarting opens a fresh one.`;
 
   const keepsTabs = (readTheme() || {}).restoreSession !== false;
   const note = keepsTabs
