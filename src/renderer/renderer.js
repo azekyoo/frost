@@ -1578,8 +1578,10 @@ function renderWorktrees(tab) {
 
     const name = document.createElement('span');
     name.className = 'wt-name';
-    // only bother naming the space when more than one is configured
-    name.textContent = spaces.size > 1 ? `${wt.space}/${wt.name}` : wt.name;
+    // The branch is what you act on, so it gets the row; the space is only worth
+    // naming when more than one is configured.
+    const label = wt.branch || wt.name + ' (detached)';
+    name.textContent = spaces.size > 1 ? `${wt.space}/${label}` : label;
 
     const actions = document.createElement('span');
     actions.className = 'wt-actions';
@@ -1634,7 +1636,9 @@ function renderWorktrees(tab) {
 
     const meta = document.createElement('span');
     meta.className = 'wt-meta';
-    const bits = [wt.branch || 'detached'];
+    // No branch here: it's the row's title now, and repeating it only crowded
+    // out the part that actually changes.
+    const bits = [];
     if (!wt.exists) bits.push('folder missing');
     else {
       if (wt.ahead) bits.push(`${wt.ahead} commit${wt.ahead > 1 ? 's' : ''}`);

@@ -735,13 +735,22 @@ body.frameless #win-controls {
 }
 
 .wt-name {
+  /* the whole first row, so a branch name isn't truncated to make room for
+     buttons that fit perfectly well beside the metadata below it */
+  grid-column: 1 / -1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.wt-actions {
+  grid-column: 2;
+  grid-row: 2;
+}
+
 .wt-meta {
-  grid-column: 1 / -1;
+  grid-column: 1;
+  grid-row: 2;
   font-size: 10.5px;
   opacity: 0.6;
   overflow: hidden;
@@ -753,6 +762,7 @@ body.frameless #win-controls {
   display: flex;
   gap: 4px;
   flex: none;
+  align-items: center;
 }
 
 .wt-act,
