@@ -1566,10 +1566,14 @@ if (!app.requestSingleInstanceLock()) {
 
 app.whenReady().then(() => {
   // Windows attributes toasts by this id, matching it against an installed
-  // shortcut, so it has to equal electron-builder's appId. Only for packaged
-  // builds: a dev run has no such shortcut, and an id with nothing behind it
-  // makes the taskbar fall back to electron.exe's icon instead of the window's.
-  // Dev notifications are then filed under Electron, which is a fair trade.
+  // shortcut, so it has to equal electron-builder's appId. Only set when
+  // packaged: a dev run has no such shortcut, and an id pointing at nothing
+  // risks toasts being dropped rather than merely mislabelled. Dev
+  // notifications are filed under Electron instead, which costs nothing.
+  //
+  // (This does not affect the taskbar icon. A dev run is electron.exe, and
+  // Windows takes the taskbar icon from the executable — only a packaged build
+  // shows Frost's own.)
   if (app.isPackaged) app.setAppUserModelId('dev.azekyoo.frost');
   ensureConfig();
   initAgentInfra();
