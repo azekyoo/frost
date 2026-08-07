@@ -18,7 +18,7 @@ const el = {
   tabstrip: document.getElementById('tabstrip'),
   content: document.getElementById('content'),
   settings: document.getElementById('settings'),
-  toast: document.getElementById('toast'),
+  toasts: document.getElementById('toasts'),
   profileMenu: document.getElementById('profile-menu'),
   palette: document.getElementById('palette'),
   paletteInput: document.getElementById('palette-input'),
@@ -28,11 +28,34 @@ const el = {
 
 // ---------- helpers ----------
 
-function toast(msg, ms = 2600) {
-  el.toast.textContent = msg;
-  el.toast.classList.add('show');
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.toast.classList.remove('show'), ms);
+// Messages stack rather than sharing one slot: a second toast used to overwrite
+// the first, so a warning could vanish before it was read. Errors are given
+// longer and marked, since they're the ones worth reading.
+const TOAST_LIMIT = 3;
+
+// opts: a number is a duration, or { error, ms }. Severity is declared by the
+// caller rather than guessed from the wording — English phrasing is a poor
+// signal, and getting it wrong means a failure looks like a confirmation.
+function toast(msg, opts) {
+  const text = String(msg ?? '').trim();
+  if (!text) return;
+  const { error: isError = false, ms } = typeof opts === 'number' ? { ms: opts } : opts || {};
+  const node = document.createElement('div');
+  node.className = 'toast' + (isError ? ' error' : '');
+  node.textContent = text;
+  node.title = 'Click to dismiss';
+
+  const dismiss = () => {
+    if (!node.isConnected) return;
+    node.classList.remove('show');
+    setTimeout(() => node.remove(), 200);
+  };
+  node.addEventListener('click', dismiss);
+  el.toasts.appendChild(node);
+  requestAnimationFrame(() => node.classList.add('show'));
+
+  while (el.toasts.children.length > TOAST_LIMIT) el.toasts.firstElementChild.remove();
+  setTimeout(dismiss, ms ?? (isError ? 6000 : 2600));
 }
 
 function debounce(fn, ms) {
@@ -350,7 +373,7 @@ function attachLinks(node) {
     new WebLinksAddon.WebLinksAddon((ev, uri) => {
       if (!ev.ctrlKey) return;
       api.openExternal(uri).then((ok) => {
-        if (!ok) toast('Refused to open ' + uri.slice(0, 60));
+        if (!ok) toast('Refused to open ' + uri.slice(0, 60), { error: true });
       });
     })
   );
@@ -401,7 +424,7 @@ function attachLinks(node) {
               api
                 .openPath({ cwd: node.cwd, target: loc.path, line: loc.line, column: loc.column })
                 .then((res) => {
-                  if (res?.error && !res.opened) toast(res.error);
+                  if (res?.error && !res.opened) toast(res.error, { error: true });
                 });
             }
           });
@@ -1582,7 +1605,7 @@ function renderWorktrees(tab) {
         async () => {
           const res = await api.worktreesMerge(wt.path);
           if (res?.cancelled) return;
-          if (res?.error) return toast(res.error, 5200);
+          if (res?.error) return toast(res.error, { error: true });
           toast(`Merged ${res.branch} into ${res.base}`);
           refreshWorktrees();
         }
@@ -1591,8 +1614,8 @@ function renderWorktrees(tab) {
     act('discard', 'Delete this worktree and its branch', async () => {
       const res = await api.worktreesDiscard(wt.path);
       if (res?.cancelled) return;
-      if (res?.error) return toast(res.error, 5200);
-      if (res?.warning) toast(res.warning, 5200);
+      if (res?.error) return toast(res.error, { error: true });
+      if (res?.warning) toast(res.warning, { error: true });
       else toast(`Discarded ${wt.name}`);
       // the diff panel may have been showing what we just deleted
       if (tab.diffKey === 'wt:' + wt.path) {
@@ -2030,7 +2053,7 @@ function keysFor(commandId, args) {
 function runCommand(id, args) {
   const c = commandsById.get(id);
   if (!c) {
-    toast('Unknown command: ' + id);
+    toast('Unknown command: ' + id, { error: true });
     return;
   }
   c.run(args || {});
@@ -2179,7 +2202,7 @@ window.addEventListener('keydown', (ev) => {
 
 api.onKeysChanged(({ keys, error }) => {
   if (error) {
-    toast(error);
+    toast(error, { error: true });
     return;
   }
   buildKeymap(keys);
@@ -2457,7 +2480,7 @@ api.onPtyExit(({ id }) => {
 
 api.onThemeChanged(async ({ theme, css, error, notice }) => {
   if (error) {
-    toast(error);
+    toast(error, { error: true });
     return;
   }
   // profiles live in theme.json, so an edit there can add/remove shells
