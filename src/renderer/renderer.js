@@ -112,6 +112,7 @@ function applyTheme(theme, css) {
     applyGpu(node);
     node.fit.fit();
   }
+  for (const tab of agentTabs()) applyAgentColumns(tab);
   syncSettingsUI();
 }
 
@@ -1054,6 +1055,67 @@ function setCenterVisible(tab, leaf) {
   });
 }
 
+// ---------- agent layout sizing ----------
+// The rail and the diff panel are draggable and remembered. Widths are stored as
+// the user set them; when the window is too narrow to honour both, they're
+// scaled down for display only, so widening the window restores them.
+
+const AGENT_MIN = { rail: 150, diff: 220, center: 260 };
+const GUTTER = 6;
+
+function agentColumns() {
+  const stored = state.theme?.agentLayout || {};
+  return { rail: stored.rail ?? 210, diff: stored.diff ?? 340 };
+}
+
+function applyAgentColumns(tab) {
+  if (!tab.els?.layout) return;
+  let { rail, diff } = agentColumns();
+  const total = tab.els.layout.clientWidth;
+  if (total) {
+    const available = total - AGENT_MIN.center - GUTTER * 2;
+    if (rail + diff > available) {
+      const scale = Math.max(0.15, available / (rail + diff));
+      rail = Math.max(AGENT_MIN.rail, Math.round(rail * scale));
+      diff = Math.max(AGENT_MIN.diff, Math.round(diff * scale));
+    }
+  }
+  const columns = `${rail}px ${GUTTER}px 1fr ${GUTTER}px ${diff}px`;
+  // guard against feeding the ResizeObserver its own change
+  if (tab.appliedColumns === columns) return;
+  tab.appliedColumns = columns;
+  tab.els.layout.style.gridTemplateColumns = columns;
+}
+
+function wireGutter(tab, gutter, edge) {
+  gutter.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    gutter.setPointerCapture(ev.pointerId);
+    gutter.classList.add('dragging');
+    const startX = ev.clientX;
+    const startWidth = agentColumns()[edge];
+
+    const move = (mv) => {
+      // the diff panel grows leftwards, so its delta is inverted
+      const delta = edge === 'rail' ? mv.clientX - startX : startX - mv.clientX;
+      const other = agentColumns()[edge === 'rail' ? 'diff' : 'rail'];
+      const room = tab.els.layout.clientWidth - other - AGENT_MIN.center - GUTTER * 2;
+      const next = Math.max(AGENT_MIN[edge], Math.min(room, startWidth + delta));
+      state.theme.agentLayout = { ...agentColumns(), [edge]: Math.round(next) };
+      for (const t of agentTabs()) applyAgentColumns(t);
+    };
+    const up = () => {
+      gutter.classList.remove('dragging');
+      gutter.releasePointerCapture?.(ev.pointerId);
+      gutter.removeEventListener('pointermove', move);
+      gutter.removeEventListener('pointerup', up);
+      saveTheme();
+    };
+    gutter.addEventListener('pointermove', move);
+    gutter.addEventListener('pointerup', up);
+  });
+}
+
 function buildAgentLayout(tab) {
   const layout = document.createElement('div');
   layout.className = 'agents-layout';
@@ -1075,9 +1137,11 @@ function buildAgentLayout(tab) {
         <div class="worktrees-list"></div>
       </div>
     </div>
+    <div class="agents-gutter" data-edge="rail" title="Drag to resize"></div>
     <div class="agents-center">
       <div class="agents-empty">cd into a repo and run <b>claude</b> — it becomes an agent automatically.</div>
     </div>
+    <div class="agents-gutter" data-edge="diff" title="Drag to resize"></div>
     <div class="agents-diff">
       <div class="diff-head">
         <span class="diff-title">Diff watch</span>
@@ -1091,6 +1155,7 @@ function buildAgentLayout(tab) {
   tab.contentEl.appendChild(layout);
   tab.diffMode = 'session';
   tab.els = {
+    layout,
     spacesList: layout.querySelector('.spaces-list'),
     agentsList: layout.querySelector('.agents-list'),
     worktreesList: layout.querySelector('.worktrees-list'),
@@ -1106,6 +1171,12 @@ function buildAgentLayout(tab) {
       reselectDiff(tab);
     });
   });
+  layout.querySelectorAll('.agents-gutter').forEach((g) => wireGutter(tab, g, g.dataset.edge));
+  applyAgentColumns(tab);
+  // re-clamp when the window changes size, so a narrow window can't squeeze the
+  // terminal out entirely
+  new ResizeObserver(() => applyAgentColumns(tab)).observe(layout);
+
   layout.querySelector('.rail-prune').addEventListener('click', async () => {
     const pruned = await api.worktreesPrune();
     const total = pruned.reduce((n, p) => n + p.count, 0);

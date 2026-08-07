@@ -63,6 +63,7 @@ const DEFAULT_THEME = {
   autoDetectAgents: true,
   restoreSession: true,
   notify: { agentBlocked: true, agentDone: true, commandSeconds: 20 },
+  agentLayout: { rail: 210, diff: 340 },
   copyOnSelect: true,
   unicodeVersion: '11',
   tint: 'rgba(0, 0, 0, 0.00)',
