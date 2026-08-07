@@ -181,6 +181,10 @@ body.glass #glass-tint {
 }
 
 .tab .title {
+  /* grows to fill the tab so the close button stays pinned to the right edge —
+     without this a short title leaves the cross stranded mid-tab */
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 12px;
