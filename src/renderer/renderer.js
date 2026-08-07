@@ -1016,7 +1016,17 @@ function renderAgentLists() {
   renderTabs();
 }
 
+// Agents are global, so a second agent tab renders a byte-identical list and
+// clicking an agent in it jumps you to wherever its pane actually lives. It was
+// never a second workspace — spaces are the grouping — so asking for one just
+// returns you to the one that exists. That also makes the single diff watcher
+// correct by construction rather than a race between tabs.
 async function newAgentTab() {
+  const existing = agentTabs()[0];
+  if (existing) {
+    activateTab(existing);
+    return existing;
+  }
   const tab = {
     id: 'tab-' + ++tabCounter,
     kind: 'agents',

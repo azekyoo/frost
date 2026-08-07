@@ -1062,6 +1062,21 @@ ipcMain.on('agents:track', (_e, { agentId, ptyId }) => {
   agentByPty.set(ptyId, rec);
 });
 
+// Build directories a running agent writes to constantly. Watching them costs
+// real CPU on a large repo and tells us nothing: they're gitignored, so they
+// can't appear in the diff we're recomputing.
+const NOISY_DIRS = [
+  'node_modules', '.git', 'dist', 'build', 'out', 'target', 'vendor',
+  '.next', '.nuxt', '.svelte-kit', '.turbo', '.parcel-cache', '.cache',
+  '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.tox',
+  '.gradle', '.idea', '.vs', 'coverage', '.terraform', 'Pods', 'DerivedData'
+];
+const NOISY_RE = new RegExp(
+  `(^|[\\\\/])(${NOISY_DIRS.map((d) => d.replace(/\./g, '\\.')).join('|')})([\\\\/]|$)`,
+  'i'
+);
+const isNoisyPath = (p) => NOISY_RE.test(p);
+
 // One diff view at a time, keyed so the renderer can tell whose diff arrived.
 // `key` identifies the subject — an agent, or a worktree being reviewed after
 // its agent has gone.
@@ -1089,7 +1104,7 @@ function watchDiff({ key, cwd, base, mode }) {
   runDiff();
   diffWatcher = chokidar
     .watch(cwd, {
-      ignored: (p) => /node_modules|[\\/]\.git([\\/]|$)/.test(p),
+      ignored: isNoisyPath,
       ignoreInitial: true,
       depth: 8
     })
