@@ -661,7 +661,10 @@ ipcMain.handle('pty:create', (_e, { cols, rows, cwd, run, profileId }) => {
   ptys.set(id, p);
   p.onData((data) => {
     const rec = agentByPty.get(id);
-    if (rec) rec.lastData = Date.now();
+    // A resize makes ConPTY repaint, and that repaint is not the agent doing
+    // work — counting it flips an idle agent to "working" every time you click
+    // between them.
+    if (rec && Date.now() > (rec.muteUntil || 0)) rec.lastData = Date.now();
     if (win) win.webContents.send('pty:data', { id, data });
   });
   p.onExit(({ exitCode }) => {
@@ -692,7 +695,11 @@ ipcMain.on('pty:input', (_e, { id, data }) => {
 
 ipcMain.on('pty:resize', (_e, { id, cols, rows }) => {
   const p = ptys.get(id);
-  if (p && cols > 0 && rows > 0) p.resize(cols, rows);
+  if (!p || cols <= 0 || rows <= 0) return;
+  const rec = agentByPty.get(id);
+  // ignore the redraw this is about to provoke
+  if (rec) rec.muteUntil = Date.now() + 900;
+  p.resize(cols, rows);
 });
 
 ipcMain.on('pty:kill', (_e, { id }) => {

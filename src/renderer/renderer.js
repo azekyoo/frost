@@ -525,7 +525,9 @@ async function createPane(opts = {}) {
   });
 
   const refit = debounce(() => {
-    if (paneEl.isConnected) fit.fit();
+    // offsetParent is null while display:none — fitting then would measure zero
+    // and resize the pty twice for nothing, once on hide and once on show
+    if (paneEl.isConnected && paneEl.offsetParent !== null) fit.fit();
   }, 30);
   new ResizeObserver(refit).observe(paneEl);
 
