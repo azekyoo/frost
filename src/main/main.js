@@ -663,6 +663,18 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   }
 
   const w = new BrowserWindow(opts);
+  // The constructor resolves its bounds against the primary display's scale
+  // factor, wherever the window is actually going to land. Opening a 976px-wide
+  // window on a 150% screen from a 200% primary therefore produces one 732px
+  // wide — and since that is what gets saved on close, every restart multiplied
+  // the window by 0.75 again. Re-applying the rectangle once the window exists
+  // resolves it against the display it is really on. Still hidden at this point,
+  // so nothing is seen to jump.
+  if (['x', 'y', 'width', 'height'].every((k) => Number.isFinite(opts[k]))) {
+    try {
+      w.setBounds({ x: opts.x, y: opts.y, width: opts.width, height: opts.height });
+    } catch {}
+  }
   // Set again after creation: the constructor option is silently ignored in some
   // configurations, and this path is the one that reliably sticks.
   const icon = appIcon();
