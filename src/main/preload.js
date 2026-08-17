@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('api', {
   agentsGetSessions: () => ipcRenderer.invoke('agents:getSessions'),
   agentsRemoveSession: (cwd) => ipcRenderer.invoke('agents:removeSession', cwd),
   onWinBounds: (cb) => ipcRenderer.on('win:bounds', (_e, m) => cb(m)),
+  zoomStep: (dir) => ipcRenderer.invoke('zoom:step', dir),
+  onZoom: (cb) => ipcRenderer.on('win:zoom', (_e, m) => cb(m)),
   winMinimize: () => ipcRenderer.send('win:minimize'),
   winMaximize: () => ipcRenderer.send('win:maximize'),
   winClose: () => ipcRenderer.send('win:close'),

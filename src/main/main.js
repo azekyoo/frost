@@ -40,6 +40,12 @@ const AGENTS_FILE = path.join(CONFIG_DIR, 'agents.json');
 const SESSIONS_FILE = path.join(CONFIG_DIR, 'sessions.json');
 const KEYS_FILE = path.join(CONFIG_DIR, 'keybindings.json');
 const WINDOW_FILE = path.join(CONFIG_DIR, 'window.json');
+const ZOOM_FILE = path.join(CONFIG_DIR, 'zoom.json');
+
+// Height of the native window-button overlay, in unzoomed CSS pixels. Kept here
+// because the overlay has to be re-sized whenever the UI zoom changes: it is the
+// one part of the titlebar the renderer does not draw.
+const TITLEBAR_H = 44;
 
 // Only overrides live in this file; the defaults stay in code so new versions
 // can add keys without rewriting a file the user owns. Ctrl+Shift+P lists every
@@ -62,8 +68,20 @@ const DEFAULT_THEME = {
   // Floor on how much the glass backdrop is darkened behind text. Tint alone is
   // a look; this is legibility, and a wallpaper can be arbitrarily bright.
   glassReadability: 0.3,
-  minContrast: 4.5,
-  gpuRenderer: true,
+  // Off. It exists for palettes built for an opaque black background, and it
+  // pays for legibility by dragging every colour towards the foreground: a
+  // PowerShell error came out pastel pink rather than red. The palette below is
+  // chosen to be readable over glass on its own, so nothing has to be recoloured.
+  minContrast: 1,
+  // Off by default, which is the opposite of what a terminal usually wants. The
+  // GPU renderer rasterises each glyph once into a texture atlas and blends it
+  // over whatever is behind the window; every pane in Frost is transparent, so
+  // that blend is grayscale antialiasing against an unknown backdrop and the
+  // text comes out gritty. The DOM renderer hands the text to the browser, which
+  // hints and gamma-corrects it the way the rest of Windows does, and the
+  // difference is plain at a glance. The toggle stays for anyone whose work is
+  // firehose output rather than reading.
+  gpuRenderer: false,
   autoDetectAgents: true,
   restoreSession: true,
   notify: { agentBlocked: true, agentDone: true, commandSeconds: 20 },
@@ -81,26 +99,36 @@ const DEFAULT_THEME = {
     lineHeight: 1.25
   },
   cursor: { style: 'bar', blink: true },
+  // smoothMs: 0 restores xterm's instant row-at-a-time scroll. lines is rows per
+  // wheel notch, fastLines the same while Shift is held.
+  scroll: { smoothMs: 90, lines: 3, fastLines: 10 },
+  // Not Campbell. Windows Terminal's palette assumes an opaque black background,
+  // and half of it — red, blue, magenta — is too dark to read through a window
+  // that shows the wallpaper behind it. Nor is it a muted designer scheme: those
+  // are tuned against one fixed background, and what reads as tasteful on it
+  // reads as washed out over a photograph. Every colour here is near-full
+  // saturation and kept bright enough to hold its own against a light
+  // wallpaper — vivid first, and recognisably the colour it is named after.
   terminal: {
-    foreground: '#cccccc',
+    foreground: '#e4ebff',
     cursor: '#ffffff',
     selectionBackground: 'rgba(255, 255, 255, 0.30)',
-    black: '#0c0c0c',
-    red: '#c50f1f',
-    green: '#13a10e',
-    yellow: '#c19c00',
-    blue: '#0037da',
-    magenta: '#881798',
-    cyan: '#3a96dd',
-    white: '#cccccc',
-    brightBlack: '#767676',
-    brightRed: '#e74856',
-    brightGreen: '#16c60c',
-    brightYellow: '#f9f1a5',
-    brightBlue: '#3b78ff',
-    brightMagenta: '#b4009e',
-    brightCyan: '#61d6d6',
-    brightWhite: '#f2f2f2'
+    black: '#12141f',
+    red: '#ff3b4e',
+    green: '#20e070',
+    yellow: '#ffc21f',
+    blue: '#3d97ff',
+    magenta: '#f04bff',
+    cyan: '#12dcf0',
+    white: '#e4ebff',
+    brightBlack: '#8d97c4',
+    brightRed: '#ff6b78',
+    brightGreen: '#4dff96',
+    brightYellow: '#ffdc4d',
+    brightBlue: '#6fb6ff',
+    brightMagenta: '#ff7dff',
+    brightCyan: '#5cf2ff',
+    brightWhite: '#ffffff'
   }
 };
 
@@ -334,6 +362,111 @@ function glassBounds(target) {
   return { bounds: w.getContentBounds(), display: screen.getDisplayMatching(w.getBounds()).bounds };
 }
 
+// ---------- UI zoom ----------
+// A monitor's scale factor makes text the same *physical* size everywhere, which
+// is right for a laptop panel and wrong for a big desktop screen sat further
+// away: same size, much more of it. Zoom is therefore remembered per display
+// rather than per window, so dragging the window across screens picks up the
+// size that screen was last set to, and dragging it back restores the other one.
+
+// Zoom steps are derived from the display's scale factor rather than fixed,
+// because the terminal renderer rasterises a glyph cell to whole device pixels:
+// at an effective ratio of 1.5 the rounding error lands differently in every
+// column and the text looks gritty. Every step below multiplies out to a whole
+// or half device pixel ratio, so zooming also sharpens rather than blurs.
+const ZOOM_DPRS = [1, 1.5, 2, 2.5, 3, 4];
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 3;
+
+function zoomSteps(scaleFactor) {
+  const steps = ZOOM_DPRS.map((dpr) => dpr / (scaleFactor || 1)).filter(
+    (z) => z >= ZOOM_MIN - 1e-6 && z <= ZOOM_MAX + 1e-6
+  );
+  // A scale factor outside the table (an odd 1.75, say) could filter down to
+  // nothing; 1:1 always has to remain reachable.
+  return steps.length ? steps : [1];
+}
+
+let zoomByDisplay = (() => {
+  try {
+    const raw = JSON.parse(fs.readFileSync(ZOOM_FILE, 'utf8'));
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+})();
+let zoomTimer = null;
+
+function saveZoomSoon() {
+  clearTimeout(zoomTimer);
+  zoomTimer = setTimeout(() => {
+    try {
+      fs.writeFileSync(ZOOM_FILE, JSON.stringify(zoomByDisplay, null, 2));
+    } catch {}
+  }, 300);
+}
+
+// Resolution + scale rather than display.id: ids are reassigned when a monitor
+// is unplugged and plugged back in, which would forget the setting every time.
+function displayKeyOf(d) {
+  return `${d.size.width}x${d.size.height}@${d.scaleFactor}`;
+}
+
+function displayKey(w) {
+  return displayKeyOf(screen.getDisplayMatching(w.getBounds()));
+}
+
+function zoomFor(key) {
+  const z = Number(zoomByDisplay[key]);
+  if (!Number.isFinite(z)) return 1;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+}
+
+function applyZoom(w, factor) {
+  if (!w || w.isDestroyed()) return;
+  w.webContents.setZoomFactor(factor);
+  // The native buttons are drawn by Windows, not by us, so they only match the
+  // zoomed titlebar the renderer draws if the overlay is resized to match.
+  if (!w.isFramelessMode) {
+    try {
+      w.setTitleBarOverlay({ height: Math.round(TITLEBAR_H * factor) });
+    } catch {}
+  }
+  w.webContents.send('win:zoom', { factor });
+}
+
+// Called on every move: cheap, and the only moment a window can change display.
+function syncZoom(w) {
+  if (!w || w.isDestroyed() || w.isMinimized()) return;
+  const key = displayKey(w);
+  if (key === w.frostZoomKey) return;
+  w.frostZoomKey = key;
+  applyZoom(w, zoomFor(key));
+}
+
+function stepZoom(w, dir) {
+  const d = screen.getDisplayMatching(w.getBounds());
+  const key = displayKey(w);
+  const steps = zoomSteps(d.scaleFactor);
+  const current = zoomFor(key);
+  let next;
+  if (!dir) next = 1;
+  else {
+    // nearest step to where we are, then move one along — a hand-edited zoom.json
+    // value between two steps still zooms in the direction asked for
+    let i = 0;
+    for (let k = 1; k < steps.length; k++) {
+      if (Math.abs(steps[k] - current) < Math.abs(steps[i] - current)) i = k;
+    }
+    next = steps[Math.min(steps.length - 1, Math.max(0, i + dir))];
+  }
+  w.frostZoomKey = key;
+  zoomByDisplay[key] = next;
+  saveZoomSoon();
+  applyZoom(w, next);
+  return next;
+}
+
 function applyWindowTheme(theme) {
   if (!theme) return;
   // The acrylic/mica base layer follows the app's color mode:
@@ -351,7 +484,9 @@ function applyWindowTheme(theme) {
       w.setTitleBarOverlay({
         color: '#00000000',
         symbolColor: theme.terminal?.foreground || '#ffffff',
-        height: 38
+        // must track the zoom, or changing any theme setting shrinks the native
+        // buttons back to their unzoomed height while the titlebar stays tall
+        height: Math.round(TITLEBAR_H * (w.webContents.getZoomFactor() || 1))
       });
     } catch {}
   }
@@ -394,6 +529,44 @@ function boundsVisible(b) {
   });
 }
 
+// A window size is only meaningful next to the screen it was chosen on: two
+// thirds of a laptop panel is a third of a 4K one, and restoring the rectangle
+// verbatim onto a different monitor produces a window nobody asked for. The
+// saved geometry therefore carries the work area it was measured against, and
+// is re-proportioned when it comes back to a screen of another size.
+function scaleBoundsTo(b, from, to) {
+  if (!b || !from || !from.width || !from.height) return null;
+  const fw = Math.min(1, b.width / from.width);
+  const fh = Math.min(1, b.height / from.height);
+  const width = Math.max(480, Math.round(to.width * fw));
+  const height = Math.max(300, Math.round(to.height * fh));
+  const fx = Math.min(Math.max((b.x - from.x) / from.width, 0), 1);
+  const fy = Math.min(Math.max((b.y - from.y) / from.height, 0), 1);
+  return {
+    width,
+    height,
+    x: Math.max(to.x, Math.min(Math.round(to.x + fx * to.width), to.x + to.width - width)),
+    y: Math.max(to.y, Math.min(Math.round(to.y + fy * to.height), to.y + to.height - height))
+  };
+}
+
+// The first window on a machine has nothing to restore. A fixed 1100x700 is
+// most of a laptop screen and a postage stamp on a big one, so it is taken as a
+// share of the display the pointer is on instead.
+function defaultBoundsFor(display) {
+  const wa = display.workArea;
+  const width = Math.min(wa.width, Math.max(900, Math.round(wa.width * 0.62)));
+  const height = Math.min(wa.height, Math.max(600, Math.round(wa.height * 0.72)));
+  return {
+    width,
+    height,
+    x: wa.x + Math.round((wa.width - width) / 2),
+    y: wa.y + Math.round((wa.height - height) / 2)
+  };
+}
+
+const cursorDisplay = () => screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+
 function flushWindowState() {
   clearTimeout(sessionTimer);
   sessionTimer = null;
@@ -403,7 +576,14 @@ function flushWindowState() {
   if (!live.length) return;
   const windows = live.map((w) => {
     // A minimised window reports nonsense bounds, so keep the last real ones.
-    if (!w.isMinimized()) lastBounds.set(w.frostId, { bounds: w.getNormalBounds(), maximized: w.isMaximized() });
+    if (!w.isMinimized()) {
+      const d = screen.getDisplayMatching(w.getBounds());
+      lastBounds.set(w.frostId, {
+        bounds: w.getNormalBounds(),
+        maximized: w.isMaximized(),
+        display: { key: displayKeyOf(d), workArea: d.workArea }
+      });
+    }
     const geometry = lastBounds.get(w.frostId) || {};
     return { ...geometry, ...(sessionLayouts.get(w.frostId) || { tabs: [], activeTab: 0 }) };
   });
@@ -454,19 +634,31 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
     opts.titleBarOverlay = {
       color: '#00000000',
       symbolColor: theme.terminal?.foreground || '#ffffff',
-      height: 38
+      height: TITLEBAR_H
     };
   }
 
   // A window restores its own geometry when it has some; one opened by hand is
   // offset from the current window so it doesn't land exactly on top of it.
-  if (SHOT?.bounds) Object.assign(opts, SHOT.bounds);
-  else if (boundsVisible(restore?.bounds)) Object.assign(opts, restore.bounds);
-  else {
+  if (SHOT?.bounds) {
+    Object.assign(opts, SHOT.bounds);
+  } else if (restore?.bounds) {
+    const saved = restore.display;
+    const sameScreen = !saved?.key || screen.getAllDisplays().some((d) => displayKeyOf(d) === saved.key);
+    if (sameScreen && boundsVisible(restore.bounds)) {
+      // the monitor it was last on is still here: put it back exactly
+      Object.assign(opts, restore.bounds);
+    } else {
+      const host = boundsVisible(restore.bounds) ? screen.getDisplayMatching(restore.bounds) : cursorDisplay();
+      Object.assign(opts, scaleBoundsTo(restore.bounds, saved?.workArea, host.workArea) || defaultBoundsFor(host));
+    }
+  } else {
     const from = focusedWindow();
     if (from) {
       const b = from.getBounds();
       Object.assign(opts, { x: b.x + 34, y: b.y + 34, width: b.width, height: b.height });
+    } else {
+      Object.assign(opts, defaultBoundsFor(cursorDisplay()));
     }
   }
 
@@ -498,6 +690,17 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   w.on('restore', sendBounds);
   w.on('show', sendBounds);
   w.on('focus', sendBounds);
+
+  // Dragging onto another monitor is the moment the display's own zoom applies.
+  for (const ev of ['move', 'moved', 'resize', 'restore', 'show']) {
+    w.on(ev, () => syncZoom(w));
+  }
+  // Zoom does not survive a reload, and the renderer needs to be told the factor
+  // it is running at before it positions anything against screen coordinates.
+  w.webContents.on('did-finish-load', () => {
+    w.frostZoomKey = displayKey(w);
+    applyZoom(w, zoomFor(w.frostZoomKey));
+  });
 
   w.on('focus', () => {
     try {
@@ -1532,6 +1735,12 @@ ipcMain.handle('glass:info', (event) => ({
   ...glassBounds(windowOf(event))
 }));
 
+// dir: 1 = in, -1 = out, 0 = back to the display's default
+ipcMain.handle('zoom:step', (event, dir) => {
+  const w = windowOf(event);
+  return w ? stepZoom(w, dir) : 1;
+});
+
 ipcMain.on('win:minimize', (event) => windowOf(event)?.minimize());
 ipcMain.on('win:maximize', (event) => {
   const w = windowOf(event);
@@ -1773,7 +1982,15 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.whenReady().then(() => {
-  // No setAppUserModelId. It groups the taskbar button under an id of our
+  // A run from source is launched by electron.exe, so Windows identifies the
+  // taskbar button as Electron's and paints Electron's logo whatever icon the
+  // window carries. An id of its own breaks that association and sends Windows
+  // back to the window icon, which is Frost's. Dev only — a packaged build is
+  // identified by its own executable and must stay that way, for the reason
+  // below.
+  if (!app.isPackaged) app.setAppUserModelId('dev.azekyoo.frost.source');
+
+  // No setAppUserModelId for packaged builds. It groups the taskbar button under an id of our
   // choosing, and Windows then resolves that button's icon through the id rather
   // than from the window — which showed the Electron logo on an installed build
   // whose window icon was verifiably correct. Left unset, Windows identifies

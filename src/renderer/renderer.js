@@ -12,6 +12,9 @@ let paneCounter = 0;
 const panesByPty = new Map(); // ptyId -> leaf node
 
 const glassState = { active: false, display: null, bounds: null };
+// Whole-UI zoom in force for the monitor this window sits on; owned by the main
+// process, mirrored here because screen-coordinate maths has to undo it.
+let uiZoom = 1;
 
 const el = {
   glassBg: document.getElementById('glass-bg'),
@@ -79,7 +82,8 @@ function pasteInto(term) {
 // GPU (WebGL) renderer: enables customGlyphs box-drawing and faster rendering.
 // Falls back to the DOM renderer if WebGL is unavailable.
 function applyGpu(node) {
-  const want = !state.theme || state.theme.gpuRenderer !== false;
+  // opt-in, not opt-out: see the note on gpuRenderer in the default theme
+  const want = state.theme?.gpuRenderer === true;
   if (want && !node.webgl) {
     try {
       node.webgl = new WebglAddon.WebglAddon();
@@ -96,6 +100,39 @@ function applyGpu(node) {
     node.webgl = null;
   }
 }
+
+// The GPU renderer rasterises every glyph once, into a texture atlas sized for
+// the device pixel ratio in force at the time. The ratio changes whenever the
+// page zooms or the window crosses to a monitor with a different scale factor,
+// and the old atlas is then sampled at a size it was never drawn for — which is
+// what makes the text look chewed rather than merely small. Nothing in the
+// addon watches for that, so the atlas is dropped by hand and redrawn sharp.
+function resharpen() {
+  for (const node of panesByPty.values()) {
+    try {
+      node.webgl?.clearTextureAtlas();
+    } catch {}
+    try {
+      node.fit.fit();
+    } catch {}
+  }
+}
+
+// devicePixelRatio is not observable directly; a media query pinned to the
+// current value stops matching the moment it changes, and is then re-armed
+// against the new one.
+function watchPixelRatio() {
+  const mq = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+  mq.addEventListener(
+    'change',
+    () => {
+      resharpen();
+      watchPixelRatio();
+    },
+    { once: true }
+  );
+}
+watchPixelRatio();
 
 function xtermTheme(theme) {
   const t = theme.terminal || {};
@@ -141,7 +178,10 @@ function applyTheme(theme, css) {
     term.options.lineHeight = theme.font?.lineHeight || 1.2;
     term.options.cursorStyle = theme.cursor?.style || 'bar';
     term.options.cursorBlink = theme.cursor?.blink !== false;
-    term.options.minimumContrastRatio = theme.minContrast ?? 4.5;
+    term.options.minimumContrastRatio = theme.minContrast ?? 1;
+    term.options.smoothScrollDuration = theme.scroll?.smoothMs ?? 90;
+    term.options.scrollSensitivity = theme.scroll?.lines ?? 3;
+    term.options.fastScrollSensitivity = theme.scroll?.fastLines ?? 10;
     term.options.theme = xtermTheme(theme);
     try {
       term.unicode.activeVersion = theme.unicodeVersion || '11';
@@ -547,7 +587,13 @@ async function createPane(opts = {}) {
     // Windows Terminal parity: builtin box/block glyphs, auto-contrast text
     customGlyphs: true,
     rescaleOverlappingGlyphs: true,
-    minimumContrastRatio: theme.minContrast ?? 4.5,
+    minimumContrastRatio: theme.minContrast ?? 1,
+    // xterm scrolls a whole row at a time by default, which reads as a jolt
+    // rather than movement. A short animation is what every other Windows app
+    // does, and Shift held down still jumps a screenful at a time.
+    smoothScrollDuration: theme.scroll?.smoothMs ?? 90,
+    scrollSensitivity: theme.scroll?.lines ?? 3,
+    fastScrollSensitivity: theme.scroll?.fastLines ?? 10,
     // tell xterm the backend is Windows ConPTY so it applies its quirk handling
     windowsPty: { backend: 'conpty' },
     theme: xtermTheme(theme)
@@ -2017,9 +2063,20 @@ cmd('pane.focusRight', 'Focus pane right', () => focusDirection('right'));
 cmd('pane.focusUp', 'Focus pane up', () => focusDirection('up'));
 cmd('pane.focusDown', 'Focus pane down', () => focusDirection('down'));
 
-cmd('font.zoomIn', 'Zoom in', () => setFontSize((state.theme?.font?.size || 14) + 1));
-cmd('font.zoomOut', 'Zoom out', () => setFontSize((state.theme?.font?.size || 14) - 1));
-cmd('font.zoomReset', 'Reset zoom', () => setFontSize(bootFontSize || 14));
+cmd('font.zoomIn', 'Terminal font bigger', () => setFontSize((state.theme?.font?.size || 14) + 1));
+cmd('font.zoomOut', 'Terminal font smaller', () => setFontSize((state.theme?.font?.size || 14) - 1));
+cmd('font.zoomReset', 'Reset terminal font size', () => setFontSize(bootFontSize || 14));
+
+// Whole-UI zoom, remembered by the main process against the monitor the window
+// is on: the size that suits a laptop panel is not the size that suits a 4K
+// screen at arm's length, and the two should not have to be reconciled.
+const zoomStep = async (dir) => {
+  const factor = await api.zoomStep(dir);
+  toast(`Zoom ${Math.round(factor * 100)}% on this screen`);
+};
+cmd('view.zoomIn', 'Zoom in', () => zoomStep(1));
+cmd('view.zoomOut', 'Zoom out', () => zoomStep(-1));
+cmd('view.zoomReset', 'Reset zoom', () => zoomStep(0));
 
 cmd('view.search', 'Find in buffer', () => {
   const pane = activePane();
@@ -2057,10 +2114,10 @@ const DEFAULT_BINDINGS = [
   { keys: 'alt+right', command: 'pane.focusRight' },
   { keys: 'alt+up', command: 'pane.focusUp' },
   { keys: 'alt+down', command: 'pane.focusDown' },
-  { keys: 'ctrl+=', command: 'font.zoomIn' },
-  { keys: 'ctrl+shift+=', command: 'font.zoomIn' },
-  { keys: 'ctrl+-', command: 'font.zoomOut' },
-  { keys: 'ctrl+0', command: 'font.zoomReset' },
+  { keys: 'ctrl+=', command: 'view.zoomIn' },
+  { keys: 'ctrl+shift+=', command: 'view.zoomIn' },
+  { keys: 'ctrl+-', command: 'view.zoomOut' },
+  { keys: 'ctrl+0', command: 'view.zoomReset' },
   { keys: 'ctrl+,', command: 'app.settings' },
   { keys: 'ctrl+f', command: 'view.search' },
   { keys: 'ctrl+shift+k', command: 'view.clear' },
@@ -2339,6 +2396,8 @@ const s = {
   fontFamily: document.getElementById('s-font-family'),
   fontSize: document.getElementById('s-font-size'),
   fontSizeVal: document.getElementById('s-font-size-val'),
+  lineHeight: document.getElementById('s-line-height'),
+  lineHeightVal: document.getElementById('s-line-height-val'),
   padding: document.getElementById('s-padding'),
   paddingVal: document.getElementById('s-padding-val'),
   radius: document.getElementById('s-radius'),
@@ -2444,9 +2503,9 @@ function syncSettingsUI() {
   const readability = Math.round((t.glassReadability ?? 0.3) * 100);
   s.readability.value = readability;
   s.readabilityVal.textContent = readability + '%';
-  s.contrast.value = String(t.minContrast ?? 4.5);
+  s.contrast.value = String(t.minContrast ?? 1);
   if (profiles.length) s.defaultProfile.value = t.defaultProfile || profiles[0].id;
-  s.gpu.checked = t.gpuRenderer !== false;
+  s.gpu.checked = t.gpuRenderer === true;
   s.restoreSession.checked = t.restoreSession !== false;
   const notify = t.notify || {};
   s.notifyBlocked.checked = notify.agentBlocked !== false;
@@ -2472,6 +2531,8 @@ function syncSettingsUI() {
   s.fontFamily.value = fam;
   s.fontSize.value = t.font?.size || 14;
   s.fontSizeVal.textContent = (t.font?.size || 14) + 'px';
+  s.lineHeight.value = t.font?.lineHeight ?? 1.25;
+  s.lineHeightVal.textContent = String(t.font?.lineHeight ?? 1.25);
   s.padding.value = t.padding ?? 14;
   s.paddingVal.textContent = (t.padding ?? 14) + 'px';
   s.radius.value = t.cornerRadius ?? 8;
@@ -2512,6 +2573,7 @@ function onSettingChange() {
   t.font = t.font || {};
   if (s.fontFamily.value) t.font.family = `"${s.fontFamily.value}", Consolas, monospace`;
   t.font.size = +s.fontSize.value;
+  t.font.lineHeight = +s.lineHeight.value;
   t.padding = +s.padding.value;
   t.cornerRadius = +s.radius.value;
   t.cursor = t.cursor || {};
@@ -2537,9 +2599,13 @@ function updateGlassPos({ bounds, display }) {
   const b = glassState.bounds;
   const d = glassState.display;
   if (!b || !d) return;
+  // Screen geometry arrives in unzoomed device-independent pixels; a zoomed page
+  // measures itself in smaller CSS pixels, so the wallpaper has to be divided
+  // down or it drifts out of alignment with the desktop behind the window.
+  const z = uiZoom || 1;
   // #glass-bg is inset -80px, so shift the wallpaper by +80 to stay screen-aligned
-  el.glassBg.style.backgroundSize = `${d.width}px ${d.height}px`;
-  el.glassBg.style.backgroundPosition = `${d.x - b.x + 80}px ${d.y - b.y + 80}px`;
+  el.glassBg.style.backgroundSize = `${d.width / z}px ${d.height / z}px`;
+  el.glassBg.style.backgroundPosition = `${(d.x - b.x) / z + 80}px ${(d.y - b.y) / z + 80}px`;
 }
 
 async function initGlass() {
@@ -2552,6 +2618,14 @@ async function initGlass() {
   updateGlassPos(info);
   api.onWinBounds(updateGlassPos);
 }
+
+api.onZoom(({ factor }) => {
+  uiZoom = factor || 1;
+  // the wallpaper has no observer to refit it, and the glyph atlas is stale the
+  // instant the zoom lands — the pixel ratio it was drawn for no longer applies
+  updateGlassPos({});
+  resharpen();
+});
 
 // ---------- pty events ----------
 

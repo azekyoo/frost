@@ -101,10 +101,12 @@ running and supervising Claude Code agents with live status and diff watching.
     agent has gone, then open, merge or discard it without leaving Frost
   - status comes from Claude Code hooks injected per-session via `--settings` —
     your global Claude config is never touched. Kill switch in settings
-- **Terminal quality**: GPU renderer with builtin box-drawing glyphs,
-  full-color emoji, Unicode 11 widths, auto-contrast for unreadable colors
-  (Windows Terminal parity), tabs, split panes, font picker listing your
-  installed monospace fonts
+- **Terminal quality**: text hinted by the system rather than blended out of a
+  GPU atlas — the difference shows on a translucent window — full-color emoji,
+  Unicode 11 widths, a palette picked to stay readable through glass (with
+  optional auto-contrast for one that isn't), tabs, split panes, font picker
+  listing your installed monospace fonts. A GPU renderer is one tick away in
+  settings if you push enough output to want it
 
 ![Agent mode — live status, terminal, and diff watch](assets/screenshot-agent.png)
 
@@ -186,7 +188,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Ctrl+Shift+W` | Close pane (last pane closes tab) |
 | `Alt+Shift+=` / `Alt+Shift+-` | Split right / down (inherits directory) |
 | `Alt+←` `→` `↑` `↓` | Move focus to the pane in that direction |
-| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / reset |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the whole UI in / out / reset — remembered per monitor |
 | `Ctrl+F` | Search buffer |
 | `Ctrl+Shift+K` | Clear buffer |
 | `Ctrl+Shift+↑` / `↓` | Jump to previous / next command |
@@ -218,7 +220,7 @@ lands on the same key on every keyboard layout.
 Created with defaults on first run, all hot-reloading. In `%APPDATA%\Frost\config`
 for an installed build, in the repo's `config/` when running from source:
 
-- `config/theme.json` — material, colors, blur, tint, `glassReadability`, fonts, cursor, padding,
+- `config/theme.json` — material, colors, blur, tint, `glassReadability`, fonts, cursor, `scroll`, padding,
   corner radii, start directory, ANSI palette, agent auto-detect, and
   `profiles` / `defaultProfile`:
 
@@ -256,6 +258,7 @@ for an installed build, in the repo's `config/` when running from source:
 - `config/agents.json` — saved repos ("spaces") for agent mode
 - `config/sessions.json` — resumable agent sessions (managed automatically)
 - `config/window.json` — window geometry and tab layout (managed automatically)
+- `config/zoom.json` — UI zoom per monitor, keyed by resolution and scale (managed automatically)
 
 The settings panel (`Ctrl+,`) edits `theme.json` for you.
 

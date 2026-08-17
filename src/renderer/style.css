@@ -5,7 +5,7 @@
   --pad: 14px;
   --radius: 8px;
   --win-radius: 12px;
-  --titlebar-h: 38px;
+  --titlebar-h: 44px;
   --font: "Cascadia Mono", Consolas, monospace;
 
   --ui-font: "Segoe UI Variable Text", "Segoe UI", sans-serif;
@@ -145,12 +145,15 @@ body.glass #glass-tint {
   display: flex;
   align-items: center;
   gap: 4px;
+  /* A tab is a click target before it is a label, and a 104px one asks to be
+     aimed at. Sized so a normal title reads in full and the strip stays easy to
+     hit; the strip still scrolls rather than squeezing them once it is full. */
   flex: 0 0 auto;
-  max-width: 220px;
-  min-width: 104px;
-  height: 28px;
-  padding: 0 4px 0 12px;
-  border-radius: 7px;
+  max-width: 280px;
+  min-width: 150px;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  border-radius: 8px;
   background: transparent;
   color: color-mix(in srgb, var(--fg) 62%, transparent);
   cursor: default;
@@ -188,19 +191,19 @@ body.glass #glass-tint {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12px;
-  line-height: 28px;
+  font-size: 13px;
+  line-height: 34px;
 }
 
 .tab .close {
   border: none;
   background: transparent;
   color: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   cursor: pointer;
   opacity: 0;
   flex: none;
@@ -225,10 +228,10 @@ body.glass #glass-tint {
   border: none;
   background: transparent;
   color: color-mix(in srgb, var(--fg) 75%, transparent);
-  font-size: 14px;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  font-size: 15px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   cursor: pointer;
   flex: none;
   transition: background 0.15s var(--ease), color 0.15s var(--ease),
