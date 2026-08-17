@@ -971,67 +971,304 @@ body.frameless #win-controls {
 .diff-body {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  /* No padding at the top: a sticky header pins to the padding edge, not to the
+     top of the box, so any padding here becomes a strip above the header that
+     outgoing lines scroll through in plain sight. The gap is put on the first
+     file instead, where it scrolls away with everything else. */
+  padding: 0 8px 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--surface-3) transparent;
 }
 
+.diff-body > .diff-file:first-child {
+  margin-top: 8px;
+}
+
+/* second header row: what changed in total, and the two controls that decide
+   how much of it is on screen at once */
+.diff-sub {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 10.5px;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+
+.diff-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.diff-summary .add,
+.df-stat .add {
+  color: #56e08a;
+  font-weight: 600;
+}
+
+.diff-summary .del,
+.df-stat .del {
+  color: #ff7b86;
+  font-weight: 600;
+}
+
+.diff-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.diff-tools button {
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.diff-tools button:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.diff-tools button.on {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* No overflow clipping: it would make this box the scrollport its own header
+   sticks to, and the header has to stick to the panel instead. The corners are
+   rounded on the head and the body separately in exchange. */
 .diff-file {
   margin-bottom: 10px;
   border: 1px solid var(--hairline);
   border-radius: 7px;
-  overflow: hidden;
 }
 
 .diff-file-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 9px;
   font-size: 11.5px;
   font-weight: 600;
   background: var(--surface-1);
+  border-radius: 6px 6px 0 0;
   cursor: pointer;
   user-select: none;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* the header stays put while its own hunks scroll past, so you never lose
+     track of which file you are reading */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.diff-file.collapsed .diff-file-head {
+  border-radius: 6px;
 }
 
 .diff-file-head:hover {
   background: var(--surface-2);
 }
 
-.diff-file-body {
-  max-height: 420px;
-  overflow-y: auto;
-  scrollbar-width: thin;
+.df-chev {
+  flex: none;
+  font-size: 9px;
+  opacity: 0.6;
+  transition: transform 0.12s var(--ease);
 }
 
-.diff-file-body.collapsed {
+.diff-file.collapsed .df-chev {
+  transform: rotate(-90deg);
+}
+
+.df-badge {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  color: #fff;
+  background: var(--surface-3);
+}
+
+.df-badge.added,
+.df-badge.untracked {
+  background: rgba(32, 224, 112, 0.85);
+  color: #06240f;
+}
+
+.df-badge.deleted {
+  background: rgba(255, 59, 78, 0.85);
+}
+
+.df-badge.renamed {
+  background: rgba(255, 194, 31, 0.85);
+  color: #2a2000;
+}
+
+.df-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* context, not identity: it yields its space to the basename and to the counts,
+   and is the first thing to be clipped */
+.df-dir {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.42;
+  font-weight: 400;
+  font-size: 10.5px;
+}
+
+.df-stat {
+  flex: none;
+  display: flex;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* One scrollbar for the whole panel rather than one per file: a scroller nested
+   inside a scroller swallows the wheel at every boundary. Long files are capped
+   at a few hundred lines with a button for the rest instead. */
+.diff-file-body {
+  overflow: hidden;
+  border-radius: 0 0 6px 6px;
+}
+
+.diff-file.collapsed .diff-file-body {
   display: none;
 }
 
 .diff-line {
+  display: flex;
+  align-items: flex-start;
   font-family: var(--font);
   font-size: 11px;
-  line-height: 1.5;
-  padding: 0 9px;
-  white-space: pre;
+  line-height: 1.55;
+  /* Always wrapped. The panel is a few hundred pixels wide, so the alternative
+     is a clipped line and no way to see the rest of it — a choice with one
+     sensible answer is not worth a control. */
+  white-space: pre-wrap;
+}
+
+/* line numbers: fixed columns so the code starts at the same place on every
+   row, dim enough to read past, and tabular so they don't shuffle */
+.dl-no {
+  flex: none;
+  width: 34px;
+  padding: 0 4px;
+  text-align: right;
+  color: color-mix(in srgb, var(--fg) 32%, transparent);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.dl-no.linkable {
+  cursor: pointer;
+}
+
+.dl-no.linkable:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.dl-sign {
+  flex: none;
+  width: 12px;
+  text-align: center;
+  opacity: 0.75;
+  user-select: none;
+}
+
+/* the wrapped remainder of a line lands under the code, not under the numbers */
+.dl-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 8px;
+  overflow-wrap: anywhere;
 }
 
 .diff-line.add {
-  background: rgba(63, 185, 80, 0.13);
-  color: #7ee787;
+  background: rgba(32, 224, 112, 0.12);
+  color: #8bf0b0;
 }
 
 .diff-line.del {
-  background: rgba(248, 81, 73, 0.13);
-  color: #ffa198;
+  background: rgba(255, 59, 78, 0.12);
+  color: #ffa3ac;
+}
+
+/* the run that actually changed between a removed line and the line that
+   replaced it — the rest of the pair is identical text */
+.diff-line.add .dl-word {
+  background: rgba(32, 224, 112, 0.3);
+  border-radius: 2px;
+}
+
+.diff-line.del .dl-word {
+  background: rgba(255, 59, 78, 0.3);
+  border-radius: 2px;
 }
 
 .diff-line.hunk {
   color: color-mix(in srgb, var(--fg) 45%, transparent);
   background: var(--surface-1);
-  padding-top: 2px;
-  padding-bottom: 2px;
+  padding: 2px 9px;
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.diff-line.untracked-row {
+  padding-left: 9px;
+  cursor: pointer;
+}
+
+.diff-line.untracked-row:hover {
+  background: rgba(32, 224, 112, 0.2);
+}
+
+.diff-more {
+  display: block;
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  font-size: 10.5px;
+  padding: 5px;
+  cursor: pointer;
+}
+
+.diff-more:hover {
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 /* ---------- settings drawer ---------- */
