@@ -3,6 +3,21 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 0.4.1 — 2026-08-18
+
+### Fixed
+
+- **The window edge can be grabbed again.** Glass mode runs a transparent
+  frameless window, and Windows gives those no sizing border worth the name — a
+  hairline at the very edge, with none of the padded border it puts outside a
+  normal window. Frost now carries its own grab zones: 12px along each edge, 24px
+  at the corners, driven from the main process off the cursor's screen position
+  so a fast drag that leaves the window keeps resizing. They sit inside the
+  terminal's own padding, so no text is covered, and they scale against the UI
+  zoom to stay the same physical size at every zoom step and display scale. A
+  double-click on the top edge still maximizes. Set `FROST_SHOW_RESIZE=1` to
+  tint them while tuning.
+
 ## 0.4.0 — 2026-08-17
 
 The release about being readable on a screen other than the one Frost was
