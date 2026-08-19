@@ -162,7 +162,6 @@ function applyTheme(theme, css) {
       ? `rgba(238, 240, 246, ${readability})`
       : `rgba(6, 8, 14, ${readability})`;
   r.setProperty('--scrim', scrim);
-  r.setProperty('--win-radius', (theme.windowRadius ?? 12) + 'px');
   // Keyed to how the window was actually created, not to the material that has
   // been picked. A frameless transparent window has to paint its own backdrop
   // whatever the setting says — dropping it the moment another material is

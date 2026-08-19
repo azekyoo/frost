@@ -4,7 +4,6 @@
   --fg: #c8d3f5;
   --pad: 14px;
   --radius: 8px;
-  --win-radius: 12px;
   --titlebar-h: 44px;
   --font: "Cascadia Mono", Consolas, monospace;
 
@@ -67,13 +66,30 @@ button {
 body.glass {
   background: transparent;
   position: relative;
-  border-radius: var(--win-radius, 12px);
+  /* No radius of our own. The window is solid now, so a CSS curve here clips
+     nothing — it just paints the window's background colour inside the corner,
+     and that square of colour sits visibly outside the arc DWM cuts. Windows
+     rounds the window for us, with antialiasing we cannot match. */
   overflow: hidden;
+}
+
+/* The edge line is an overlay, not a border. As a border it sat outside the
+   padding box, which is where `overflow: hidden` clips the wallpaper — so the
+   blurred backdrop stopped 1px short and the ring showed whatever was behind
+   the page. That was the desktop while the window was transparent and is the
+   window's own background colour now that it is solid, which read as a black
+   frame with an accent-tinted one when focused. */
+body.glass::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
   border: 1px solid var(--hairline);
   transition: border-color 0.25s var(--ease);
 }
 
-body.glass.win-focused {
+body.glass.win-focused::after {
   border-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 

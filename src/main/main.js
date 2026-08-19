@@ -92,7 +92,6 @@ const DEFAULT_THEME = {
   accent: '#80a8ff',
   padding: 14,
   cornerRadius: 13,
-  windowRadius: 12,
   font: {
     family: '"Cascadia Mono", Consolas, monospace',
     size: 14,
@@ -635,10 +634,18 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   };
 
   if (glass) {
-    // Truly transparent window; the renderer draws its own blurred wallpaper
-    // and window buttons. No DWM backdrop involved at all.
-    opts.transparent = true;
+    // Frameless but solid: the renderer paints its own blurred wallpaper and
+    // window buttons, and that wallpaper is opaque, so the window never needed
+    // to be transparent — the only thing transparency bought was a corner
+    // radius we could pick ourselves. It cost far more than that. A transparent
+    // window is layered, gets no WS_THICKFRAME, and Windows therefore refuses
+    // it Aero Snap, snap layouts, a sizing border, a drop shadow and the
+    // minimise animation. Solid buys all of that back, and DWM rounds the
+    // corners itself.
+    opts.transparent = false;
     opts.frame = false;
+    opts.roundedCorners = true;
+    opts.backgroundColor = theme.terminal?.background || '#101014';
   } else {
     opts.backgroundMaterial = alwaysOn ? 'acrylic' : material;
     opts.titleBarStyle = 'hidden';
