@@ -43,6 +43,7 @@ const waitFor = async (fn, timeout = 30000, step = 250) => {
 module.exports = [
   {
     name: 'screenshot-hero',
+    photo: 'peaks-sunrise',
     wallpaper: 'alpine',
     // two shells side by side, real git and real program output
     setup: `(async () => {
@@ -63,6 +64,7 @@ module.exports = [
   },
   {
     name: 'screenshot-palette',
+    photo: 'moonrise-peak',
     wallpaper: 'night',
     setup: `(async () => {
       ${RUN}
@@ -78,6 +80,7 @@ module.exports = [
   },
   {
     name: 'screenshot-profiles',
+    photo: 'aurora',
     wallpaper: 'coast',
     setup: `(async () => {
       ${RUN}
@@ -98,6 +101,7 @@ module.exports = [
     // status and producing a real diff. So this runs `claude` for real and asks
     // it for a small edit in the demo repo.
     name: 'screenshot-agent',
+    photo: 'ocean-dusk',
     wallpaper: 'pine',
     spaces: true,
     theme: { autoDetectAgents: true },
@@ -172,6 +176,7 @@ module.exports = [
   },
   {
     name: 'screenshot-options',
+    photo: 'desert-arch',
     wallpaper: 'desert',
     setup: `(async () => {
       ${RUN}

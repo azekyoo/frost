@@ -1,16 +1,20 @@
 'use strict';
 
-// Wallpapers for the screenshot renderer: generated landscapes, in the vein of
-// a stock desktop background.
+// Generated landscapes for the screenshot renderer, in the vein of a stock
+// desktop background.
 //
-// Generated rather than photographed for two reasons. There's no third-party
-// image to license in a public repo, and the output is deterministic — same
-// seed, same pixels — so re-running the renderer doesn't churn the committed
-// PNGs.
+// The committed screenshots sit on photographs now (assets/wallpapers, credited
+// in the CREDITS.md beside them) — a real desktop sells the backdrop better than
+// anything procedural. These stay for two reasons: they need no asset, so the
+// renderer still works in a checkout without them, and they are deterministic —
+// same seed, same pixels — which makes them the honest choice when comparing two
+// runs of the app rather than two wallpapers. A scenario picks one with
+// `wallpaper`, a photograph with `photo`.
 //
-// Ridge silhouettes matter more than they look: Frost's `glass` backdrop only
-// reads as glass when the image behind it has hard edges and fine detail. Blur a
-// smooth gradient and it stays a smooth gradient, and the effect vanishes.
+// Ridge silhouettes matter more than they look, and the same goes for choosing a
+// photograph: Frost's `glass` backdrop only reads as glass when the image behind
+// it has hard edges and fine detail. Blur a smooth gradient and it stays a smooth
+// gradient, and the effect vanishes.
 
 const { nativeImage } = require('electron');
 
