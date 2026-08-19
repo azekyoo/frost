@@ -1033,7 +1033,12 @@ ipcMain.handle('pty:create', (event, { cols, rows, cwd, run, profileId }) => {
   const dialect = profile.agentWrapper || 'none';
   const withClaude = autoDetect && dialect !== 'none';
   let args = Array.isArray(profile.args) ? [...profile.args] : [];
-  let env = { ...process.env, ...(profile.env || {}) };
+  // ConPTY passes no TERM of its own, and node-pty's `name` is a no-op on
+  // Windows, so a program launched here sees no hint that the terminal can do
+  // more than sixteen colours and downgrades its palette: Claude Code's status
+  // bar loses its gradients. Frost knows what it renders, so it says so. Set
+  // before profile.env, which is the user's to override.
+  let env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...(profile.env || {}) };
   if (dialect !== 'none') {
     if (withClaude) {
       const agentId = 'pty' + id;
