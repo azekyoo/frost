@@ -3,6 +3,33 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 0.4.3 — 2026-08-19
+
+### Fixed
+
+- **Colours in a pane are true colour again.** ConPTY hands a child no `TERM`,
+  and node-pty's `name` option is a no-op on Windows, so a program launched in a
+  pane found no evidence that the terminal could do more than sixteen colours
+  and picked its dullest palette. Claude Code's status bar was the visible
+  symptom: its gradient meters collapsed into one flat green. Frost renders
+  24-bit colour whatever the environment says, so it now says so —
+  `TERM=xterm-256color` and `COLORTERM=truecolor`, set before a profile's `env`,
+  which stays yours to override.
+
+### Changed
+
+- **Default row height is 1.15, down from 1.25.** With `customGlyphs` on, xterm
+  draws block and box-drawing characters to the whole cell rather than to the
+  font's own metrics — that is what makes borders join across rows, and it means
+  the row height stretches them. At 1.25 every meter, bar and shaded block stood
+  a quarter taller than the digits beside it. 1.15 keeps rows legible and
+  borders continuous while block art lands near its drawn height. The fallbacks
+  disagreed as well: the default theme and the settings panel said 1.25 where
+  the two places that configure the terminal said 1.2, so a `theme.json` with a
+  `font` block but no `lineHeight` rendered unlike one with no `font` block at
+  all. All four now agree. An existing `theme.json` already carries an explicit
+  value and is unaffected; delete the `lineHeight` line to take the new default.
+
 ## 0.4.2 — 2026-08-19
 
 ### Changed
