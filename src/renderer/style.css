@@ -419,6 +419,12 @@ body.win-maximized #resize-edges {
   flex: none;
   align-self: stretch;
   -webkit-app-region: no-drag;
+  /* Above the resize gutters: they are invisible, so wherever one covered a
+     button the click silently did nothing — the corner zone alone ate half the
+     close button. Windows gives the caption buttons the same priority over its
+     own sizing border. */
+  position: relative;
+  z-index: 95;
 }
 
 body.frameless .wco-spacer {
