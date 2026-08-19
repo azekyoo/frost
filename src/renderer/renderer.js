@@ -175,6 +175,8 @@ function applyTheme(theme, css) {
     term.options.fontFamily = theme.font?.family || 'Consolas, monospace';
     term.options.fontSize = theme.font?.size || 14;
     term.options.lineHeight = theme.font?.lineHeight || 1.15;
+    term.options.fontWeight = theme.font?.weight ?? 'normal';
+    term.options.fontWeightBold = theme.font?.weightBold ?? 'bold';
     term.options.cursorStyle = theme.cursor?.style || 'bar';
     term.options.cursorBlink = theme.cursor?.blink !== false;
     term.options.minimumContrastRatio = theme.minContrast ?? 1;
@@ -581,6 +583,13 @@ async function createPane(opts = {}) {
     fontFamily: theme.font?.family || 'Consolas, monospace',
     fontSize: theme.font?.size || 14,
     lineHeight: theme.font?.lineHeight || 1.15,
+    // A transparent window is composited, and Chromium draws text into a
+    // composited layer with grayscale antialiasing — never ClearType. Glass
+    // therefore renders thinner strokes than an opaque terminal does, whatever
+    // the font. Weight is the only lever left: 450 or 500 puts the mass back
+    // without touching the metrics, so nothing reflows.
+    fontWeight: theme.font?.weight ?? 'normal',
+    fontWeightBold: theme.font?.weightBold ?? 'bold',
     cursorStyle: theme.cursor?.style || 'bar',
     cursorBlink: theme.cursor?.blink !== false,
     // Windows Terminal parity: builtin box/block glyphs, auto-contrast text
