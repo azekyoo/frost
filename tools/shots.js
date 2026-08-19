@@ -166,7 +166,7 @@ function scenarioConfig(dir, scenario) {
         cornerRadius: 13,
         windowRadius: 12,
         startDir: DEMO,
-        font: { family: '"Cascadia Mono", Consolas, monospace', size: 14, lineHeight: 1.25 },
+        font: { family: '"Cascadia Mono", Consolas, monospace', size: 14, lineHeight: 1.15 },
         // last, so a scenario can override any of the above
         ...(scenario.theme || {})
       },

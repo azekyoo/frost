@@ -95,7 +95,7 @@ const DEFAULT_THEME = {
   font: {
     family: '"Cascadia Mono", Consolas, monospace',
     size: 14,
-    lineHeight: 1.25
+    lineHeight: 1.15
   },
   cursor: { style: 'bar', blink: true },
   // smoothMs: 0 restores xterm's instant row-at-a-time scroll. lines is rows per

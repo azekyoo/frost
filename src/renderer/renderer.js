@@ -174,7 +174,7 @@ function applyTheme(theme, css) {
     const term = node.term;
     term.options.fontFamily = theme.font?.family || 'Consolas, monospace';
     term.options.fontSize = theme.font?.size || 14;
-    term.options.lineHeight = theme.font?.lineHeight || 1.2;
+    term.options.lineHeight = theme.font?.lineHeight || 1.15;
     term.options.cursorStyle = theme.cursor?.style || 'bar';
     term.options.cursorBlink = theme.cursor?.blink !== false;
     term.options.minimumContrastRatio = theme.minContrast ?? 1;
@@ -580,7 +580,7 @@ async function createPane(opts = {}) {
     scrollback: 10000,
     fontFamily: theme.font?.family || 'Consolas, monospace',
     fontSize: theme.font?.size || 14,
-    lineHeight: theme.font?.lineHeight || 1.2,
+    lineHeight: theme.font?.lineHeight || 1.15,
     cursorStyle: theme.cursor?.style || 'bar',
     cursorBlink: theme.cursor?.blink !== false,
     // Windows Terminal parity: builtin box/block glyphs, auto-contrast text
@@ -2852,8 +2852,8 @@ function syncSettingsUI() {
   s.fontFamily.value = fam;
   s.fontSize.value = t.font?.size || 14;
   s.fontSizeVal.textContent = (t.font?.size || 14) + 'px';
-  s.lineHeight.value = t.font?.lineHeight ?? 1.25;
-  s.lineHeightVal.textContent = String(t.font?.lineHeight ?? 1.25);
+  s.lineHeight.value = t.font?.lineHeight ?? 1.15;
+  s.lineHeightVal.textContent = String(t.font?.lineHeight ?? 1.15);
   s.padding.value = t.padding ?? 14;
   s.paddingVal.textContent = (t.padding ?? 14) + 'px';
   s.radius.value = t.cornerRadius ?? 8;
