@@ -3,6 +3,44 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 0.4.2 — 2026-08-19
+
+### Changed
+
+- **Glass windows snap.** Glass ran a transparent window so the renderer could
+  blur the wallpaper itself. A transparent window is layered, never gets
+  `WS_THICKFRAME`, and Windows quietly withholds everything that hangs off it:
+  Aero Snap, Snap Layouts, the sizing border, the drop shadow, the minimise
+  animation. Dragging glass to a screen edge did nothing while every other
+  material snapped. The wallpaper Frost paints is opaque, so the window never
+  needed to be transparent — the only thing it bought was a corner radius of
+  our own choosing. The window is solid now and Windows snaps, rounds and
+  shadows it like any other. `windowRadius` is gone with it: the outline is
+  DWM's, and a setting that turns nothing is worse than no setting. Windows 10
+  has no window rounding to inherit, so glass is square-cornered there, as
+  acrylic already was.
+
+### Fixed
+
+- **Shell tabs survive a PowerShell update.** First-run detection wrote the path
+  `where.exe` reports first, which for a Store-installed PowerShell points inside
+  its versioned package directory. The next auto-update deletes that directory,
+  and every shell tab then died with "File not found" — leaving only the agent
+  tab, which needs no pty, and no obvious cause. Detection now prefers a path
+  that exists, and a spawn whose recorded shell has moved looks it up again
+  rather than failing the tab, which repairs configs already written.
+- **The close button is clickable again.** The invisible resize gutters were
+  stacked above the titlebar, and between the corner square and the top and
+  right edges they covered 54% of it — clicks there silently did nothing. The
+  caption buttons now sit above the gutters, the priority Windows gives them
+  over its own sizing border.
+- **No dark ring around the glass.** The window's edge line was a border, and a
+  border sits outside the padding box, which is exactly where `overflow: hidden`
+  clips the blurred backdrop — so the wallpaper stopped a pixel short and the
+  ring showed whatever was behind the page. Against the desktop that was
+  invisible; against a solid window it was a black frame. It is an overlay now,
+  drawn over the backdrop rather than beside it.
+
 ## 0.4.1 — 2026-08-18
 
 ### Fixed
