@@ -177,7 +177,13 @@ function whichExe(name) {
     const hits = r.stdout.trim().split(/\r?\n/);
     // prefer a real executable over a shim: `where code` lists an extensionless
     // launcher script that Node can't spawn without a shell
-    return hits.find((h) => /\.exe$/i.test(h)) || hits[0];
+    const exes = hits.filter((h) => /\.exe$/i.test(h));
+    // A Store app is listed twice: inside its versioned package directory and
+    // again as the execution alias. The alias tracks whichever version is
+    // current, which is what we would rather record — but it is a reparse
+    // point that ConPTY cannot start, so take the real file and let the spawn
+    // recover when an update moves it.
+    return exes.find((h) => fs.existsSync(h)) || exes[0] || hits[0];
   }
   return null;
 }
@@ -1042,7 +1048,15 @@ ipcMain.handle('pty:create', (event, { cols, rows, cwd, run, profileId }) => {
     (cwd && fs.existsSync(cwd) && cwd) ||
     (profile.cwd && fs.existsSync(profile.cwd) && profile.cwd) ||
     startDir();
-  const p = pty.spawn(profile.shell, args, {
+  // A profile written before a Store update points into a package directory
+  // that no longer exists. Rather than fail the tab with a file-not-found,
+  // look the same executable up again and use wherever it lives now.
+  let shell = profile.shell;
+  if (shell && path.isAbsolute(shell) && !fs.existsSync(shell)) {
+    const again = whichExe(path.basename(shell, '.exe'));
+    if (again) shell = again;
+  }
+  const p = pty.spawn(shell, args, {
     name: 'xterm-256color',
     cols: cols || 80,
     rows: rows || 24,
