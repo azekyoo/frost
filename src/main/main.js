@@ -366,9 +366,7 @@ function glassBounds(target) {
   if (!w) return { bounds: null, display: null };
   return {
     bounds: w.getContentBounds(),
-    display: screen.getDisplayMatching(w.getBounds()).bounds,
-    // a maximized window has no edges to drag, so the renderer parks its gutters
-    maximized: w.isMaximized()
+    display: screen.getDisplayMatching(w.getBounds()).bounds
   };
 }
 
@@ -1143,9 +1141,7 @@ ipcMain.handle('theme:get', (event) => ({
   css: readCss(),
   frameless: Boolean(windowOf(event)?.isFramelessMode),
   home: app.getPath('home'),
-  openDir: dirFromArgv(process.argv),
-  // a dev aid for tuning the invisible resize gutters: FROST_SHOW_RESIZE=1
-  showResize: process.env.FROST_SHOW_RESIZE === '1'
+  openDir: dirFromArgv(process.argv)
 }));
 
 // ---------- agent mode ----------
@@ -1790,58 +1786,6 @@ ipcMain.on('win:maximize', (event) => {
 });
 ipcMain.on('win:close', (event) => windowOf(event)?.close());
 ipcMain.on('win:new', () => createWindow());
-
-// Windows hands a frameless transparent window no sizing border worth the name
-// — a hairline at the very edge that is near impossible to aim at — so the
-// renderer draws its own gutters and drives the resize from here. The cursor is
-// read in screen coordinates, which keeps this immune to the window's zoom
-// factor and to the pointer leaving the window mid-drag.
-const EDGES = new Set(['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']);
-const resizes = new Map();
-
-function stopResize(w) {
-  const r = resizes.get(w);
-  if (!r) return;
-  clearInterval(r.timer);
-  resizes.delete(w);
-}
-
-ipcMain.on('win:resizeStart', (event, edge) => {
-  const w = windowOf(event);
-  if (!w || !EDGES.has(edge) || w.isMaximized() || !w.isResizable()) return;
-  stopResize(w);
-  const start = w.getBounds();
-  const origin = screen.getCursorScreenPoint();
-  const [minW, minH] = w.getMinimumSize();
-  const timer = setInterval(() => {
-    if (w.isDestroyed()) return stopResize(w);
-    const p = screen.getCursorScreenPoint();
-    const dx = p.x - origin.x;
-    const dy = p.y - origin.y;
-    const b = { ...start };
-    if (edge.includes('e')) b.width = Math.max(minW, start.width + dx);
-    if (edge.includes('s')) b.height = Math.max(minH, start.height + dy);
-    // Dragging a top or left edge moves the window's origin as well, and the
-    // opposite edge has to stay put once the size clamps at the minimum.
-    if (edge.includes('w')) {
-      b.width = Math.max(minW, start.width - dx);
-      b.x = start.x + start.width - b.width;
-    }
-    if (edge.includes('n')) {
-      b.height = Math.max(minH, start.height - dy);
-      b.y = start.y + start.height - b.height;
-    }
-    try {
-      w.setBounds(b);
-    } catch {}
-  }, 16);
-  resizes.set(w, { timer });
-});
-
-ipcMain.on('win:resizeEnd', (event) => {
-  const w = windowOf(event);
-  if (w) stopResize(w);
-});
 
 ipcMain.handle('theme:save', (_e, theme) => {
   fs.writeFileSync(THEME_FILE, JSON.stringify(theme, null, 2));

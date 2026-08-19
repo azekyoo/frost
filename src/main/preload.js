@@ -51,8 +51,6 @@ contextBridge.exposeInMainWorld('api', {
   winMinimize: () => ipcRenderer.send('win:minimize'),
   winMaximize: () => ipcRenderer.send('win:maximize'),
   winClose: () => ipcRenderer.send('win:close'),
-  winResizeStart: (edge) => ipcRenderer.send('win:resizeStart', edge),
-  winResizeEnd: () => ipcRenderer.send('win:resizeEnd'),
   winNew: () => ipcRenderer.send('win:new'),
   appRelaunch: () => ipcRenderer.send('app:relaunch'),
   onNeedsRestart: (cb) => ipcRenderer.on('app:needsRestart', (_e, m) => cb(m)),

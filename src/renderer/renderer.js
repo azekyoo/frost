@@ -2917,7 +2917,6 @@ for (const input of Object.values(s)) {
 function updateGlassPos({ bounds, display, maximized }) {
   if (bounds) glassState.bounds = bounds;
   if (display) glassState.display = display;
-  if (maximized !== undefined) document.body.classList.toggle('win-maximized', Boolean(maximized));
   const b = glassState.bounds;
   const d = glassState.display;
   if (!b || !d) return;
@@ -2992,45 +2991,12 @@ api.onThemeChanged(async ({ theme, css, error }) => {
 
 // ---------- boot ----------
 
-// ---------- window resize gutters ----------
-// The main process does the actual resizing off the cursor's screen position;
-// all that is needed here is which edge was grabbed and when the drag ended.
-for (const h of document.querySelectorAll('#resize-edges .rz')) {
-  h.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    // Capture keeps pointerup coming back to us when the cursor is flung well
-    // outside the window, which is exactly what a fast drag does.
-    try {
-      h.setPointerCapture(e.pointerId);
-    } catch {}
-    api.winResizeStart(h.dataset.edge);
-    const end = () => {
-      api.winResizeEnd();
-      h.removeEventListener('pointerup', end);
-      h.removeEventListener('pointercancel', end);
-      h.removeEventListener('lostpointercapture', end);
-      window.removeEventListener('blur', end);
-    };
-    h.addEventListener('pointerup', end);
-    h.addEventListener('pointercancel', end);
-    h.addEventListener('lostpointercapture', end);
-    window.addEventListener('blur', end);
-  });
-  // The top gutter overlaps the titlebar's drag region; a double-click there
-  // should still maximize, as it does on any other window.
-  h.addEventListener('dblclick', () => {
-    if (h.dataset.edge === 'n') api.winMaximize();
-  });
-}
-
 document.getElementById('btn-min').addEventListener('click', () => api.winMinimize());
 document.getElementById('btn-max').addEventListener('click', () => api.winMaximize());
 document.getElementById('btn-close').addEventListener('click', () => api.winClose());
 
 (async () => {
-  const { theme, css, frameless, home, openDir, showResize } = await api.themeGet();
-  if (showResize) document.body.classList.add('debug-resize');
+  const { theme, css, frameless, home, openDir } = await api.themeGet();
   state.home = home || null;
   glassState.active = Boolean(frameless);
   if (frameless) {
