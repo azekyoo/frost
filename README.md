@@ -251,6 +251,11 @@ for an installed build, in the repo's `config/` when running from source:
   written in: `powershell`, `bash`, or `none` (no agent auto-detect in that
   shell — agent tabs then use the first profile that supports it)
 
+  Every pane starts with `TERM=xterm-256color` and `COLORTERM=truecolor`, because
+  ConPTY passes neither and a program that finds no hint assumes sixteen colours —
+  gradients and blended colours come out flat. A profile's `env` is applied after,
+  so it can override or unset both.
+
   ![The shell profile menu, listing detected shells](assets/screenshot-profiles.png)
 
   `notify` controls background alerts:
