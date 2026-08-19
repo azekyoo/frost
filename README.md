@@ -168,6 +168,17 @@ Requires Node 22.12+, which is what Electron 43 asks for. Tagged builds come out
 of [CI](.github/workflows/release.yml) on `windows-latest`, so you only need this
 to hack on Frost.
 
+`npm install` runs `tools/patch-xterm-alpha.js`, which edits three expressions in
+`@xterm/addon-webgl`. Its WebGL renderer hard-codes a background rectangle's
+alpha to 1, and italic and dim are stored as flags on a cell's *background*
+field — so on the transparent theme `glass` needs, every italic or dim cell was
+painted into an opaque black box. PowerShell's inline prediction is dim and
+italic, so it was the visible symptom. Filed upstream as
+[xtermjs/xterm.js#6116](https://github.com/xtermjs/xterm.js/issues/6116); the
+script is idempotent and exits non-zero if a future release stops matching, so an
+upgrade fails loudly rather than quietly bringing the box back. Setting
+`"gpuRenderer": false` avoids it too — the DOM renderer never had the bug.
+
 ## Shortcuts
 
 `Ctrl+Shift+P` opens the command palette, which lists every command next to the

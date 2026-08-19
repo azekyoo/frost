@@ -5,6 +5,7 @@
   "description": "Fully customizable acrylic terminal for Windows with agent mode",
   "main": "src/main/main.js",
   "scripts": {
+    "postinstall": "node tools/patch-xterm-alpha.js",
     "start": "electron .",
     "shots": "electron tools/shots.js",
     "pack": "electron-builder --dir",
