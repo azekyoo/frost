@@ -167,7 +167,10 @@ function scenarioConfig(dir, scenario) {
         padding: 14,
         cornerRadius: 13,
         startDir: DEMO,
-        font: { family: '"Cascadia Mono", Consolas, monospace', size: 14, lineHeight: 1.15 },
+        // Spelled out rather than inherited: the theme written here replaces the
+        // default's font block wholesale, so a screenshot would silently keep 14px
+        // and normal weight while the app shipped something else.
+        font: { family: '"Cascadia Mono", Consolas, monospace', size: 16, weight: 350, lineHeight: 1.15 },
         // last, so a scenario can override any of the above
         ...(scenario.theme || {})
       },
