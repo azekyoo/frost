@@ -99,11 +99,14 @@ const DEFAULT_THEME = {
     // compare it against, for no reason they can name.
     size: 16,
     lineHeight: 1.15,
-    // Composited text gets grayscale antialiasing rather than ClearType, which
-    // thins every stroke; a hair above normal puts the mass back. 450 rather than
-    // 500 keeps a visible gap to bold, which is 700 — at 500 body text starts
-    // reading as bold itself.
-    weight: 450
+    // Below normal, which is not what a transparent window suggests. Composited
+    // text is antialiased in grayscale rather than with ClearType, and against a
+    // white foreground over a photograph those soft edges read as extra mass
+    // rather than as softness — 400 looks fat here where it looks ordinary on an
+    // opaque terminal. 350 is Cascadia's variable axis interpolating genuinely
+    // lighter (the axis runs 200–700), so the strokes thin without losing a pixel
+    // anywhere, and bold at 700 is still bold.
+    weight: 350
   },
   cursor: { style: 'bar', blink: true },
   // smoothMs: 0 restores xterm's instant row-at-a-time scroll. lines is rows per

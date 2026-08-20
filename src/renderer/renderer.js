@@ -175,7 +175,7 @@ function applyTheme(theme, css) {
     term.options.fontFamily = theme.font?.family || 'Consolas, monospace';
     term.options.fontSize = theme.font?.size || 16;
     term.options.lineHeight = theme.font?.lineHeight || 1.15;
-    term.options.fontWeight = theme.font?.weight ?? 450;
+    term.options.fontWeight = theme.font?.weight ?? 350;
     term.options.fontWeightBold = theme.font?.weightBold ?? 'bold';
     term.options.cursorStyle = theme.cursor?.style || 'bar';
     term.options.cursorBlink = theme.cursor?.blink !== false;
@@ -584,11 +584,11 @@ async function createPane(opts = {}) {
     fontSize: theme.font?.size || 16,
     lineHeight: theme.font?.lineHeight || 1.15,
     // A transparent window is composited, and Chromium draws text into a
-    // composited layer with grayscale antialiasing — never ClearType. Glass
-    // therefore renders thinner strokes than an opaque terminal does, whatever
-    // the font. Weight is the only lever left: 450 or 500 puts the mass back
-    // without touching the metrics, so nothing reflows.
-    fontWeight: theme.font?.weight ?? 450,
+    // composited layer with grayscale antialiasing — never ClearType. Over a
+    // photograph those soft edges read as mass, so the default sits below normal
+    // rather than above it. Weight leaves the metrics alone either way, so
+    // nothing reflows when it changes.
+    fontWeight: theme.font?.weight ?? 350,
     fontWeightBold: theme.font?.weightBold ?? 'bold',
     cursorStyle: theme.cursor?.style || 'bar',
     cursorBlink: theme.cursor?.blink !== false,

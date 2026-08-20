@@ -259,10 +259,12 @@ for an installed build, in the repo's `config/` when running from source:
   `font` takes `family`, `size` (CSS pixels — Windows Terminal counts in points,
   where its 12pt default is these 16), `lineHeight`, and `weight` / `weightBold`.
   Weight exists because a transparent window is composited, and composited text
-  gets grayscale antialiasing rather than ClearType, which thins every stroke —
-  the default 450 puts that back without closing the gap to bold. Cascadia ships
-  as a variable font, so any weight between 100 and 900 renders rather than being
-  synthesised. Nothing reflows: weight does not change the metrics.
+  gets grayscale antialiasing rather than ClearType. Against white text over a
+  photograph those soft edges read as extra mass, so the default is 350 — below
+  normal, where an opaque terminal would want 400. Cascadia ships as a variable
+  font whose weight axis runs 200 to 700, so anything in that range interpolates
+  rather than being synthesised. Nothing reflows: weight does not change the
+  metrics.
 
   ![The shell profile menu, listing detected shells](assets/screenshot-profiles.png)
 
