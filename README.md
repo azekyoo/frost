@@ -286,7 +286,8 @@ for an installed build, in the repo's `config/` when running from source:
 - `config/window.json` — window geometry and tab layout (managed automatically)
 - `config/zoom.json` — UI zoom per monitor, keyed by resolution and scale (managed automatically)
 
-The settings panel (`Ctrl+,`) edits `theme.json` for you.
+The settings panel (`Ctrl+,`) edits `theme.json` for you, including font size,
+weight and the default text colour.
 
 ## License
 

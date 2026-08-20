@@ -149,6 +149,18 @@
         </label>
 
         <label class="field">
+          <span>Font weight <em id="s-font-weight-val"></em></span>
+          <input type="range" id="s-font-weight" min="200" max="700" step="25"
+            title="Glass antialiases text in grayscale, which reads heavier than it is — below 400 is often cleaner here than on an opaque terminal. Bold is unaffected." />
+        </label>
+
+        <label class="field">
+          <span>Text colour</span>
+          <input type="color" id="s-fg"
+            title="The default foreground. Colours a program asks for by name are unaffected." />
+        </label>
+
+        <label class="field">
           <span>Line height <em id="s-line-height-val"></em></span>
           <input type="range" id="s-line-height" min="1" max="1.6" step="0.05"
             title="1.0 makes block and box-drawing art join up seamlessly; taller rows are easier to read" />

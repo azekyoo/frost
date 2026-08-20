@@ -2726,6 +2726,9 @@ const s = {
   fontFamily: document.getElementById('s-font-family'),
   fontSize: document.getElementById('s-font-size'),
   fontSizeVal: document.getElementById('s-font-size-val'),
+  fontWeight: document.getElementById('s-font-weight'),
+  fontWeightVal: document.getElementById('s-font-weight-val'),
+  fg: document.getElementById('s-fg'),
   lineHeight: document.getElementById('s-line-height'),
   lineHeightVal: document.getElementById('s-line-height-val'),
   padding: document.getElementById('s-padding'),
@@ -2861,6 +2864,9 @@ function syncSettingsUI() {
   s.fontFamily.value = fam;
   s.fontSize.value = t.font?.size || 16;
   s.fontSizeVal.textContent = (t.font?.size || 16) + 'px';
+  s.fontWeight.value = t.font?.weight ?? 350;
+  s.fontWeightVal.textContent = String(t.font?.weight ?? 350);
+  s.fg.value = t.terminal?.foreground || '#ffffff';
   s.lineHeight.value = t.font?.lineHeight ?? 1.15;
   s.lineHeightVal.textContent = String(t.font?.lineHeight ?? 1.15);
   s.padding.value = t.padding ?? 14;
@@ -2903,7 +2909,10 @@ function onSettingChange() {
   t.font = t.font || {};
   if (s.fontFamily.value) t.font.family = `"${s.fontFamily.value}", Consolas, monospace`;
   t.font.size = +s.fontSize.value;
+  t.font.weight = +s.fontWeight.value;
   t.font.lineHeight = +s.lineHeight.value;
+  t.terminal = t.terminal || {};
+  t.terminal.foreground = s.fg.value;
   t.padding = +s.padding.value;
   t.cornerRadius = +s.radius.value;
   t.cursor = t.cursor || {};
