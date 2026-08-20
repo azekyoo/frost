@@ -3,6 +3,40 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 0.4.4 — 2026-08-20
+
+### Changed
+
+- **Terminal text is bigger, whiter and thinner by default.** Three defaults,
+  one cause. A transparent window is composited, and Chromium antialiases text
+  in a composited layer in grayscale rather than with ClearType — so glass never
+  renders text the way an opaque terminal does, and defaults tuned against one
+  look wrong in the other. Size goes to 16px from 14: Windows Terminal counts in
+  points and defaults to 12pt, which *is* 16px, so a terminal claiming 14 was
+  simply smaller than the one it gets compared against. The foreground goes to
+  white from `#e4ebff` — at 92% brightness with a blue cast it read as grey next
+  to an opaque terminal's white. And weight goes to 350, *below* normal: over a
+  photograph those soft antialiased edges read as extra mass, so 400 looks fat
+  through glass where it looks ordinary on black. Bold is untouched at 700. An
+  existing `theme.json` carries explicit values and is unaffected; delete the
+  `font` block to take the new defaults.
+- **The screenshots sit on real desktops.** The README's wallpapers were
+  generated landscapes — a hedge against licensing a photograph in a public
+  repo, and they read as what they were. Glass is a claim about how the app sits
+  on your desktop, and a photograph makes that claim credible. Five, credited in
+  `assets/wallpapers/CREDITS.md`. The generated scenes stay: they need no asset,
+  so the renderer still works in a checkout without them.
+
+### Added
+
+- **Font weight and text colour in the settings panel.** Both were reachable
+  only by editing `theme.json`, which made them undiscoverable — and they are
+  the first two you reach for, because how heavy text looks through glass depends
+  on the wallpaper behind it. Tuning that by editing JSON is the wrong loop. The
+  weight slider spans 200 to 700, the bounds of Cascadia's variable axis, so it
+  cannot ask for a weight the font would have to synthesise. `font.weight` and
+  `font.weightBold` work in `theme.json` too.
+
 ## 0.4.3 — 2026-08-19
 
 ### Fixed
