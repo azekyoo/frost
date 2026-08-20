@@ -256,6 +256,14 @@ for an installed build, in the repo's `config/` when running from source:
   gradients and blended colours come out flat. A profile's `env` is applied after,
   so it can override or unset both.
 
+  `font` takes `family`, `size` (CSS pixels — Windows Terminal counts in points,
+  where its 12pt default is these 16), `lineHeight`, and `weight` / `weightBold`.
+  Weight exists because a transparent window is composited, and composited text
+  gets grayscale antialiasing rather than ClearType, which thins every stroke —
+  the default 450 puts that back without closing the gap to bold. Cascadia ships
+  as a variable font, so any weight between 100 and 900 renders rather than being
+  synthesised. Nothing reflows: weight does not change the metrics.
+
   ![The shell profile menu, listing detected shells](assets/screenshot-profiles.png)
 
   `notify` controls background alerts:

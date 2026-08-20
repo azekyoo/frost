@@ -173,9 +173,9 @@ function applyTheme(theme, css) {
   for (const node of panesByPty.values()) {
     const term = node.term;
     term.options.fontFamily = theme.font?.family || 'Consolas, monospace';
-    term.options.fontSize = theme.font?.size || 14;
+    term.options.fontSize = theme.font?.size || 16;
     term.options.lineHeight = theme.font?.lineHeight || 1.15;
-    term.options.fontWeight = theme.font?.weight ?? 'normal';
+    term.options.fontWeight = theme.font?.weight ?? 450;
     term.options.fontWeightBold = theme.font?.weightBold ?? 'bold';
     term.options.cursorStyle = theme.cursor?.style || 'bar';
     term.options.cursorBlink = theme.cursor?.blink !== false;
@@ -581,14 +581,14 @@ async function createPane(opts = {}) {
     allowTransparency: true,
     scrollback: 10000,
     fontFamily: theme.font?.family || 'Consolas, monospace',
-    fontSize: theme.font?.size || 14,
+    fontSize: theme.font?.size || 16,
     lineHeight: theme.font?.lineHeight || 1.15,
     // A transparent window is composited, and Chromium draws text into a
     // composited layer with grayscale antialiasing — never ClearType. Glass
     // therefore renders thinner strokes than an opaque terminal does, whatever
     // the font. Weight is the only lever left: 450 or 500 puts the mass back
     // without touching the metrics, so nothing reflows.
-    fontWeight: theme.font?.weight ?? 'normal',
+    fontWeight: theme.font?.weight ?? 450,
     fontWeightBold: theme.font?.weightBold ?? 'bold',
     cursorStyle: theme.cursor?.style || 'bar',
     cursorBlink: theme.cursor?.blink !== false,
@@ -2859,8 +2859,8 @@ function syncSettingsUI() {
     s.fontFamily.prepend(o);
   }
   s.fontFamily.value = fam;
-  s.fontSize.value = t.font?.size || 14;
-  s.fontSizeVal.textContent = (t.font?.size || 14) + 'px';
+  s.fontSize.value = t.font?.size || 16;
+  s.fontSizeVal.textContent = (t.font?.size || 16) + 'px';
   s.lineHeight.value = t.font?.lineHeight ?? 1.15;
   s.lineHeightVal.textContent = String(t.font?.lineHeight ?? 1.15);
   s.padding.value = t.padding ?? 14;

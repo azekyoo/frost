@@ -94,8 +94,16 @@ const DEFAULT_THEME = {
   cornerRadius: 13,
   font: {
     family: '"Cascadia Mono", Consolas, monospace',
-    size: 14,
-    lineHeight: 1.15
+    // 16px, not 14. Windows Terminal's font size is in points and its default is
+    // 12pt — 16px — so a terminal that says 14 looks smaller than the one people
+    // compare it against, for no reason they can name.
+    size: 16,
+    lineHeight: 1.15,
+    // Composited text gets grayscale antialiasing rather than ClearType, which
+    // thins every stroke; a hair above normal puts the mass back. 450 rather than
+    // 500 keeps a visible gap to bold, which is 700 — at 500 body text starts
+    // reading as bold itself.
+    weight: 450
   },
   cursor: { style: 'bar', blink: true },
   // smoothMs: 0 restores xterm's instant row-at-a-time scroll. lines is rows per
@@ -109,7 +117,10 @@ const DEFAULT_THEME = {
   // saturation and kept bright enough to hold its own against a light
   // wallpaper — vivid first, and recognisably the colour it is named after.
   terminal: {
-    foreground: '#e4ebff',
+    // White, not the palette's blue-tinted white. Glass shows the wallpaper
+    // through the text's own antialiasing, so a foreground that is 92% bright
+    // and slightly blue reads as grey next to an opaque terminal's white.
+    foreground: '#ffffff',
     cursor: '#ffffff',
     selectionBackground: 'rgba(255, 255, 255, 0.30)',
     black: '#12141f',
