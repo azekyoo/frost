@@ -1287,7 +1287,9 @@ ipcMain.on('tab:detach', (_e, payload) => {
 // nothing else. Kept between drags because creating one costs a visible frame.
 
 let ghostWin = null;
-let ghostKey = ''; // what it is currently showing, so it is not reloaded per move
+let ghostKey = ''; // which tab it is showing, so it is not reloaded per move
+let ghostReady = false; // its page has loaded and can be talked to
+let ghostMode = ''; // the outline it should be showing: reorder | detach | merge
 
 function ghostWindow() {
   if (ghostWin && !ghostWin.isDestroyed()) return ghostWin;
@@ -1316,11 +1318,28 @@ function ghostWindow() {
   // The drop must reach whatever is underneath, so the ghost is transparent to
   // the mouse as well as to the eye.
   ghostWin.setIgnoreMouseEvents(true);
+  // The outline is the one thing pushed into the page after it loads, and it is
+  // pushed from here as well: a mode that changed while the page was still
+  // loading would otherwise be lost, and asking during the load is what piles up
+  // did-stop-loading listeners — executeJavaScript parks each call behind one.
+  ghostWin.webContents.on('did-finish-load', () => {
+    ghostReady = true;
+    paintGhostMode();
+  });
   ghostWin.on('closed', () => {
     ghostWin = null;
     ghostKey = '';
+    ghostReady = false;
+    ghostMode = '';
   });
   return ghostWin;
+}
+
+function paintGhostMode() {
+  if (!ghostReady || !ghostWin || ghostWin.isDestroyed() || !ghostMode) return;
+  ghostWin.webContents
+    .executeJavaScript(`document.body.dataset.mode=${JSON.stringify(ghostMode)}`)
+    .catch(() => {}); // the window can go while the call is in flight
 }
 
 // The renderer reports the ghost's position in its own CSS pixels, as it does
@@ -1337,9 +1356,13 @@ ipcMain.on('ghost:show', (event, { label, mode, x, y, width, height, accent, fg,
   if (!from) return;
   const w = ghostWindow();
   const pt = toScreen(from, x, y);
-  const key = [label, mode, accent, fg, bg, font].join('|');
+  ghostMode = mode || 'reorder';
+  // The label and the colours are in the URL, so they only cost a load when the
+  // tab being dragged is a different one from last time
+  const key = [label, accent, fg, bg, font].join('|');
   if (key !== ghostKey) {
     ghostKey = key;
+    ghostReady = false;
     const params = new URLSearchParams({
       label: String(label || '').slice(0, 80),
       mode: mode || 'reorder',
@@ -1348,7 +1371,13 @@ ipcMain.on('ghost:show', (event, { label, mode, x, y, width, height, accent, fg,
       bg: bg || '',
       font: String(font || '').slice(0, 120)
     });
-    w.loadFile(path.join(__dirname, '..', 'renderer', 'dragghost.html'), { search: params.toString() });
+    w.loadFile(path.join(__dirname, '..', 'renderer', 'dragghost.html'), {
+      search: params.toString()
+    }).catch(() => {});
+  } else {
+    // Same tab as last drag, so the page is still the right one — only the
+    // outline may have moved on since
+    paintGhostMode();
   }
   w.setBounds({
     x: pt.x,
@@ -1365,9 +1394,12 @@ ipcMain.on('ghost:move', (event, { x, y, mode }) => {
   const pt = toScreen(from, x, y);
   const b = ghostWin.getBounds();
   ghostWin.setBounds({ x: pt.x, y: pt.y, width: b.width, height: b.height });
-  // Cheap enough to send on every move, and it is the one thing that has to keep
-  // up with the pointer: the outline says what letting go would do.
-  if (mode) ghostWin.webContents.executeJavaScript(`document.body.dataset.mode=${JSON.stringify(mode)}`).catch(() => {});
+  // Moving is every mouse move; repainting is only when what the drop would do
+  // actually changes, which is a handful of times per drag at most.
+  if (mode && mode !== ghostMode) {
+    ghostMode = mode;
+    paintGhostMode();
+  }
 });
 
 ipcMain.on('ghost:hide', () => {
