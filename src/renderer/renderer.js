@@ -1059,10 +1059,11 @@ el.tabstrip.addEventListener(
 // strip is the app's own chrome, and native drag brings a ghost image, a
 // drop-effect cursor and no say over either.
 //
-// What follows the cursor is a copy of the tab, not the tab: the strip clips
-// vertically (it scrolls sideways), so a real tab dragged downwards would be cut
-// off at exactly the moment the gesture stops being a reorder. The tab left
-// behind stays as a dimmed placeholder showing where it would land.
+// What follows the cursor is a copy of the tab drawn in a window of its own,
+// asked for over IPC — not an element in this page. A page cannot paint outside
+// its window, so an in-page copy vanished at the window edge, which is precisely
+// where dragging a tab out becomes interesting. The tab left behind stays as a
+// dimmed placeholder showing where it would land if the drag ended here.
 
 const DRAG_SLOP = 5; // enough that a click with a shaky hand is still a click
 const DETACH_DISTANCE = 56; // below the strip: far enough not to be a wobble
@@ -1071,7 +1072,9 @@ const DROP_PROBE_MS = 80; // how often to ask main what is under the pointer
 const tabDrag = {
   tab: null,
   el: null,
-  ghost: null,
+  ghost: false, // whether the overlay window is currently showing
+  width: 0, // the dragged tab's size, so the copy matches it
+  height: 0,
   grabX: 0, // where in the tab it was grabbed, so the copy sits under the cursor
   grabY: 0,
   startX: 0,
@@ -1098,6 +1101,8 @@ function beginTabDrag(ev, tab) {
   tabDrag.el = node;
   tabDrag.grabX = ev.clientX - r.left;
   tabDrag.grabY = ev.clientY - r.top;
+  tabDrag.width = r.width;
+  tabDrag.height = r.height;
   tabDrag.startX = ev.clientX;
   tabDrag.startY = ev.clientY;
   tabDrag.live = false;
@@ -1111,29 +1116,54 @@ function beginTabDrag(ev, tab) {
   window.addEventListener('mouseup', endTabDrag, { once: true });
 }
 
-function makeDragGhost(tab, node) {
-  const r = node.getBoundingClientRect();
-  const g = document.createElement('div');
-  g.className = 'tab tab-ghost active';
-  const title = document.createElement('span');
-  title.className = 'title';
-  title.textContent = tabLabel(tab);
-  g.appendChild(title);
-  g.style.width = r.width + 'px';
-  g.style.height = r.height + 'px';
-  document.body.appendChild(g);
-  return g;
+// The overlay is told the colours rather than reading the theme itself: it is a
+// separate window with no idea what this one looks like, and a tab that does not
+// match the strip it came from reads as a different object.
+function ghostPaint() {
+  const t = state.theme || {};
+  return {
+    accent: t.accent || '#80a8ff',
+    fg: t.terminal?.foreground || '#ffffff',
+    bg: t.terminal?.background || '#24262e',
+    font: t.font?.family || ''
+  };
 }
 
-function moveDragGhost(ev) {
+function showDragGhost(ev) {
+  const d = tabDrag;
+  api.ghostShow({
+    label: tabLabel(d.tab),
+    mode: d.mode,
+    x: ev.clientX - d.grabX,
+    y: ev.clientY - d.grabY,
+    width: d.width,
+    height: d.height,
+    ...ghostPaint()
+  });
+  d.ghost = true;
+}
+
+// What the drag means right now. Another window under the pointer wins over
+// everything: its tab strip sits at the same height as this window's, so height
+// alone would call aiming at it a reorder — which is what it did, and dropping a
+// tab on another window's tabs did nothing. Height only chooses between
+// reordering here and opening a window of its own.
+function dragModeFor(y) {
+  const d = tabDrag;
+  if (d.tab?.kind === 'agents') return 'reorder'; // one per app, nowhere to go
+  if (d.target) return 'merge';
+  const strip = el.tabstrip.getBoundingClientRect();
+  return y > strip.bottom + DETACH_DISTANCE ? 'detach' : 'reorder';
+}
+
+// Position and outline travel together: both are what the copy is saying.
+function moveDragGhost() {
   const d = tabDrag;
   if (!d.ghost) return;
-  d.ghost.style.left = Math.round(ev.clientX - d.grabX) + 'px';
-  d.ghost.style.top = Math.round(ev.clientY - d.grabY) + 'px';
-  d.ghost.classList.toggle('detaching', d.mode === 'detach');
-  d.ghost.classList.toggle('merging', d.mode === 'merge');
-  d.ghost.title = d.mode === 'merge' ? 'Drop to move it into the other window' : '';
+  api.ghostMove({ x: d.lastX - d.grabX, y: d.lastY - d.grabY, mode: d.mode });
 }
+
+const paintDragGhost = moveDragGhost;
 
 // Only main can say what is under the pointer: a window knows nothing about the
 // others, and the one being dropped onto is a different process, which never
@@ -1145,7 +1175,7 @@ function moveDragGhost(ev) {
 // label, not the decision.
 function startDropProbe() {
   clearInterval(tabDrag.timer);
-  tabDrag.timer = setInterval(() => {
+  const probe = () => {
     const d = tabDrag;
     if (!d.live || !d.tab) return;
     const session = d.session;
@@ -1153,14 +1183,15 @@ function startDropProbe() {
       // The drop already happened, or another drag started: this answer is stale
       if (tabDrag.session !== session || !tabDrag.live) return;
       tabDrag.target = hit || null;
-      if (tabDrag.mode === 'reorder') return;
-      tabDrag.mode = hit ? 'merge' : 'detach';
-      if (tabDrag.ghost) {
-        tabDrag.ghost.classList.toggle('detaching', tabDrag.mode === 'detach');
-        tabDrag.ghost.classList.toggle('merging', tabDrag.mode === 'merge');
-      }
+      tabDrag.mode = dragModeFor(tabDrag.lastY);
+      paintDragGhost();
     });
-  }, DROP_PROBE_MS);
+  };
+  // Once immediately: until the first answer arrives, a pointer over another
+  // window's strip looks like one over this one, and the tabs here would shuffle
+  // for as long as that took.
+  probe();
+  tabDrag.timer = setInterval(probe, DROP_PROBE_MS);
 }
 
 function onTabDragMove(ev) {
@@ -1170,23 +1201,17 @@ function onTabDragMove(ev) {
     if (Math.abs(ev.clientX - d.startX) < DRAG_SLOP && Math.abs(ev.clientY - d.startY) < DRAG_SLOP) return;
     d.live = true;
     d.el.classList.add('dragging');
-    d.ghost = makeDragGhost(d.tab, d.el);
+    d.lastX = ev.clientX;
+    d.lastY = ev.clientY;
+    d.mode = dragModeFor(ev.clientY);
+    showDragGhost(ev);
     startDropProbe();
   }
   d.lastX = ev.clientX;
   d.lastY = ev.clientY;
 
-  const strip = el.tabstrip.getBoundingClientRect();
-  // An agent tab is one per app, so there is nowhere else for it to go
-  const movable = d.tab.kind !== 'agents';
-  const offStrip = movable && ev.clientY > strip.bottom + DETACH_DISTANCE;
-  if (offStrip) {
-    d.mode = d.target ? 'merge' : 'detach';
-  } else {
-    d.mode = 'reorder';
-    d.target = null;
-  }
-  moveDragGhost(ev);
+  d.mode = dragModeFor(ev.clientY);
+  moveDragGhost();
   if (d.mode !== 'reorder') return;
 
   // Reorder against whichever tab the pointer is over, moving the element
@@ -1210,28 +1235,33 @@ async function endTabDrag(ev) {
   window.removeEventListener('mousemove', onTabDragMove);
   clearInterval(tabDrag.timer);
   tabDrag.timer = null;
-  const { tab, el: node, ghost, live, moved, mode } = tabDrag;
+  const { tab, el: node, ghost, live, moved } = tabDrag;
   node?.classList.remove('dragging');
-  ghost?.remove();
+  if (ghost) api.ghostHide();
   tabDrag.tab = null;
   tabDrag.el = null;
-  tabDrag.ghost = null;
+  tabDrag.ghost = false;
   tabDrag.target = null;
   tabDrag.session++; // any drop-target answer still in flight is now stale
   if (!live) return;
-  if (mode === 'reorder') {
-    if (moved) {
-      renderTabs(); // titles and the active marker, now in the new order
-      saveSession();
-    }
+  const settle = () => {
+    if (!moved) return;
+    renderTabs(); // titles and the active marker, now in the new order
+    saveSession();
+  };
+  // Asked once more here rather than trusting the last answer from the drag:
+  // those are throttled, so the final position — the only one that decides
+  // anything — may never have been asked about. Asked even when the pointer is
+  // at strip height, because another window's strip is at strip height too.
+  const hit = tab.kind === 'agents' ? null : await api.tabDropTarget({ x: ev.clientX, y: ev.clientY });
+  if (hit) {
+    moveTabToWindow(tab, hit);
     return;
   }
-  // Where it actually landed, asked here rather than taken from the last
-  // answer during the drag: those are throttled, so the final position — the
-  // only one that decides anything — may never have been asked about.
-  const hit = await api.tabDropTarget({ x: ev.clientX, y: ev.clientY });
-  if (hit) moveTabToWindow(tab, hit);
-  else detachTab(tab);
+  const strip = el.tabstrip.getBoundingClientRect();
+  const offStrip = tab.kind !== 'agents' && ev.clientY > strip.bottom + DETACH_DISTANCE;
+  if (offStrip) detachTab(tab);
+  else settle();
 }
 
 // ---------- renaming a tab ----------

@@ -68,8 +68,16 @@ function connect(url) {
   };
 }
 
+// The copy of the tab that follows the cursor is a window of its own, so it
+// appears here too — it is not a Frost window and is never counted as one.
+const isGhost = (t) => /dragghost\.html/.test(t.url || '');
+
+async function ghostTarget() {
+  return (await targets()).find((t) => t.type === 'page' && isGhost(t)) || null;
+}
+
 async function pageClients() {
-  const list = (await targets()).filter((t) => t.type === 'page' && t.webSocketDebuggerUrl);
+  const list = (await targets()).filter((t) => t.type === 'page' && t.webSocketDebuggerUrl && !isGhost(t));
   const out = [];
   for (const t of list) {
     const c = connect(t.webSocketDebuggerUrl);
@@ -177,12 +185,13 @@ async function drag(c, from, to, { steps = 8, midway = null, hold = 0 } = {}) {
     let ghostSeen = null;
     await drag(w1, first, { x: third.x, y: third.y }, {
       midway: async () => {
-        ghostSeen = await w1.eval(`(() => {
-          const g = document.querySelector('.tab-ghost');
-          if (!g) return null;
-          const r = g.getBoundingClientRect();
-          return { text: g.textContent, x: Math.round(r.left), placeholder: Boolean(document.querySelector('.tab.dragging')) };
-        })()`);
+        const ghost = await ghostTarget();
+        ghostSeen = ghost
+          ? {
+              title: ghost.title,
+              placeholder: await w1.eval('Boolean(document.querySelector(".tab.dragging"))')
+            }
+          : null;
       }
     });
     await sleep(400);
@@ -196,7 +205,7 @@ async function drag(c, from, to, { steps = 8, midway = null, hold = 0 } = {}) {
     check('the strip and the tab list agree afterwards', domOrder.join(',') === after.join(','), domOrder.join(','));
     check('a copy of the tab follows the cursor', Boolean(ghostSeen), JSON.stringify(ghostSeen));
     check('and the tab it came from is left as a placeholder', ghostSeen?.placeholder === true);
-    check('the copy is gone once dropped', (await w1.eval('!document.querySelector(".tab-ghost")')) === true);
+    check('no placeholder is left once dropped', (await w1.eval('!document.querySelector(".tab.dragging")')) === true);
 
     // --- rename ----------------------------------------------------------
     await w1.eval(`(() => {
@@ -289,15 +298,21 @@ async function drag(c, from, to, { steps = 8, midway = null, hold = 0 } = {}) {
         hold: 500,
         midway: async () => {
           await sleep(200); // the drop-target answer arrives over IPC
-          mergeGhost = await w1.eval(
-            `Boolean(document.querySelector('.tab-ghost.merging'))`
-          );
+          const ghost = await ghostTarget();
+          mergeGhost = ghost
+            ? await (async () => {
+                const c = connect(ghost.webSocketDebuggerUrl);
+                await c.ready;
+                await c.send('Runtime.enable');
+                return c.eval(`document.body.dataset.mode`);
+              })()
+            : null;
         }
       }
     );
     await sleep(3000);
 
-    check('the copy says it will merge while over the other window', mergeGhost === true);
+    check('the copy says it will merge while over the other window', mergeGhost === 'merge', String(mergeGhost));
     const now1 = await w1.eval('state.tabs.length');
     const now2 = await w2.eval('state.tabs.length');
     check('the tab left the window it was dragged from', now1 === before1 - 1, `${before1} -> ${now1}`);
@@ -308,6 +323,36 @@ async function drag(c, from, to, { steps = 8, midway = null, hold = 0 } = {}) {
     await sleep(2500);
     const mergedText = await w2.eval(bufferText);
     check('its shell survived the second move too', mergedText.includes('MERGED_ALIVE'));
+
+    // --- dropped on the other window's tab strip -------------------------
+    // The aim people actually take: its tabs, not its terminal. That point sits
+    // at the same height as this window's own strip, which is why height cannot
+    // be what decides between reordering here and handing the tab over.
+    // In window 1's coordinates, where window 2's own strip is: the windows are
+    // offset from each other, so window 1's strip height is above window 2
+    // altogether and would be over nothing.
+    const originY1 = await w1.eval('window.screenY');
+    const stripScreenY = await w2.eval('window.screenY + el.tabstrip.getBoundingClientRect().top + 12');
+    const stripY = stripScreenY - originY1;
+    // A spare tab first: this window is down to its last one, and handing that
+    // one over closes the window — which would leave nothing to ask afterwards.
+    await w1.eval('(async () => { await newTab(); return state.tabs.length })()');
+    await sleep(2000);
+    const strip1 = await w1.eval('state.tabs.length');
+    const strip2 = await w2.eval('state.tabs.length');
+    const aiming = await w1.eval(tabRect(0));
+    await drag(w1, aiming, { x: dropX, y: stripY }, { hold: 500 });
+    await sleep(3000);
+    const stripNow1 = await w1.eval('state.tabs.length');
+    const stripNow2 = await w2.eval('state.tabs.length');
+    check(
+      "a tab dropped on the other window's tabs is handed over",
+      stripNow2 === strip2 + 1,
+      `${strip2} -> ${stripNow2}`
+    );
+    check('and leaves the window it came from', stripNow1 === strip1 - 1, `${strip1} -> ${stripNow1}`);
+    const stillTwo = (await pageClients()).length;
+    check('still two windows', stillTwo === 2, `${stillTwo} window(s)`);
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

@@ -45,8 +45,10 @@ running and supervising Claude Code agents with live status and diff watching.
   still wins. Splits and `Ctrl+Shift+D` inherit the current directory
 - **Tabs you can rearrange** — drag one along the strip to reorder it, drop it
   on another Frost window to hand it over, or let go anywhere else to open it in
-  a window of its own. A copy of the tab follows the cursor and says which of the
-  three it will be. The shells are not restarted for any of it, so whatever was
+  a window of its own. A copy of the tab follows the cursor the whole way — over
+  the desktop and over other windows, since it is a tiny window of its own rather
+  than something drawn inside the one you started in — outlined for which of the
+  three letting go would be. The shells are not restarted for any of it, so whatever was
   running keeps running and the scrollback comes with it. Double-click a tab to
   name it — worth it the moment two tabs sit in the same repo — and the name
   sticks through a restart, clears back to `directory · branch` when you empty

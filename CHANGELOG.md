@@ -7,6 +7,18 @@ Notable changes per release. Dates are release dates; versions follow
 
 ### Added
 
+- **The tab being dragged follows the cursor across the desktop.** It was drawn
+  in the window it came from, and a page cannot paint outside its own window — so
+  the moment it crossed the window edge it vanished, which is exactly where
+  dragging a tab out starts to matter: the gesture worked, but you were aiming
+  blind. It is now a window of its own — frameless, transparent, click-through,
+  never focused, above everything — so it stays under the cursor over the desktop
+  and over other Frost windows, and it still carries the outline that says what
+  letting go would do. One such window is kept for the whole session rather than
+  made per drag, because creating one costs a visible frame; it is destroyed with
+  the last real window, since a window nobody can see would otherwise keep Frost
+  from ever quitting.
+
 - **A tab can be dropped on another window, and the drag is visible.** Two
   things the first cut got wrong. The tab jumped to its new place the instant the
   pointer crossed another tab, with nothing following the cursor — so a reorder

@@ -403,7 +403,11 @@ function broadcast(channel, payload) {
 const windowOf = (event) => BrowserWindow.fromWebContents(event.sender);
 
 function focusedWindow() {
-  return BrowserWindow.getFocusedWindow() || (win && !win.isDestroyed() ? win : liveWindows()[0]) || null;
+  // windows.has: the drag ghost is a BrowserWindow of its own and is never one
+  // of these, however Windows happens to have ordered them
+  const active = BrowserWindow.getFocusedWindow();
+  if (active && windows.has(active)) return active;
+  return (win && !win.isDestroyed() ? win : liveWindows()[0]) || null;
 }
 
 const anyWindowFocused = () => liveWindows().some((w) => w.isFocused());
@@ -848,6 +852,14 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
     lastBounds.delete(w.frostId);
     pendingLayouts.delete(w.frostId);
     if (agentWindow === w) agentWindow = null;
+    // A window closing while one of its tabs was mid-drag would leave the copy
+    // hanging over the desktop with nothing driving it.
+    if (ghostWin && !ghostWin.isDestroyed()) {
+      if (liveWindows().length) ghostWin.hide();
+      // Otherwise it would be the one window still open, and window-all-closed
+      // — which is what quits Frost — would never fire.
+      else ghostWin.destroy();
+    }
     // hand primary status on, so the last window standing still saves its state
     if (win === w) win = liveWindows()[0] || null;
     // Closing one of several windows should drop it from the saved set; closing
@@ -1264,6 +1276,102 @@ ipcMain.on('tab:detach', (_e, payload) => {
   if (!payload) return;
   const w = createWindow();
   pendingAdoptions.set(w.frostId, payload);
+});
+
+// ---------- the tab that follows the cursor ----------
+// A page cannot draw outside its own window, so the tab being dragged cannot be
+// a element in the window it came from: the moment it crosses the window edge —
+// which is the whole point of dragging one out — it would be clipped away. It is
+// therefore a window of its own: frameless, transparent, click-through, above
+// everything, and never focused, so it is a picture following the cursor and
+// nothing else. Kept between drags because creating one costs a visible frame.
+
+let ghostWin = null;
+let ghostKey = ''; // what it is currently showing, so it is not reloaded per move
+
+function ghostWindow() {
+  if (ghostWin && !ghostWin.isDestroyed()) return ghostWin;
+  ghostWin = new BrowserWindow({
+    width: 180,
+    height: 34,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    // Never takes focus, never appears in the taskbar or in Alt+Tab: it is a
+    // cursor decoration, and the window being dragged from must stay active.
+    focusable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    thickFrame: false,
+    alwaysOnTop: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false }
+  });
+  // 'screen-saver' rather than plain always-on-top: it has to sit above other
+  // Frost windows, which are themselves ordinary top-level windows.
+  ghostWin.setAlwaysOnTop(true, 'screen-saver');
+  // The drop must reach whatever is underneath, so the ghost is transparent to
+  // the mouse as well as to the eye.
+  ghostWin.setIgnoreMouseEvents(true);
+  ghostWin.on('closed', () => {
+    ghostWin = null;
+    ghostKey = '';
+  });
+  return ghostWin;
+}
+
+// The renderer reports the ghost's position in its own CSS pixels, as it does
+// for a drop target: the conversion needs the window's zoom factor and content
+// origin, and main is what has both.
+function toScreen(from, x, y) {
+  const zoom = from.webContents.getZoomFactor() || 1;
+  const origin = from.getContentBounds();
+  return { x: Math.round(origin.x + x * zoom), y: Math.round(origin.y + y * zoom), zoom };
+}
+
+ipcMain.on('ghost:show', (event, { label, mode, x, y, width, height, accent, fg, bg, font }) => {
+  const from = windowOf(event);
+  if (!from) return;
+  const w = ghostWindow();
+  const pt = toScreen(from, x, y);
+  const key = [label, mode, accent, fg, bg, font].join('|');
+  if (key !== ghostKey) {
+    ghostKey = key;
+    const params = new URLSearchParams({
+      label: String(label || '').slice(0, 80),
+      mode: mode || 'reorder',
+      accent: accent || '',
+      fg: fg || '',
+      bg: bg || '',
+      font: String(font || '').slice(0, 120)
+    });
+    w.loadFile(path.join(__dirname, '..', 'renderer', 'dragghost.html'), { search: params.toString() });
+  }
+  w.setBounds({
+    x: pt.x,
+    y: pt.y,
+    width: Math.max(60, Math.round((width || 160) * pt.zoom)),
+    height: Math.max(20, Math.round((height || 34) * pt.zoom))
+  });
+  if (!w.isVisible()) w.showInactive(); // showInactive: the drag keeps its window
+});
+
+ipcMain.on('ghost:move', (event, { x, y, mode }) => {
+  const from = windowOf(event);
+  if (!from || !ghostWin || ghostWin.isDestroyed() || !ghostWin.isVisible()) return;
+  const pt = toScreen(from, x, y);
+  const b = ghostWin.getBounds();
+  ghostWin.setBounds({ x: pt.x, y: pt.y, width: b.width, height: b.height });
+  // Cheap enough to send on every move, and it is the one thing that has to keep
+  // up with the pointer: the outline says what letting go would do.
+  if (mode) ghostWin.webContents.executeJavaScript(`document.body.dataset.mode=${JSON.stringify(mode)}`).catch(() => {});
+});
+
+ipcMain.on('ghost:hide', () => {
+  if (ghostWin && !ghostWin.isDestroyed() && ghostWin.isVisible()) ghostWin.hide();
 });
 
 // Which window a tab would land in if it were dropped now. Only main can answer
@@ -2391,6 +2499,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   clearInterval(updateTimer);
+  if (ghostWin && !ghostWin.isDestroyed()) ghostWin.destroy();
   flushWindowState();
   quitting = true; // after the flush: closing windows must not rewrite it
 });

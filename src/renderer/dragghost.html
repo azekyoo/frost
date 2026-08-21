@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- The tab that follows the cursor while one is being dragged. It lives in a
+         window of its own because a page cannot draw outside the window it is in,
+         and this one has to cross the desktop and pass over other Frost windows.
+         Everything about it comes in as query parameters, since the window is
+         reused for every drag and has no script channel of its own. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+      }
+
+      #tab {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        height: 100%;
+        padding: 0 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        color: #fff;
+        background: #24262e;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.42);
+      }
+
+      #label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Far from any window: letting go opens it in one of its own */
+      body[data-mode='detach'] #tab {
+        outline: 1px dashed var(--accent);
+        outline-offset: -2px;
+      }
+
+      /* Over another Frost window, which will take the tab */
+      body[data-mode='merge'] #tab {
+        outline: 1px solid var(--accent);
+        outline-offset: -2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="tab"><span id="label"></span></div>
+    <script>
+      // Only ever read as text or assigned to a style property — never inserted
+      // as markup — so a title from terminal output cannot become anything else.
+      const q = new URLSearchParams(location.search);
+      const hex = (value, fallback) => (/^#[0-9a-fA-F]{3,8}$/.test(value || '') ? value : fallback);
+      const tab = document.getElementById('tab');
+      document.getElementById('label').textContent = q.get('label') || '';
+      document.documentElement.style.setProperty('--accent', hex(q.get('accent'), '#80a8ff'));
+      tab.style.color = hex(q.get('fg'), '#ffffff');
+      tab.style.background = hex(q.get('bg'), '#24262e');
+      if (q.get('font')) tab.style.fontFamily = q.get('font');
+      document.body.dataset.mode = q.get('mode') || 'reorder';
+    </script>
+  </body>
+</html>

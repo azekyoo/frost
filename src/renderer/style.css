@@ -222,38 +222,6 @@ body.glass #glass-tint {
   opacity: 0;
 }
 
-/* The copy that follows the cursor. Fixed rather than inside the strip, which
-   clips vertically — a real tab dragged downwards would be cut off at exactly
-   the point the gesture stops being a reorder. */
-.tab-ghost {
-  position: fixed;
-  z-index: 60;
-  pointer-events: none;
-  background: var(--surface-3);
-  color: var(--fg);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.42);
-  min-width: 0;
-}
-
-.tab-ghost::after {
-  content: none; /* the active tab's underline means nothing here */
-}
-
-/* Far enough from any window that letting go opens it in one of its own */
-.tab-ghost.detaching {
-  background: color-mix(in srgb, var(--accent) 22%, var(--surface-2));
-  outline: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
-  outline-offset: -2px;
-}
-
-/* Over another Frost window, which will take the tab. Solid, not dashed: this
-   one has somewhere definite to land. */
-.tab-ghost.merging {
-  background: color-mix(in srgb, var(--accent) 34%, var(--surface-2));
-  outline: 1px solid var(--accent);
-  outline-offset: -2px;
-}
-
 /* Sits exactly where the title was, so renaming does not resize the tab */
 .tab-rename {
   flex: 1 1 auto;
