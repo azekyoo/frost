@@ -211,21 +211,46 @@ body.glass #glass-tint {
   line-height: 34px;
 }
 
-/* Being dragged: lifted off the strip rather than merely highlighted, so the
-   tab under the cursor is unmistakably the one that will land. */
+/* The tab left in the strip while its copy is under the cursor: a hole in the
+   order rather than a tab, since the real one is visibly elsewhere. */
 .tab.dragging {
-  background: var(--surface-3);
-  color: var(--fg);
+  opacity: 0.32;
   cursor: grabbing;
-  z-index: 2;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
-/* Pulled far enough below the strip that letting go opens it in a window of its
-   own. The outline says "this leaves here" before the click is committed. */
-.tab.detaching {
+.tab.dragging .close {
+  opacity: 0;
+}
+
+/* The copy that follows the cursor. Fixed rather than inside the strip, which
+   clips vertically — a real tab dragged downwards would be cut off at exactly
+   the point the gesture stops being a reorder. */
+.tab-ghost {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  background: var(--surface-3);
+  color: var(--fg);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.42);
+  min-width: 0;
+}
+
+.tab-ghost::after {
+  content: none; /* the active tab's underline means nothing here */
+}
+
+/* Far enough from any window that letting go opens it in one of its own */
+.tab-ghost.detaching {
   background: color-mix(in srgb, var(--accent) 22%, var(--surface-2));
   outline: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: -2px;
+}
+
+/* Over another Frost window, which will take the tab. Solid, not dashed: this
+   one has somewhere definite to land. */
+.tab-ghost.merging {
+  background: color-mix(in srgb, var(--accent) 34%, var(--surface-2));
+  outline: 1px solid var(--accent);
   outline-offset: -2px;
 }
 

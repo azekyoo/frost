@@ -7,6 +7,25 @@ Notable changes per release. Dates are release dates; versions follow
 
 ### Added
 
+- **A tab can be dropped on another window, and the drag is visible.** Two
+  things the first cut got wrong. The tab jumped to its new place the instant the
+  pointer crossed another tab, with nothing following the cursor — so a reorder
+  that had already happened looked like one that had not, and there was no way to
+  see what letting go would do. A copy of the tab now follows the cursor,
+  outlined for what the drop means, over a dimmed placeholder where it would
+  land; a copy rather than the tab itself because the strip scrolls sideways and
+  clips vertically, which would cut the tab off exactly when the gesture stops
+  being a reorder. And a tab dragged out could not be put back: dropping it on
+  another Frost window now hands it to that window, which is what every other
+  tabbed application does. Only main can work out which window is under the
+  pointer — the window being dropped onto is a different renderer and never sees
+  the drag, since the pointer stays captured by the window the gesture started
+  in — so it converts the point through the dragging window's zoom and content
+  origin and answers from the window list. It is asked on a timer while dragging,
+  which is what keeps the label right when the pointer is held still, and again
+  at the drop, which is what actually decides. Dropping on the window you started
+  from still means a window of its own, however far from the strip you are.
+
 - **Tabs move, reorder and take a name.** The strip was fixed: tabs opened in
   the order they were created and stayed in it, said `directory · branch` and
   nothing else, and could not leave the window they were born in — while

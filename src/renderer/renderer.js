@@ -1053,51 +1053,144 @@ el.tabstrip.addEventListener(
 );
 
 // ---------- dragging a tab ----------
-// Two gestures on one drag, because they are the same gesture until the pointer
-// leaves the strip: sideways reorders, and pulling the tab off the strip opens
-// it in a window of its own. Mouse events rather than HTML5 drag-and-drop —
-// the strip is the app's own chrome, and native drag brings a ghost image, a
+// One gesture, three outcomes, decided by where the pointer is: along the strip
+// reorders, over another Frost window hands the tab to it, anywhere else opens
+// it in a window of its own. Mouse events rather than HTML5 drag-and-drop — the
+// strip is the app's own chrome, and native drag brings a ghost image, a
 // drop-effect cursor and no say over either.
+//
+// What follows the cursor is a copy of the tab, not the tab: the strip clips
+// vertically (it scrolls sideways), so a real tab dragged downwards would be cut
+// off at exactly the moment the gesture stops being a reorder. The tab left
+// behind stays as a dimmed placeholder showing where it would land.
 
 const DRAG_SLOP = 5; // enough that a click with a shaky hand is still a click
 const DETACH_DISTANCE = 56; // below the strip: far enough not to be a wobble
+const DROP_PROBE_MS = 80; // how often to ask main what is under the pointer
 
-const tabDrag = { tab: null, el: null, x: 0, y: 0, moved: false, live: false, detach: false };
+const tabDrag = {
+  tab: null,
+  el: null,
+  ghost: null,
+  grabX: 0, // where in the tab it was grabbed, so the copy sits under the cursor
+  grabY: 0,
+  startX: 0,
+  startY: 0,
+  live: false,
+  moved: false,
+  mode: 'reorder', // reorder | detach | merge
+  target: null, // the window a merge would go to
+  session: 0, // a drop-target answer that arrives after the drop is discarded
+  lastX: 0, // where the pointer was last seen, for the probe that runs on a timer
+  lastY: 0,
+  timer: null
+};
 
 function tabElementOf(tab) {
   return [...el.tabstrip.children].find((n) => n.tabData === tab) || null;
 }
 
 function beginTabDrag(ev, tab) {
+  const node = tabElementOf(tab);
+  if (!node) return;
+  const r = node.getBoundingClientRect();
   tabDrag.tab = tab;
-  tabDrag.el = tabElementOf(tab) || ev.currentTarget;
-  tabDrag.x = ev.clientX;
-  tabDrag.y = ev.clientY;
-  tabDrag.moved = false;
+  tabDrag.el = node;
+  tabDrag.grabX = ev.clientX - r.left;
+  tabDrag.grabY = ev.clientY - r.top;
+  tabDrag.startX = ev.clientX;
+  tabDrag.startY = ev.clientY;
   tabDrag.live = false;
-  tabDrag.detach = false;
+  tabDrag.moved = false;
+  tabDrag.mode = 'reorder';
+  tabDrag.target = null;
+  tabDrag.session++;
+  tabDrag.lastX = ev.clientX;
+  tabDrag.lastY = ev.clientY;
   window.addEventListener('mousemove', onTabDragMove);
   window.addEventListener('mouseup', endTabDrag, { once: true });
+}
+
+function makeDragGhost(tab, node) {
+  const r = node.getBoundingClientRect();
+  const g = document.createElement('div');
+  g.className = 'tab tab-ghost active';
+  const title = document.createElement('span');
+  title.className = 'title';
+  title.textContent = tabLabel(tab);
+  g.appendChild(title);
+  g.style.width = r.width + 'px';
+  g.style.height = r.height + 'px';
+  document.body.appendChild(g);
+  return g;
+}
+
+function moveDragGhost(ev) {
+  const d = tabDrag;
+  if (!d.ghost) return;
+  d.ghost.style.left = Math.round(ev.clientX - d.grabX) + 'px';
+  d.ghost.style.top = Math.round(ev.clientY - d.grabY) + 'px';
+  d.ghost.classList.toggle('detaching', d.mode === 'detach');
+  d.ghost.classList.toggle('merging', d.mode === 'merge');
+  d.ghost.title = d.mode === 'merge' ? 'Drop to move it into the other window' : '';
+}
+
+// Only main can say what is under the pointer: a window knows nothing about the
+// others, and the one being dropped onto is a different process, which never
+// sees the drag — the pointer stays captured by the window it started in.
+//
+// On a timer rather than per mouse-move, because the answer decides what the
+// copy under the cursor says it will do, and a pointer held still over another
+// window still has to be told about it. The drop itself asks again: this is the
+// label, not the decision.
+function startDropProbe() {
+  clearInterval(tabDrag.timer);
+  tabDrag.timer = setInterval(() => {
+    const d = tabDrag;
+    if (!d.live || !d.tab) return;
+    const session = d.session;
+    api.tabDropTarget({ x: d.lastX, y: d.lastY }).then((hit) => {
+      // The drop already happened, or another drag started: this answer is stale
+      if (tabDrag.session !== session || !tabDrag.live) return;
+      tabDrag.target = hit || null;
+      if (tabDrag.mode === 'reorder') return;
+      tabDrag.mode = hit ? 'merge' : 'detach';
+      if (tabDrag.ghost) {
+        tabDrag.ghost.classList.toggle('detaching', tabDrag.mode === 'detach');
+        tabDrag.ghost.classList.toggle('merging', tabDrag.mode === 'merge');
+      }
+    });
+  }, DROP_PROBE_MS);
 }
 
 function onTabDragMove(ev) {
   const d = tabDrag;
   if (!d.tab) return;
   if (!d.live) {
-    if (Math.abs(ev.clientX - d.x) < DRAG_SLOP && Math.abs(ev.clientY - d.y) < DRAG_SLOP) return;
+    if (Math.abs(ev.clientX - d.startX) < DRAG_SLOP && Math.abs(ev.clientY - d.startY) < DRAG_SLOP) return;
     d.live = true;
     d.el.classList.add('dragging');
+    d.ghost = makeDragGhost(d.tab, d.el);
+    startDropProbe();
   }
-  const strip = el.tabstrip.getBoundingClientRect();
-  // An agent tab is one per app, so there is nothing to move it into
-  const detachable = d.tab.kind !== 'agents' && state.tabs.length > 1;
-  d.detach = detachable && ev.clientY > strip.bottom + DETACH_DISTANCE;
-  d.el.classList.toggle('detaching', d.detach);
-  if (d.detach) return;
+  d.lastX = ev.clientX;
+  d.lastY = ev.clientY;
 
-  // Reorder against whichever tab the pointer is over, and move the element
-  // itself rather than re-rendering: a strip rebuilt mid-drag would throw away
-  // the node being dragged.
+  const strip = el.tabstrip.getBoundingClientRect();
+  // An agent tab is one per app, so there is nowhere else for it to go
+  const movable = d.tab.kind !== 'agents';
+  const offStrip = movable && ev.clientY > strip.bottom + DETACH_DISTANCE;
+  if (offStrip) {
+    d.mode = d.target ? 'merge' : 'detach';
+  } else {
+    d.mode = 'reorder';
+    d.target = null;
+  }
+  moveDragGhost(ev);
+  if (d.mode !== 'reorder') return;
+
+  // Reorder against whichever tab the pointer is over, moving the element
+  // itself: a strip rebuilt mid-drag would throw away the node being dragged.
   const nodes = [...el.tabstrip.children];
   const from = nodes.indexOf(d.el);
   const over = nodes.find((n) => {
@@ -1113,18 +1206,32 @@ function onTabDragMove(ev) {
   d.moved = true;
 }
 
-function endTabDrag() {
+async function endTabDrag(ev) {
   window.removeEventListener('mousemove', onTabDragMove);
-  const { tab, el: node, live, moved, detach } = tabDrag;
-  node?.classList.remove('dragging', 'detaching');
+  clearInterval(tabDrag.timer);
+  tabDrag.timer = null;
+  const { tab, el: node, ghost, live, moved, mode } = tabDrag;
+  node?.classList.remove('dragging');
+  ghost?.remove();
   tabDrag.tab = null;
   tabDrag.el = null;
+  tabDrag.ghost = null;
+  tabDrag.target = null;
+  tabDrag.session++; // any drop-target answer still in flight is now stale
   if (!live) return;
-  if (detach) detachTab(tab);
-  else if (moved) {
-    renderTabs(); // titles and the active marker, now in the new order
-    saveSession();
+  if (mode === 'reorder') {
+    if (moved) {
+      renderTabs(); // titles and the active marker, now in the new order
+      saveSession();
+    }
+    return;
   }
+  // Where it actually landed, asked here rather than taken from the last
+  // answer during the drag: those are throttled, so the final position — the
+  // only one that decides anything — may never have been asked about.
+  const hit = await api.tabDropTarget({ x: ev.clientX, y: ev.clientY });
+  if (hit) moveTabToWindow(tab, hit);
+  else detachTab(tab);
 }
 
 // ---------- renaming a tab ----------
@@ -1214,16 +1321,10 @@ function serializeNodeForMove(node) {
   };
 }
 
-function detachTab(tab) {
-  if (!tab || !tab.root) return;
-  if (tab.kind === 'agents') {
-    toast('The agent view is one per app — it stays in this window');
-    return;
-  }
-  if (state.tabs.length < 2) {
-    toast('That is the only tab in this window');
-    return;
-  }
+// Everything a tab needs to exist somewhere else: its name, its layout, and per
+// pane the shell to claim plus the text that was on screen. Taking it hands the
+// shells over and closes the tab here — the caller decides where they go next.
+function takeTab(tab) {
   const payload = {
     title: tab.title,
     customTitle: tab.customTitle || null,
@@ -1231,7 +1332,34 @@ function detachTab(tab) {
   };
   releaseLeaves(tab);
   closeTab(tab, { killPtys: false });
-  api.tabDetach(payload);
+  return payload;
+}
+
+function movableTab(tab) {
+  if (!tab || !tab.root) return false;
+  if (tab.kind === 'agents') {
+    toast('The agent view is one per app — it stays in this window');
+    return false;
+  }
+  return true;
+}
+
+function detachTab(tab) {
+  if (!movableTab(tab)) return;
+  if (state.tabs.length < 2) {
+    toast('That is the only tab in this window');
+    return;
+  }
+  api.tabDetach(takeTab(tab));
+}
+
+// Dropped on another Frost window. The last tab may leave this way — unlike a
+// move to a new window, which would only shuffle the same tab between two
+// windows: here the window it lands in already exists, so this one closing is
+// the point rather than a side effect.
+function moveTabToWindow(tab, target) {
+  if (!movableTab(tab)) return;
+  api.tabMoveTo(target.frostId, takeTab(tab));
 }
 
 async function buildAdoptedNode(saved, depth = 0) {
@@ -1274,6 +1402,12 @@ async function adoptTab(payload) {
   focusPane(first);
   saveSession();
 }
+
+// A tab dropped on this window by another one. The window is already up, so
+// unlike the boot-time adoption this arrives as a message.
+api.onTabAdopt((payload) => {
+  if (payload) adoptTab(payload);
+});
 
 // ---------- the tab's own menu ----------
 

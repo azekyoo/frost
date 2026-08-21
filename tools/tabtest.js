@@ -2,9 +2,13 @@
 // dragging it off the strip opens it in a window of its own with the same shell
 // still running and its scrollback intact, and a renamed tab keeps its name.
 //
+// It also drags a tab from one window onto the other and checks it is handed
+// over rather than opening a third window.
+//
 // Real mouse events over the debugging protocol rather than calls into the drag
 // functions: the thing worth testing is the gesture, including the slop
-// threshold and the distance below the strip that means "detach".
+// threshold, the distance below the strip that means "detach", and the drop
+// target main works out from the pointer.
 const { app } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
@@ -101,12 +105,14 @@ const bufferText = `(() => {
   for (let i = 0; i < b.length; i++) { const l = b.getLine(i); if (l) s += l.translateToString(true) + '\\n'; }
   return s; })()`;
 
-async function drag(c, from, to, steps = 8) {
+async function drag(c, from, to, { steps = 8, midway = null, hold = 0 } = {}) {
   await c.mouse('mousePressed', from.x, from.y);
   for (let i = 1; i <= steps; i++) {
     await c.mouse('mouseMoved', from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
     await sleep(30);
+    if (midway && i === steps) await midway();
   }
+  if (hold) await sleep(hold);
   await c.mouse('mouseReleased', to.x, to.y);
 }
 
@@ -132,7 +138,11 @@ async function drag(c, from, to, steps = 8) {
 
   const env = {
     ...process.env,
-    FROST_SHOT: JSON.stringify({ configDir, bounds: { x: 40, y: 40, width: 1100, height: 700 } })
+    // No fixed bounds: the same rectangle for every window would put the second
+    // one exactly on top of the first, and a hand-off needs somewhere to drop
+    // that is over one window and not the other. Left alone, a new window is
+    // offset from the one it was opened from, which gives that.
+    FROST_SHOT: JSON.stringify({ configDir })
   };
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
   const child = spawn(
@@ -164,7 +174,17 @@ async function drag(c, from, to, steps = 8) {
     const ids = await w1.eval('state.tabs.map((t) => t.id)');
     const first = await w1.eval(tabRect(0));
     const third = await w1.eval(tabRect(2));
-    await drag(w1, first, { x: third.x, y: third.y });
+    let ghostSeen = null;
+    await drag(w1, first, { x: third.x, y: third.y }, {
+      midway: async () => {
+        ghostSeen = await w1.eval(`(() => {
+          const g = document.querySelector('.tab-ghost');
+          if (!g) return null;
+          const r = g.getBoundingClientRect();
+          return { text: g.textContent, x: Math.round(r.left), placeholder: Boolean(document.querySelector('.tab.dragging')) };
+        })()`);
+      }
+    });
     await sleep(400);
     const after = await w1.eval('state.tabs.map((t) => t.id)');
     check(
@@ -174,6 +194,9 @@ async function drag(c, from, to, steps = 8) {
     );
     const domOrder = await w1.eval('[...el.tabstrip.children].map((n) => n.tabData.id)');
     check('the strip and the tab list agree afterwards', domOrder.join(',') === after.join(','), domOrder.join(','));
+    check('a copy of the tab follows the cursor', Boolean(ghostSeen), JSON.stringify(ghostSeen));
+    check('and the tab it came from is left as a placeholder', ghostSeen?.placeholder === true);
+    check('the copy is gone once dropped', (await w1.eval('!document.querySelector(".tab-ghost")')) === true);
 
     // --- rename ----------------------------------------------------------
     await w1.eval(`(() => {
@@ -211,7 +234,9 @@ async function drag(c, from, to, steps = 8) {
     check('the marker is in the tab before it moves', beforeText.includes('MOVED_MARKER'));
 
     const moving = await w1.eval(tabRect(2));
-    await drag(w1, moving, { x: moving.x, y: moving.bottom + 160 });
+    // held at the end: the drop target is asked for over IPC, and the answer
+    // has to be in before the button comes up
+    await drag(w1, moving, { x: moving.x, y: moving.bottom + 160 }, { hold: 400 });
     await sleep(4500);
 
     const leftBehind = await w1.eval('state.tabs.length');
@@ -240,6 +265,49 @@ async function drag(c, from, to, steps = 8) {
       !oldWindowPtys.includes(movingPty),
       oldWindowPtys.join(',')
     );
+
+    // --- and back again ---------------------------------------------------
+    // The second window sits offset from the first, so a point past the first
+    // window's right edge is over the second and outside the first. Dropping a
+    // tab of window 1 there is a hand-off, not a detach.
+    // The drop point has to be just past window 1's right edge, in window 1's
+    // own CSS pixels — which are not screen pixels when the monitor is scaled,
+    // so the page's zoom factor is what converts the 25px overshoot.
+    const geom = await w1.eval('({ z: uiZoom || 1, w: window.innerWidth })');
+    const dropX = geom.w + 25 / geom.z;
+    const probe = await w1.eval(`api.tabDropTarget({ x: ${dropX}, y: 300 })`);
+    check('main can name the window under that point', Boolean(probe?.frostId), JSON.stringify(probe));
+    const before1 = await w1.eval('state.tabs.length');
+    const before2 = await w2.eval('state.tabs.length');
+    const handing = await w1.eval(tabRect(1));
+    let mergeGhost = null;
+    await drag(
+      w1,
+      handing,
+      { x: dropX, y: 300 },
+      {
+        hold: 500,
+        midway: async () => {
+          await sleep(200); // the drop-target answer arrives over IPC
+          mergeGhost = await w1.eval(
+            `Boolean(document.querySelector('.tab-ghost.merging'))`
+          );
+        }
+      }
+    );
+    await sleep(3000);
+
+    check('the copy says it will merge while over the other window', mergeGhost === true);
+    const now1 = await w1.eval('state.tabs.length');
+    const now2 = await w2.eval('state.tabs.length');
+    check('the tab left the window it was dragged from', now1 === before1 - 1, `${before1} -> ${now1}`);
+    check('the window it was dropped on took it', now2 === before2 + 1, `${before2} -> ${now2}`);
+    const windowsNow = (await pageClients()).length;
+    check('no third window was opened for it', windowsNow === 2, `${windowsNow} window(s)`);
+    await w2.eval(`api.ptyInput(state.activeTab.activePane.ptyId, 'echo MERGED_ALIVE\\r'), true`);
+    await sleep(2500);
+    const mergedText = await w2.eval(bufferText);
+    check('its shell survived the second move too', mergedText.includes('MERGED_ALIVE'));
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

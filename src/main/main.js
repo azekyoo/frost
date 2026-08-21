@@ -1266,6 +1266,56 @@ ipcMain.on('tab:detach', (_e, payload) => {
   pendingAdoptions.set(w.frostId, payload);
 });
 
+// Which window a tab would land in if it were dropped now. Only main can answer
+// it: a window knows nothing about the others, and the one being dropped onto is
+// a different renderer that never sees the drag — the pointer stays captured by
+// the window the gesture started in for as long as the button is held.
+//
+// The point arrives in the dragging window's own CSS pixels and is converted
+// here rather than in the renderer, because the conversion needs that window's
+// zoom factor and content origin, both of which main owns. Synthetic mouse
+// events (the tab test) therefore land where the arithmetic says, not where the
+// operating system's cursor happens to be.
+ipcMain.handle('tab:dropTarget', (event, { x, y }) => {
+  const from = windowOf(event);
+  if (!from || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const zoom = from.webContents.getZoomFactor() || 1;
+  const origin = from.getContentBounds();
+  const pt = { x: Math.round(origin.x + x * zoom), y: Math.round(origin.y + y * zoom) };
+  const inside = (w) => {
+    const b = w.getBounds();
+    return pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
+  };
+  // Over the window being dragged from, it is not a hand-off however far the
+  // pointer is from the strip: that gesture already means "open it on its own".
+  // Checked first, so a window sitting on top of another behaves as it looks.
+  if (inside(from)) return null;
+  // No z-order to consult, so the focused window is preferred and the rest are
+  // taken in creation order — which is what overlapping windows usually mean.
+  const focused = focusedWindow();
+  const candidates = [focused, ...liveWindows()].filter(
+    (w, i, all) => w && w !== from && !w.isMinimized() && all.indexOf(w) === i
+  );
+  const hit = candidates.find(inside);
+  return hit ? { frostId: hit.frostId, title: hit.getTitle() } : null;
+});
+
+ipcMain.on('tab:moveTo', (_e, { frostId, payload }) => {
+  if (!payload) return;
+  const target = liveWindows().find((w) => w.frostId === frostId);
+  // The window went away between the drop and this message — rare, but the
+  // shells are already ownerless and must not be left that way, so they get a
+  // window of their own rather than being lost.
+  if (!target) {
+    const w = createWindow();
+    pendingAdoptions.set(w.frostId, payload);
+    return;
+  }
+  target.webContents.send('tab:adopt', payload);
+  if (target.isMinimized()) target.restore();
+  target.focus();
+});
+
 ipcMain.handle('tab:pending', (event) => {
   const w = windowOf(event);
   if (!w) return null;
