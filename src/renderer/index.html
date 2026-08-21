@@ -254,6 +254,43 @@
       </div>
 
       <div class="group">
+        <h3>Updates</h3>
+
+        <div class="update-box">
+          <div class="update-line">
+            <span>This build</span>
+            <b id="s-update-current">&mdash;</b>
+          </div>
+          <div class="update-line">
+            <span>Latest release</span>
+            <b id="s-update-latest">&mdash;</b>
+          </div>
+          <p class="update-status" id="s-update-status"></p>
+          <div class="settings-actions">
+            <button id="btn-update-check">Check now</button>
+            <button id="btn-update-act" hidden></button>
+            <button id="btn-update-releases">Release notes</button>
+          </div>
+        </div>
+
+        <label class="field row">
+          <input type="checkbox" id="s-update-check" />
+          <span>Check for updates automatically</span>
+        </label>
+
+        <label class="field row">
+          <input type="checkbox" id="s-update-download" />
+          <span>Download them in the background</span>
+        </label>
+
+        <p class="hint">
+          A found update installs when you quit Frost, never while you are in it &mdash;
+          a terminal holds work that a restart of its own choosing would throw away.
+          <b>Restart and install</b> appears here once one is downloaded.
+        </p>
+      </div>
+
+      <div class="group">
         <h3>Files</h3>
         <div class="settings-actions">
           <button id="btn-open-theme">theme.json</button>

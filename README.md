@@ -72,6 +72,14 @@ running and supervising Claude Code agents with live status and diff watching.
   position, maximized state, tabs and split layout, each pane reopened in the
   directory it was in. Written continuously, so a crash doesn't lose it. Toggle
   in settings; agent tabs stay out of it and keep their own resume list
+- **Keeps itself current** — an installed Frost looks for a new release at
+  startup and every six hours, downloads it quietly, and installs it the next
+  time you quit. Never mid-session: a terminal holds work a restart of its own
+  choosing would throw away. Settings shows the version you run beside the
+  latest one, checks on demand, and offers **Restart and install** once an
+  update is downloaded. Turn either half off — the checking, or the
+  downloading — in settings. Portable builds and runs from source say so
+  instead of checking
 - **Backdrop materials**
   - `acrylic` / `mica` / `tabbed` — native Windows backdrops
   - `acrylic-always` — native acrylic that **never dims on unfocus** (Frost
@@ -122,6 +130,12 @@ The installer also adds:
   space inside one)
 - **`frost`** on your PATH — `frost .` opens a tab in that directory. If Frost is
   already running, it opens a new tab there instead of a second window
+
+The installed build updates itself: it checks GitHub for a newer release,
+downloads it in the background and installs it when you next quit Frost. The
+portable exe can't — nothing installed it, so there is no installation to
+replace — and it says so in settings rather than pretending to check. Both are
+governed by `update` in `theme.json`.
 
 Settings live in `%APPDATA%\Frost\config` for installed builds. Running from
 source uses the repo's `config/` folder instead, so the two never collide.
@@ -267,6 +281,12 @@ for an installed build, in the repo's `config/` when running from source:
   metrics.
 
   ![The shell profile menu, listing detected shells](assets/screenshot-profiles.png)
+
+  `update` is `{ "check": true, "download": true }`. `check` looks for a newer
+  release at startup and every six hours; `download` fetches one when it is
+  found. The installer only ever runs when Frost quits, or when you press
+  **Restart and install** in settings. With `check` off nothing is looked for and
+  **Check now** is still there for when you want to ask.
 
   `notify` controls background alerts:
   `{ "agentBlocked": true, "agentDone": true, "commandSeconds": 20 }`.

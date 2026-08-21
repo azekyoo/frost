@@ -2421,6 +2421,12 @@ cmd('command.next', 'Jump to next command', () => jumpToMark(activePane(), 1));
 cmd('view.scrollToTop', 'Scroll to top', () => activePane()?.term.scrollToTop());
 cmd('view.scrollToBottom', 'Scroll to bottom', () => activePane()?.term.scrollToBottom());
 
+cmd('app.checkUpdate', 'Check for updates', async () => {
+  if (!el.settings.classList.contains('open')) toggleSettings();
+  renderUpdate({ ...(updateState || {}), stage: 'checking' });
+  updateState = await api.updateCheck();
+  renderUpdate(updateState);
+});
 cmd('app.settings', 'Settings', () => toggleSettings());
 cmd('app.palette', 'Command palette', () => openPalette());
 cmd('app.openKeys', 'Edit keybindings.json', () => api.themeOpenFile('keys'));
@@ -2736,7 +2742,9 @@ const s = {
   radius: document.getElementById('s-radius'),
   radiusVal: document.getElementById('s-radius-val'),
   cursorStyle: document.getElementById('s-cursor-style'),
-  cursorBlink: document.getElementById('s-cursor-blink')
+  cursorBlink: document.getElementById('s-cursor-blink'),
+  updateCheck: document.getElementById('s-update-check'),
+  updateDownload: document.getElementById('s-update-download')
 };
 
 function toggleSettings() {
@@ -2875,6 +2883,9 @@ function syncSettingsUI() {
   s.radiusVal.textContent = (t.cornerRadius ?? 8) + 'px';
   s.cursorStyle.value = t.cursor?.style || 'bar';
   s.cursorBlink.checked = t.cursor?.blink !== false;
+  s.updateCheck.checked = t.update?.check !== false;
+  s.updateDownload.checked = t.update?.download !== false;
+  s.updateDownload.disabled = !s.updateCheck.checked;
   syncing = false;
 }
 
@@ -2918,6 +2929,10 @@ function onSettingChange() {
   t.cursor = t.cursor || {};
   t.cursor.style = s.cursorStyle.value;
   t.cursor.blink = s.cursorBlink.checked;
+  // Background downloads are a sub-setting of checking at all: with checks off
+  // nothing is ever found to download, so the toggle would claim to do something
+  t.update = { check: s.updateCheck.checked, download: s.updateDownload.checked };
+  s.updateDownload.disabled = !s.updateCheck.checked;
   applyTheme(t, undefined);
   saveTheme();
   saveSession(); // toggling restore off clears the stored layout
@@ -2929,6 +2944,86 @@ for (const input of Object.values(s)) {
     input.addEventListener('change', onSettingChange);
   }
 }
+
+// ---------- updates ----------
+// Main does the checking; this reads its one state object out loud. The action
+// button is the same button throughout — Download, then Restart and install —
+// because at any moment there is exactly one thing to do next, and a row of
+// buttons where three are dead is harder to read than one that changes.
+
+const RELEASES_URL = 'https://github.com/azekyoo/frost/releases';
+
+const upd = {
+  current: document.getElementById('s-update-current'),
+  latest: document.getElementById('s-update-latest'),
+  status: document.getElementById('s-update-status'),
+  box: document.querySelector('.update-box'),
+  check: document.getElementById('btn-update-check'),
+  act: document.getElementById('btn-update-act'),
+  releases: document.getElementById('btn-update-releases')
+};
+
+let updateState = null;
+
+function renderUpdate(st) {
+  if (!st || !upd.current) return;
+  const known = st.latest && st.stage !== 'checking';
+  upd.current.textContent = st.version || '—';
+  upd.latest.textContent = known ? st.latest : st.stage === 'checking' ? 'checking…' : '—';
+  upd.box.style.setProperty('--update-progress', (st.stage === 'downloading' ? st.percent : 0) + '%');
+
+  const text = {
+    idle: 'Not checked yet this run.',
+    checking: 'Asking GitHub for the latest release…',
+    current: 'Frost is up to date.',
+    available: st.autoDownload
+      ? `Frost ${st.latest} is available.`
+      : `Frost ${st.latest} is available — automatic downloads are off.`,
+    downloading: `Downloading Frost ${st.latest || ''} — ${st.percent}%`,
+    ready: `Frost ${st.latest} is ready. It installs when you quit, or now if you like.`,
+    error: st.message || 'The check failed.',
+    unsupported: st.message
+  }[st.stage];
+  upd.status.textContent = text || '';
+  upd.status.className = 'update-status ' + st.stage;
+
+  upd.check.disabled = st.stage === 'checking' || st.stage === 'downloading' || st.stage === 'unsupported';
+  const action =
+    st.stage === 'ready'
+      ? { label: 'Restart and install', run: () => api.updateInstall() }
+      : st.stage === 'available' && !st.autoDownload
+        ? { label: `Download ${st.latest}`, run: () => api.updateDownload() }
+        : null;
+  upd.act.hidden = !action;
+  if (action) {
+    upd.act.textContent = action.label;
+    upd.act.onclick = action.run;
+  }
+}
+
+upd.check?.addEventListener('click', async () => {
+  renderUpdate({ ...(updateState || {}), stage: 'checking' });
+  updateState = await api.updateCheck();
+  renderUpdate(updateState);
+});
+upd.releases?.addEventListener('click', () => api.openExternal(RELEASES_URL));
+
+api.onUpdateState((st) => {
+  const before = updateState?.stage;
+  updateState = st;
+  renderUpdate(st);
+  // One line, once per transition, and only for the two that are news. A check
+  // that finds nothing is the normal case and says so in the panel, not on screen.
+  if (st.stage === 'ready' && before !== 'ready')
+    toast(`Frost ${st.latest} downloaded — it installs when you quit.`, { ms: 8000 });
+  else if (st.stage === 'available' && before !== 'available' && !st.autoDownload)
+    toast(`Frost ${st.latest} is available — download it in settings.`, { ms: 8000 });
+});
+
+api.updateGet().then((st) => {
+  updateState = st;
+  renderUpdate(st);
+});
 
 // ---------- glass background ----------
 

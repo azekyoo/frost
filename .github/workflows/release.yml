@@ -41,6 +41,7 @@ jobs:
           path: |
             dist/*.exe
             dist/*.blockmap
+            dist/latest.yml
           retention-days: 14
 
       - name: Publish to the release
@@ -53,12 +54,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
+          # latest.yml and the blockmaps are what a running Frost reads to find
+          # this release: the yml carries the version and the installer's sha512,
+          # the blockmap lets it download only the changed blocks. Without them
+          # the exes are here but no installed copy ever learns about them.
+          assets=(dist/*.exe dist/latest.yml dist/*.blockmap)
           # Idempotent: a release may already exist if it was cut by hand, and
           # re-running the job must not fail on that.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.exe --clobber
+            gh release upload "$TAG" "${assets[@]}" --clobber
           else
-            gh release create "$TAG" dist/*.exe \
+            gh release create "$TAG" "${assets[@]}" \
               --title "Frost $TAG" \
               --generate-notes
           fi

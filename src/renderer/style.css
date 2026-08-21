@@ -1558,6 +1558,68 @@ body.frameless #win-controls {
   background: var(--surface-3);
 }
 
+/* A check already running, or a build that cannot check at all: the button has
+   to read as unavailable, not merely as unresponsive when pressed. */
+.settings-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settings-actions button:disabled:hover {
+  background: var(--surface-1);
+  border-color: var(--hairline);
+}
+
+/* The two versions read as a comparison, so they line up as one block rather
+   than as two more fields in a panel full of them. */
+.update-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  padding: 10px;
+  background: var(--surface-1);
+  /* The progress percentage is painted as the box's own background, so a
+     download is legible without a separate bar competing with the numbers. */
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent) 22%, transparent) var(--update-progress, 0%),
+    transparent var(--update-progress, 0%)
+  );
+  background-repeat: no-repeat;
+  transition: background-image 0.25s var(--ease);
+}
+
+.update-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+
+.update-line b {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.update-status {
+  font-size: 11px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+}
+
+.update-status.ready,
+.update-status.available {
+  color: var(--accent);
+}
+
+.update-status.error {
+  color: #f85149; /* same red as an error toast */
+}
+
 .hint {
   font-size: 11px;
   color: color-mix(in srgb, var(--fg) 45%, transparent);

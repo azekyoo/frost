@@ -3,6 +3,26 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## Unreleased
+
+### Added
+
+- **Frost updates itself.** Every release so far had to be noticed on GitHub and
+  reinstalled by hand, which means the version people run is whichever one they
+  happened to download. An installed build now asks the releases feed for a newer
+  version at startup and every six hours, downloads it in the background, and
+  installs it the next time you quit — never mid-session, because a terminal
+  holds running work and open scrollback that a restart of its own choosing would
+  throw away. The settings panel gained an **Updates** section: the version you
+  are running beside the latest one, **Check now**, and **Restart and install**
+  once something is downloaded, for anyone who does not want to wait for a quit.
+  `update` in `theme.json` — `{ "check": true, "download": true }` — turns either
+  half off, and **Check for updates** is in the command palette. The check is
+  verified against the `sha512` in the release's `latest.yml`, which is the only
+  thing standing in for a code signature these builds do not have. A portable exe
+  was never installed, so there is nothing for an installer to replace: it
+  reports that instead of checking, and so does a run from source.
+
 ## 0.4.4 — 2026-08-20
 
 ### Changed

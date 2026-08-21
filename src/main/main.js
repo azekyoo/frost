@@ -85,6 +85,10 @@ const DEFAULT_THEME = {
   autoDetectAgents: true,
   restoreSession: true,
   notify: { agentBlocked: true, agentDone: true, commandSeconds: 20 },
+  // check: look for a newer release at startup and every six hours. download:
+  // fetch it when one is found. Either way the installer only runs when Frost
+  // quits, or when you ask for it in settings.
+  update: { check: true, download: true },
   agentLayout: { rail: 210, diff: 340 },
   copyOnSelect: true,
   unicodeVersion: '11',
@@ -2019,6 +2023,160 @@ ipcMain.on('theme:openFile', (_e, which) => {
   shell.openPath(which === 'css' ? CSS_FILE : which === 'keys' ? KEYS_FILE : THEME_FILE);
 });
 
+// ---------- updates ----------
+// electron-updater against the GitHub releases the CI workflow already cuts:
+// the build writes latest.yml beside the installer, the workflow uploads it, and
+// that file is what tells a running Frost a newer version exists — plus the
+// sha512 it verifies the download against. The builds are unsigned, so there is
+// no publisher name to check; the hash is what stands in for one, which is why
+// latest.yml has to come from the release rather than from anywhere else.
+//
+// Installing is left to app quit. A terminal is a window people keep open for
+// days with work running inside it, so an update that picks its own moment to
+// close it is worse than no update at all. The download is quiet, the install
+// happens the next time Frost closes anyway, and settings offers "Restart and
+// install" for anyone who would rather have it now.
+
+// Sent to every window on each transition, and returned verbatim by
+// update:check, so the settings panel never has to assemble the story itself.
+let updateState = {
+  stage: 'idle', // idle | checking | current | available | downloading | ready | error | unsupported
+  version: app.getVersion(),
+  latest: null,
+  percent: 0,
+  message: '',
+  autoDownload: true
+};
+let updater = null; // the electron-updater singleton, required on first use
+let updateTimer = null;
+
+// A portable exe was never installed, so there is no installation for an NSIS
+// installer to update — running one would quietly install a second, separate
+// Frost. A run from source has no app-update.yml at all. Both check nothing and
+// say why; the panel then links to the releases page, which is the update
+// mechanism those two builds actually have.
+function updateSupport() {
+  if (!app.isPackaged) return { ok: false, message: 'Running from source — git pull to update.' };
+  if (process.env.PORTABLE_EXECUTABLE_FILE)
+    return { ok: false, message: 'Portable build — download a new exe to update.' };
+  return { ok: true, message: '' };
+}
+
+function setUpdateState(patch) {
+  updateState = { ...updateState, ...patch };
+  broadcast('update:state', updateState);
+}
+
+function updateCfg() {
+  const cfg = (readTheme() || {}).update || {};
+  return { check: cfg.check !== false, download: cfg.download !== false };
+}
+
+function getUpdater() {
+  if (updater) return updater;
+  // Required lazily: a run from source and a portable build never check, and
+  // neither should pay to load the module at startup.
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.autoDownload = false; // decided per check, from theme.json
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => setUpdateState({ stage: 'checking', message: '' }));
+  autoUpdater.on('update-not-available', (info) =>
+    setUpdateState({ stage: 'current', latest: info?.version || null, message: '' })
+  );
+  autoUpdater.on('update-available', (info) => {
+    setUpdateState({ stage: 'available', latest: info?.version || null, percent: 0, message: '' });
+    if (autoUpdater.autoDownload) startUpdateDownload();
+  });
+  autoUpdater.on('download-progress', (p) =>
+    setUpdateState({ stage: 'downloading', percent: Math.round(p?.percent || 0) })
+  );
+  autoUpdater.on('update-downloaded', (info) =>
+    setUpdateState({ stage: 'ready', latest: info?.version || null, percent: 100, message: '' })
+  );
+  autoUpdater.on('error', (err) => {
+    // Offline is the common case, and it reads as a stack trace otherwise
+    const raw = String(err?.message || err || 'unknown error');
+    const offline = /ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|net::/i.test(raw);
+    // A release cut before this feature existed carries the exes but no
+    // latest.yml, and the 404 that produces says nothing a reader can act on
+    const noInfo = /404|latest\.yml/i.test(raw);
+    setUpdateState({
+      stage: 'error',
+      percent: 0,
+      message: offline
+        ? 'No connection to GitHub.'
+        : noInfo
+          ? 'The newest release carries no update info — see the releases page.'
+          : raw.split('\n')[0]
+    });
+  });
+  updater = autoUpdater;
+  return updater;
+}
+
+function startUpdateDownload() {
+  try {
+    setUpdateState({ stage: 'downloading', percent: 0, message: '' });
+    getUpdater().downloadUpdate();
+  } catch (e) {
+    setUpdateState({ stage: 'error', message: String(e?.message || e) });
+  }
+}
+
+// byUser: a click on "Check now" checks whatever the automatic setting says,
+// because the answer to "am I up to date" is worth a request even from someone
+// who does not want the background ones.
+function checkForUpdates({ byUser = false } = {}) {
+  const support = updateSupport();
+  if (!support.ok) {
+    setUpdateState({ stage: 'unsupported', message: support.message });
+    return updateState;
+  }
+  const cfg = updateCfg();
+  if (!byUser && !cfg.check) return updateState;
+  // Already downloaded, or downloading: re-checking would restart the download
+  if (updateState.stage === 'ready' || updateState.stage === 'downloading') return updateState;
+  const up = getUpdater();
+  up.autoDownload = cfg.download;
+  setUpdateState({ autoDownload: cfg.download });
+  up.checkForUpdates().catch(() => {}); // the error event already reported it
+  return updateState;
+}
+
+function initUpdates() {
+  const support = updateSupport();
+  if (!support.ok) {
+    updateState = { ...updateState, stage: 'unsupported', message: support.message };
+    return;
+  }
+  setUpdateState({ autoDownload: updateCfg().download });
+  // Late enough that the first window is up and its shell has started: a check
+  // competes with process spawning for the same disk otherwise, and nothing
+  // about it is urgent.
+  setTimeout(() => checkForUpdates(), 20_000);
+  // Frost stays open for days, so the interval is what actually finds releases
+  updateTimer = setInterval(() => checkForUpdates(), 6 * 60 * 60 * 1000);
+}
+
+ipcMain.handle('update:get', () => updateState);
+ipcMain.handle('update:check', () => checkForUpdates({ byUser: true }));
+ipcMain.on('update:download', () => {
+  if (updateSupport().ok) startUpdateDownload();
+});
+ipcMain.on('update:install', () => {
+  if (updateState.stage !== 'ready') return;
+  flushWindowState();
+  quitting = true;
+  // isSilent: the installer runs without asking anything, since the user just
+  // answered the only question it would have. isForceRunAfter brings Frost back,
+  // which is the whole point of restarting rather than waiting for the next quit.
+  try {
+    getUpdater().quitAndInstall(true, true);
+  } catch (e) {
+    setUpdateState({ stage: 'error', message: String(e?.message || e) });
+  }
+});
+
 // --- app lifecycle ---
 
 // A shell context-menu click on a second folder should land in the window
@@ -2063,9 +2221,11 @@ app.whenReady().then(() => {
   for (const entry of saved.slice(1, 8)) createWindow({ restore: entry });
 
   watchConfig();
+  initUpdates();
 });
 
 app.on('before-quit', () => {
+  clearInterval(updateTimer);
   flushWindowState();
   quitting = true; // after the flush: closing windows must not rewrite it
 });

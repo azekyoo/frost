@@ -54,6 +54,11 @@ contextBridge.exposeInMainWorld('api', {
   winNew: () => ipcRenderer.send('win:new'),
   appRelaunch: () => ipcRenderer.send('app:relaunch'),
   onNeedsRestart: (cb) => ipcRenderer.on('app:needsRestart', (_e, m) => cb(m)),
+  updateGet: () => ipcRenderer.invoke('update:get'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.send('update:download'),
+  updateInstall: () => ipcRenderer.send('update:install'),
+  onUpdateState: (cb) => ipcRenderer.on('update:state', (_e, m) => cb(m)),
   agentsClaimTab: () => ipcRenderer.invoke('agents:claimTab'),
   agentsReleaseTab: () => ipcRenderer.send('agents:releaseTab')
 });
