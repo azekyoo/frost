@@ -211,6 +211,39 @@ body.glass #glass-tint {
   line-height: 34px;
 }
 
+/* Being dragged: lifted off the strip rather than merely highlighted, so the
+   tab under the cursor is unmistakably the one that will land. */
+.tab.dragging {
+  background: var(--surface-3);
+  color: var(--fg);
+  cursor: grabbing;
+  z-index: 2;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* Pulled far enough below the strip that letting go opens it in a window of its
+   own. The outline says "this leaves here" before the click is committed. */
+.tab.detaching {
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface-2));
+  outline: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: -2px;
+}
+
+/* Sits exactly where the title was, so renaming does not resize the tab */
+.tab-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 5px;
+  background: var(--surface-3);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 0 5px;
+  outline: none;
+}
+
 .tab .close {
   border: none;
   background: transparent;

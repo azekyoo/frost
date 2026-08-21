@@ -7,6 +7,22 @@ Notable changes per release. Dates are release dates; versions follow
 
 ### Added
 
+- **Tabs move, reorder and take a name.** The strip was fixed: tabs opened in
+  the order they were created and stayed in it, said `directory · branch` and
+  nothing else, and could not leave the window they were born in — while
+  `Ctrl+Shift+N` had been opening extra windows all along. Dragging a tab
+  sideways now reorders it; dragging it off the strip opens it in a window of its
+  own. The shells are not restarted for that: main keeps them running and
+  re-points their output at the new window, so a build still building keeps
+  building, and the scrollback is serialised across so the text on screen
+  survives too — output arriving in the moment between the two windows is held
+  and replayed rather than dropped. Double-click a tab to name it, which is what
+  tells two tabs in the same repo apart; the name persists in the session,
+  travels with a moved tab, and emptying it hands the tab back to its live
+  title. Right-click gives rename, duplicate, move to a new window and close,
+  and the last two are commands in the palette. The agent view stays put — it is
+  one per app by design.
+
 - **Frost updates itself.** Every release so far had to be noticed on GitHub and
   reinstalled by hand, which means the version people run is whichever one they
   happened to download. An installed build now asks the releases feed for a newer

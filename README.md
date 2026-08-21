@@ -43,6 +43,14 @@ running and supervising Claude Code agents with live status and diff watching.
   working), and the branch is read straight out of `.git/HEAD`, so no `git`
   process runs per prompt. A program that sets its own title (claude, ssh, vim)
   still wins. Splits and `Ctrl+Shift+D` inherit the current directory
+- **Tabs you can rearrange** — drag one along the strip to reorder it, and
+  drag it off the strip to open it in a window of its own: the shells are not
+  restarted, so whatever was running keeps running, and the scrollback comes
+  with it. Double-click a tab to name it — worth it the moment two tabs sit in
+  the same repo — and the name sticks through a restart, clears back to
+  `directory · branch` when you empty it, and travels with the tab. Right-click
+  a tab for rename, duplicate, move to a new window and close; the last two are
+  in the command palette too
 - **Ctrl+click a path or a URL** — `src/search.js:45:12` from a stack trace, a
   grep hit, a `File "app.py", line 118` traceback or a bare `README.md` opens in
   your editor at that line; links open in your browser. Candidates are only
@@ -159,6 +167,7 @@ npm run dist         # installer + portable exe into dist/
 npm run pack         # unpacked build only, faster
 npm run shots        # re-render the screenshots above
 npm run test:status  # end-to-end check of agent status reporting
+npm run test:tabs    # drag-reorder, rename, and moving a tab to a new window
 ```
 
 `npm run test:status` drives a real Frost over the debugging protocol: it opens
@@ -166,6 +175,12 @@ an agent tab in the demo repo, runs `claude` for real, prompts it, and prints
 every status transition with a timestamp — then clicks between panes and idles,
 asserting neither invents activity. It costs one short Claude turn. Point it at
 another repo with `FROST_SHOT_REPO`.
+
+`npm run test:tabs` drives a real Frost over the debugging protocol with real
+mouse events: it drags a tab along the strip, renames one, then drags a tab off
+the strip and checks that the window which opens has the *same* shell — same pty,
+scrollback intact, still running commands — and that the window it left no longer
+holds it. No API usage, a few seconds.
 
 `npm run shots` drives real Frost instances over the debugging protocol — real
 keystrokes into a real shell, real program output — then composites each capture
@@ -221,6 +236,9 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
 | `Ctrl+click` | Open a file path in your editor, or a URL in your browser |
 | Right-click | Copy selection, else paste |
+| Drag a tab | Sideways reorders, off the strip opens it in a new window |
+| Double-click a tab | Rename it (empty restores `directory · branch`) |
+| Right-click a tab | Rename, duplicate, move to a new window, close |
 
 Every one of them is remappable in `config/keybindings.json`:
 

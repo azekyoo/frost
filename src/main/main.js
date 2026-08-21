@@ -177,10 +177,39 @@ const ptys = new Map();
 // A shell belongs to the window that asked for it, so its output must go there
 // and nowhere else.
 const ptyOwners = new Map(); // ptyId -> WebContents
+// What the shell was started as, kept because a tab moved to another window has
+// to arrive there knowing which profile it came from — the window that created
+// it is not necessarily still around to say.
+const ptyMeta = new Map(); // ptyId -> { profileId, profileName }
+
+// A tab moving between windows leaves its shells ownerless for as long as it
+// takes the new window to load: the old renderer has already disposed its
+// terminals, the new one does not exist yet. Output arriving in that gap has
+// nowhere to go, and dropping it would eat the tail of whatever was running —
+// so it is held here and replayed to the window that adopts the shell.
+const detachedPtys = new Map(); // ptyId -> { chunks: [], bytes, exit? }
+// Enough for a build's worth of output in the half-second a window takes to
+// open. Past it the oldest goes, which is what a terminal does anyway.
+const DETACH_BUFFER_MAX = 512 * 1024;
 
 function sendToOwner(id, channel, payload) {
   const owner = ptyOwners.get(id);
-  if (owner && !owner.isDestroyed()) owner.send(channel, payload);
+  if (owner && !owner.isDestroyed()) {
+    owner.send(channel, payload);
+    return;
+  }
+  const held = detachedPtys.get(id);
+  if (!held) return; // no owner and not in flight: the pane is simply gone
+  if (channel === 'pty:exit') {
+    held.exit = payload?.exitCode ?? 0;
+    return;
+  }
+  if (channel !== 'pty:data') return;
+  held.chunks.push(payload.data);
+  held.bytes += payload.data.length;
+  while (held.bytes > DETACH_BUFFER_MAX && held.chunks.length > 1) {
+    held.bytes -= held.chunks.shift().length;
+  }
 }
 
 // ---------- shell profiles ----------
@@ -525,6 +554,13 @@ function applyWindowTheme(theme) {
 const sessionLayouts = new Map(); // frostId -> { tabs, activeTab } as reported
 const lastBounds = new Map(); // frostId -> bounds, for windows that are minimised
 const pendingLayouts = new Map(); // frostId -> the layout a new window should restore
+
+// Every shell in a moved tab's saved tree, however deeply it is split
+function ptyIdsOf(node) {
+  if (!node) return [];
+  if (node.t === 'split') return (node.children || []).flatMap(ptyIdsOf);
+  return node.ptyId ? [node.ptyId] : [];
+}
 let sessionTimer = null;
 let windowCounter = 0;
 let quitting = false;
@@ -790,6 +826,24 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   });
   w.on('closed', () => {
     windows.delete(w);
+    // Closed before its renderer claimed the tab it was opened for — a load
+    // that failed, or a very fast close. Those shells have no owner and no
+    // window to appear in, so they are killed rather than left running unseen.
+    const unclaimed = pendingAdoptions.get(w.frostId);
+    if (unclaimed) {
+      pendingAdoptions.delete(w.frostId);
+      for (const id of ptyIdsOf(unclaimed.root)) {
+        detachedPtys.delete(id);
+        ptyMeta.delete(id);
+        const p = ptys.get(id);
+        if (p) {
+          ptys.delete(id);
+          try {
+            p.kill();
+          } catch {}
+        }
+      }
+    }
     sessionLayouts.delete(w.frostId);
     lastBounds.delete(w.frostId);
     pendingLayouts.delete(w.frostId);
@@ -1092,6 +1146,7 @@ ipcMain.handle('pty:create', (event, { cols, rows, cwd, run, profileId }) => {
     env
   });
   ptys.set(id, p);
+  ptyMeta.set(id, { profileId: profile.id, profileName: profile.name });
   p.onData((data) => {
     const rec = agentByPty.get(id);
     // A resize or a focus change makes ConPTY repaint, and that repaint is not
@@ -1111,6 +1166,7 @@ ipcMain.handle('pty:create', (event, { cols, rows, cwd, run, profileId }) => {
     ptys.delete(id);
     sendToOwner(id, 'pty:exit', { id, exitCode });
     ptyOwners.delete(id);
+    ptyMeta.delete(id);
   });
   if (run) {
     // let the shell finish its prompt, then type the command for the user
@@ -1153,10 +1209,69 @@ ipcMain.on('pty:mute', (_e, { id, ms }) => {
 ipcMain.on('pty:kill', (_e, { id }) => {
   const p = ptys.get(id);
   ptyOwners.delete(id);
+  ptyMeta.delete(id);
+  detachedPtys.delete(id);
   if (p) {
     ptys.delete(id);
     p.kill();
   }
+});
+
+// ---------- moving a tab to another window ----------
+// A tab is its shells, and a shell cannot be moved: it is a process this window
+// owns, holding a working directory and whatever is running in it. So the shell
+// stays exactly where it is and only its ownership moves — the old window gives
+// it up, the new one claims it, and main re-points the output. What the new
+// window cannot inherit is the scrollback, which lives in the old renderer's
+// terminal; that is serialised by the renderer and written back into the new
+// one, so the text on screen survives the move too.
+
+// Claimed once by the renderer of the window opened to receive it.
+const pendingAdoptions = new Map(); // frostId -> tab payload
+
+// Called by the window giving the shell up, immediately before it disposes the
+// terminal. Only its current owner may: otherwise any window could cut another
+// window's pane loose.
+ipcMain.on('pty:orphan', (event, { id }) => {
+  if (ptyOwners.get(id) !== event.sender) return;
+  ptyOwners.delete(id);
+  detachedPtys.set(id, { chunks: [], bytes: 0 });
+});
+
+// The claim. A pty that still has an owner is never handed over — an ownerless
+// one is either in flight or gone, and gone returns null so the caller can open
+// a fresh shell instead of showing an inert pane.
+ipcMain.handle('pty:adopt', (event, { id, cols, rows }) => {
+  const p = ptys.get(id);
+  const held = detachedPtys.get(id);
+  if (!p || !held || ptyOwners.has(id)) return null;
+  ptyOwners.set(id, event.sender);
+  detachedPtys.delete(id);
+  if (cols > 0 && rows > 0) {
+    try {
+      p.resize(cols, rows);
+    } catch {}
+  }
+  // Replay before anything else reaches the window, so the output arrives in
+  // the order the program wrote it
+  for (const data of held.chunks) event.sender.send('pty:data', { id, data });
+  if (held.exit !== undefined) event.sender.send('pty:exit', { id, exitCode: held.exit });
+  const meta = ptyMeta.get(id) || {};
+  return { id, profileId: meta.profileId || null, profileName: meta.profileName || null };
+});
+
+ipcMain.on('tab:detach', (_e, payload) => {
+  if (!payload) return;
+  const w = createWindow();
+  pendingAdoptions.set(w.frostId, payload);
+});
+
+ipcMain.handle('tab:pending', (event) => {
+  const w = windowOf(event);
+  if (!w) return null;
+  const payload = pendingAdoptions.get(w.frostId) || null;
+  pendingAdoptions.delete(w.frostId); // adopted once, not again on a reload
+  return payload;
 });
 
 ipcMain.handle('theme:get', (event) => ({

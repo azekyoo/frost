@@ -1,4 +1,4 @@
-/* global Terminal, FitAddon, WebLinksAddon, WebglAddon, Unicode11Addon, SearchAddon */
+/* global Terminal, FitAddon, WebLinksAddon, WebglAddon, Unicode11Addon, SearchAddon, SerializeAddon */
 
 const state = {
   theme: null,
@@ -23,6 +23,7 @@ const el = {
   settings: document.getElementById('settings'),
   toasts: document.getElementById('toasts'),
   profileMenu: document.getElementById('profile-menu'),
+  tabMenu: document.getElementById('tab-menu'),
   palette: document.getElementById('palette'),
   paletteInput: document.getElementById('palette-input'),
   paletteList: document.getElementById('palette-list'),
@@ -239,6 +240,13 @@ function paneLabel(node) {
   return node.profileName || 'shell';
 }
 
+// What the strip shows: a name typed by hand wins over the live one, and
+// clearing the rename brings the live one straight back — which is why the
+// automatic title keeps being tracked underneath a rename rather than replaced.
+function tabLabel(tab) {
+  return tab.customTitle || tab.title;
+}
+
 function refreshPaneTitle(node) {
   const tab = tabOfPane(node);
   if (!tab || tab.kind === 'agents' || tab.activePane !== node) return;
@@ -246,6 +254,7 @@ function refreshPaneTitle(node) {
   if (label === tab.title && node.cwd === tab.titleCwd) return;
   tab.title = label;
   tab.titleCwd = node.cwd;
+  if (tab.customTitle) return; // named by hand: nothing on screen changes
   renderTabs();
 }
 
@@ -698,7 +707,24 @@ async function createPane(opts = {}) {
     if (node.ptyId) api.ptyResize(node.ptyId, cols, rows);
   });
 
-  const { id: ptyId, profileId, profileName } = await api.ptyCreate(term.cols, term.rows, opts);
+  // A tab moved from another window brings its shells with it: main hands over
+  // ownership rather than starting anything, and the scrollback the old window
+  // serialised is written back in. A shell that died in the gap adopts as null,
+  // and the pane opens a fresh one in the same directory instead of sitting inert.
+  const adopt = opts.adopt || null;
+  const spawnOpts = { profileId: opts.profileId, cwd: opts.cwd, run: opts.run };
+  const claimed = adopt ? await api.ptyAdopt(adopt.ptyId, term.cols, term.rows) : null;
+  if (adopt && !claimed) toast('That shell had already exited — opened a new one', { error: true });
+  const { id: ptyId, profileId, profileName } =
+    claimed || (await api.ptyCreate(term.cols, term.rows, spawnOpts));
+  if (claimed) {
+    node.cwd = adopt.cwd || null;
+    node.branch = adopt.branch || null;
+    node.oscTitle = adopt.oscTitle || null;
+    // Before the replayed output, which main is already sending: it belongs
+    // after everything the old window had on screen.
+    if (adopt.text) term.write(adopt.text);
+  }
   node.ptyId = ptyId;
   node.profileId = profileId;
   node.profileName = profileName;
@@ -909,6 +935,22 @@ function activateTab(tab) {
   else focusPane(firstLeaf(tab.root));
 }
 
+// Disposes the terminals of a tab whose shells are being handed to another
+// window: same as closing, minus the one thing that must not happen — killing
+// the shells, which the other window is about to adopt.
+function releaseLeaves(tab) {
+  for (const leaf of allLeaves(tab.root)) {
+    if (leaf.ptyId) {
+      panesByPty.delete(leaf.ptyId);
+      api.ptyOrphan(leaf.ptyId);
+    }
+    try {
+      leaf.term.dispose();
+    } catch {}
+    leaf.el.remove();
+  }
+}
+
 function closeTab(tab, { killPtys = true } = {}) {
   if (tab.kind === 'agents') {
     for (const leaf of tab.centerLeaves) {
@@ -950,16 +992,17 @@ function renderTabs() {
     ...state.tabs.map((tab) => {
       const t = document.createElement('div');
       t.className = 'tab' + (tab === state.activeTab ? ' active' : '');
+      t.tabData = tab;
       if (tab.kind === 'agents') {
         const dot = document.createElement('span');
         dot.className = 'tab-dot st-' + worstAgentStatus(tab);
         t.appendChild(dot);
       }
       const pane = tab.activePane;
-      t.title = [pane?.cwd, pane?.profileName].filter(Boolean).join('\n') || tab.title;
+      t.title = [pane?.cwd, pane?.profileName].filter(Boolean).join('\n') || tabLabel(tab);
       const title = document.createElement('span');
       title.className = 'title';
-      title.textContent = tab.title;
+      title.textContent = tabLabel(tab);
       const close = document.createElement('button');
       close.className = 'close';
       close.textContent = '×';
@@ -972,11 +1015,25 @@ function renderTabs() {
         closeTab(tab);
       });
       t.append(title, close);
-      t.addEventListener('mousedown', () => activateTab(tab));
+      t.addEventListener('mousedown', (ev) => {
+        if (ev.button !== 0) return;
+        activateTab(tab);
+        beginTabDrag(ev, tab);
+      });
+      // The name is the tab's own, so it is edited on the tab — double-click is
+      // where every other application puts this
+      title.addEventListener('dblclick', (ev) => {
+        ev.preventDefault();
+        startTabRename(tab);
+      });
+      t.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        openTabMenu(tab, ev.clientX, ev.clientY);
+      });
       return t;
     })
   );
-  document.title = state.activeTab ? `${state.activeTab.title} — Frost` : 'Frost';
+  document.title = state.activeTab ? `${tabLabel(state.activeTab)} — Frost` : 'Frost';
   // With many tabs the strip scrolls, so the one you just switched to has to be
   // brought into view or it may be off-screen entirely.
   el.tabstrip.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
@@ -994,6 +1051,275 @@ el.tabstrip.addEventListener(
   },
   { passive: false }
 );
+
+// ---------- dragging a tab ----------
+// Two gestures on one drag, because they are the same gesture until the pointer
+// leaves the strip: sideways reorders, and pulling the tab off the strip opens
+// it in a window of its own. Mouse events rather than HTML5 drag-and-drop —
+// the strip is the app's own chrome, and native drag brings a ghost image, a
+// drop-effect cursor and no say over either.
+
+const DRAG_SLOP = 5; // enough that a click with a shaky hand is still a click
+const DETACH_DISTANCE = 56; // below the strip: far enough not to be a wobble
+
+const tabDrag = { tab: null, el: null, x: 0, y: 0, moved: false, live: false, detach: false };
+
+function tabElementOf(tab) {
+  return [...el.tabstrip.children].find((n) => n.tabData === tab) || null;
+}
+
+function beginTabDrag(ev, tab) {
+  tabDrag.tab = tab;
+  tabDrag.el = tabElementOf(tab) || ev.currentTarget;
+  tabDrag.x = ev.clientX;
+  tabDrag.y = ev.clientY;
+  tabDrag.moved = false;
+  tabDrag.live = false;
+  tabDrag.detach = false;
+  window.addEventListener('mousemove', onTabDragMove);
+  window.addEventListener('mouseup', endTabDrag, { once: true });
+}
+
+function onTabDragMove(ev) {
+  const d = tabDrag;
+  if (!d.tab) return;
+  if (!d.live) {
+    if (Math.abs(ev.clientX - d.x) < DRAG_SLOP && Math.abs(ev.clientY - d.y) < DRAG_SLOP) return;
+    d.live = true;
+    d.el.classList.add('dragging');
+  }
+  const strip = el.tabstrip.getBoundingClientRect();
+  // An agent tab is one per app, so there is nothing to move it into
+  const detachable = d.tab.kind !== 'agents' && state.tabs.length > 1;
+  d.detach = detachable && ev.clientY > strip.bottom + DETACH_DISTANCE;
+  d.el.classList.toggle('detaching', d.detach);
+  if (d.detach) return;
+
+  // Reorder against whichever tab the pointer is over, and move the element
+  // itself rather than re-rendering: a strip rebuilt mid-drag would throw away
+  // the node being dragged.
+  const nodes = [...el.tabstrip.children];
+  const from = nodes.indexOf(d.el);
+  const over = nodes.find((n) => {
+    if (n === d.el) return false;
+    const r = n.getBoundingClientRect();
+    return ev.clientX >= r.left && ev.clientX <= r.right;
+  });
+  if (!over) return;
+  const to = nodes.indexOf(over);
+  el.tabstrip.insertBefore(d.el, to > from ? over.nextSibling : over);
+  const [moved] = state.tabs.splice(from, 1);
+  state.tabs.splice(to, 0, moved);
+  d.moved = true;
+}
+
+function endTabDrag() {
+  window.removeEventListener('mousemove', onTabDragMove);
+  const { tab, el: node, live, moved, detach } = tabDrag;
+  node?.classList.remove('dragging', 'detaching');
+  tabDrag.tab = null;
+  tabDrag.el = null;
+  if (!live) return;
+  if (detach) detachTab(tab);
+  else if (moved) {
+    renderTabs(); // titles and the active marker, now in the new order
+    saveSession();
+  }
+}
+
+// ---------- renaming a tab ----------
+// A tab says directory · branch, which is the right answer until several tabs
+// are in the same repo — then the thing that tells them apart is what you are
+// doing in each, and only you know that. A name typed here sticks until it is
+// cleared, survives a restart, and travels with the tab to another window.
+
+function startTabRename(tab) {
+  const node = tabElementOf(tab);
+  const titleEl = node?.querySelector('.title');
+  if (!titleEl || node.querySelector('.tab-rename')) return;
+  const input = document.createElement('input');
+  input.className = 'tab-rename';
+  input.type = 'text';
+  input.spellcheck = false;
+  input.value = tabLabel(tab);
+  input.title = 'Enter to name it, Esc to cancel, empty to go back to the live title';
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    if (commit) {
+      const value = input.value.trim().slice(0, 60);
+      // Empty is not a name, it is "stop naming it": the live directory · branch
+      // title comes back rather than the tab going blank.
+      tab.customTitle = value && value !== tab.title ? value : null;
+      saveSession();
+    }
+    renderTabs();
+    activePane()?.term.focus();
+  };
+  input.addEventListener('mousedown', (ev) => ev.stopPropagation());
+  input.addEventListener('dblclick', (ev) => ev.stopPropagation());
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('keydown', (ev) => {
+    ev.stopPropagation(); // the window-level shortcut handler is not wanted here
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      finish(true);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      finish(false);
+    }
+  });
+}
+
+// ---------- moving a tab to its own window ----------
+// The shells are not restarted: main keeps them running and re-points their
+// output at the new window, so whatever was running keeps running and the
+// directory is still the directory. The scrollback is copied across as text,
+// because a terminal's buffer lives in the renderer that drew it.
+
+function serializeLeafForMove(leaf) {
+  let text = '';
+  try {
+    // Loaded only here: a pane that is never moved should not carry the addon
+    const ser = new SerializeAddon.SerializeAddon();
+    leaf.term.loadAddon(ser);
+    // Enough history to keep the move from reading as a wipe, bounded because
+    // this crosses an IPC boundary as a string
+    text = ser.serialize({ scrollback: 1000 });
+    ser.dispose();
+  } catch {}
+  return {
+    t: 'leaf',
+    ptyId: leaf.ptyId,
+    profileId: leaf.profileId || null,
+    cwd: leaf.cwd || null,
+    branch: leaf.branch || null,
+    oscTitle: leaf.oscTitle || null,
+    text
+  };
+}
+
+function serializeNodeForMove(node) {
+  if (node.type === 'leaf') return serializeLeafForMove(node);
+  return {
+    t: 'split',
+    dir: node.dir,
+    sizes: node.sizes.slice(),
+    children: node.children.map(serializeNodeForMove)
+  };
+}
+
+function detachTab(tab) {
+  if (!tab || !tab.root) return;
+  if (tab.kind === 'agents') {
+    toast('The agent view is one per app — it stays in this window');
+    return;
+  }
+  if (state.tabs.length < 2) {
+    toast('That is the only tab in this window');
+    return;
+  }
+  const payload = {
+    title: tab.title,
+    customTitle: tab.customTitle || null,
+    root: serializeNodeForMove(tab.root)
+  };
+  releaseLeaves(tab);
+  closeTab(tab, { killPtys: false });
+  api.tabDetach(payload);
+}
+
+async function buildAdoptedNode(saved, depth = 0) {
+  if (!isSplit(saved, depth)) {
+    return createPane({
+      profileId: saved?.profileId || undefined,
+      cwd: saved?.cwd || undefined,
+      adopt: saved?.ptyId ? saved : null
+    });
+  }
+  const children = [];
+  for (const c of saved.children) children.push(await buildAdoptedNode(c, depth + 1));
+  return {
+    type: 'split',
+    dir: saved.dir === 'col' ? 'col' : 'row',
+    children,
+    sizes: savedSizes(saved.sizes, children.length),
+    el: null
+  };
+}
+
+// Runs in the window main opened to receive the tab, before anything else is
+// created — this window exists for this tab and nothing else.
+async function adoptTab(payload) {
+  const tab = {
+    id: 'tab-' + ++tabCounter,
+    title: '',
+    customTitle: payload.customTitle || null,
+    root: null,
+    activePane: null,
+    contentEl: document.createElement('div')
+  };
+  tab.contentEl.className = 'tab-content';
+  tab.root = await buildAdoptedNode(payload.root);
+  const first = firstLeaf(tab.root);
+  tab.title = payload.title || paneLabel(first);
+  state.tabs.push(tab);
+  activateTab(tab);
+  renderTab(tab);
+  focusPane(first);
+  saveSession();
+}
+
+// ---------- the tab's own menu ----------
+
+function closeTabMenu() {
+  el.tabMenu.classList.remove('open');
+}
+
+function openTabMenu(tab, x, y) {
+  const items = [
+    { label: 'Rename…', run: () => startTabRename(tab) },
+    {
+      label: 'Duplicate',
+      run: () => {
+        const pane = tab.activePane || firstLeaf(tab.root);
+        newTab({ profileId: pane?.profileId, cwd: pane?.cwd });
+      }
+    },
+    { label: 'Move to a new window', run: () => detachTab(tab) },
+    { label: 'Close', run: () => closeTab(tab) }
+  ];
+  if (tab.kind === 'agents') items.splice(1, 2); // neither applies to the agent view
+  el.tabMenu.replaceChildren(
+    ...items.map(({ label, run }) => {
+      const item = document.createElement('button');
+      item.className = 'menu-item';
+      const name = document.createElement('span');
+      name.textContent = label;
+      item.appendChild(name);
+      item.addEventListener('click', () => {
+        closeTabMenu();
+        run();
+      });
+      return item;
+    })
+  );
+  el.tabMenu.classList.add('open');
+  // Placed after it is measurable, and pulled back inside the window if the
+  // click was near the right edge
+  const r = el.tabMenu.getBoundingClientRect();
+  el.tabMenu.style.left = Math.round(Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+  el.tabMenu.style.top = Math.round(y + 4) + 'px';
+}
+
+window.addEventListener('mousedown', (ev) => {
+  if (!el.tabMenu.contains(ev.target)) closeTabMenu();
+});
 
 // ---------- session persistence ----------
 // The layout is pushed to the main process on every change rather than on exit,
@@ -1023,7 +1349,7 @@ const saveSession = debounce(() => {
   }
   const tabs = state.tabs.filter((t) => t.kind !== 'agents' && t.root);
   api.sessionSave({
-    tabs: tabs.map((t) => ({ root: serializeNode(t.root) })),
+    tabs: tabs.map((t) => ({ root: serializeNode(t.root), title: t.customTitle || null })),
     activeTab: Math.max(0, tabs.indexOf(state.activeTab))
   });
 }, 400);
@@ -1102,6 +1428,9 @@ async function restoreTabs(session) {
       tab.root = await buildSavedNode(savedTab.root);
       const first = firstLeaf(tab.root);
       tab.title = first.profileName || 'shell';
+      if (typeof savedTab.title === 'string' && savedTab.title.trim()) {
+        tab.customTitle = savedTab.title.trim().slice(0, 60);
+      }
       state.tabs.push(tab);
       activateTab(tab);
       renderTab(tab);
@@ -2369,6 +2698,8 @@ cmd('tab.duplicate', 'Duplicate tab (same shell and directory)', () => {
 });
 cmd('tab.agent', 'New agent tab', () => newAgentTab());
 cmd('tab.close', 'Close tab', () => state.activeTab && closeTab(state.activeTab));
+cmd('tab.rename', 'Rename tab', () => state.activeTab && startTabRename(state.activeTab));
+cmd('tab.detach', 'Move tab to a new window', () => state.activeTab && detachTab(state.activeTab));
 cmd('tab.next', 'Next tab', () => cycleTab(1));
 cmd('tab.prev', 'Previous tab', () => cycleTab(-1));
 cmd('tab.go', 'Go to tab N', ({ index }) => {
@@ -3131,9 +3462,14 @@ document.getElementById('btn-close').addEventListener('click', () => api.winClos
     await document.fonts.ready;
   } catch {}
 
-  // launched as `frost <dir>` or from "Open Frost here": that directory is the
-  // whole point of the launch, so it wins over the saved layout
-  if (openDir) {
+  // A window opened to receive a tab dragged out of another one: it exists for
+  // that tab, so neither a saved layout nor a start directory applies.
+  const moved = await api.tabPending();
+  if (moved) {
+    await adoptTab(moved);
+  } else if (openDir) {
+    // launched as `frost <dir>` or from "Open Frost here": that directory is the
+    // whole point of the launch, so it wins over the saved layout
     await newTab({ cwd: openDir });
   } else {
     const session = theme.restoreSession === false ? null : await api.sessionGet();
