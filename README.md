@@ -60,6 +60,12 @@ running and supervising Claude Code agents with live status and diff watching.
   underlined once they're confirmed to exist on disk, so prose doesn't light up.
   Nothing found in terminal output is ever passed through a shell, and only
   `http`, `https` and `mailto` are ever opened
+- **Search that can be narrowed** — `Ctrl+F` finds text in the buffer, with
+  **Aa** for match case, **ab** for whole word and **.\*** for a regular
+  expression, on the bar itself or on `Alt+C` / `Alt+W` / `Alt+R` without leaving
+  the box. The three are one set for the app, so a search set up in one pane is
+  set up in the next, and a half-typed pattern says *Bad pattern* rather than
+  reporting no results
 - **Knows where your commands are** — the prompt hooks emit command marks, so
   Frost knows where each command started and how it ended. Failed commands get a
   red tick in the scrollbar, successful ones green, and `Ctrl+Shift+↑` / `↓`
@@ -171,6 +177,7 @@ npm run pack         # unpacked build only, faster
 npm run shots        # re-render the screenshots above
 npm run test:status  # end-to-end check of agent status reporting
 npm run test:tabs    # drag-reorder, rename, and moving a tab to a new window
+npm run test:search  # the buffer search's case, whole-word and regex options
 ```
 
 `npm run test:status` drives a real Frost over the debugging protocol: it opens
@@ -233,7 +240,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Alt+Shift+=` / `Alt+Shift+-` | Split right / down (inherits directory) |
 | `Alt+←` `→` `↑` `↓` | Move focus to the pane in that direction |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the whole UI in / out / reset — remembered per monitor |
-| `Ctrl+F` | Search buffer |
+| `Ctrl+F` | Search buffer (`Alt+C` case, `Alt+W` whole word, `Alt+R` regex) |
 | `Ctrl+Shift+K` | Clear buffer |
 | `Ctrl+Shift+↑` / `↓` | Jump to previous / next command |
 | `Ctrl+,` | Settings panel |

@@ -7,6 +7,20 @@ Notable changes per release. Dates are release dates; versions follow
 
 ### Added
 
+- **The buffer search can be narrowed.** `Ctrl+F` passed the addon a term and
+  nothing else, so every search was case-insensitive, substring, literal — and
+  the three options that would fix that were already implemented, just never
+  asked for. The bar now carries **Aa**, **ab** and **.\***, also on `Alt+C` /
+  `Alt+W` / `Alt+R` so they are reachable without leaving the box, and they are
+  one set for the whole app rather than per pane: a search is a habit, and having
+  to set match case again in the next pane is the same annoyance as not having it.
+  A regular expression is checked before it is run, because a pattern is a broken
+  pattern most of the way through typing it — the box says *Bad pattern* instead
+  of reporting no results, which would read as an answer. Flipping an option also
+  clears the addon's match cache: it keys that cache on the term, so with the term
+  unchanged the count went on answering the old question — turning on match case
+  moved the selection but still counted every casing.
+
 - **The tab being dragged follows the cursor across the desktop.** It was drawn
   in the window it came from, and a page cannot paint outside its own window — so
   the moment it crossed the window edge it vanished, which is exactly where
