@@ -191,6 +191,12 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
       'the shells behind it are still running',
       (await w.eval('allLeaves(state.activeTab.root).filter((l) => l.ptyId).length')) === 2
     );
+    // A pane is transparent, so being covered is not the same as being hidden:
+    // both lots of text showed through each other until this was made explicit
+    const hidden = await w.eval(`allLeaves(state.activeTab.root)
+      .filter((l) => l !== state.activeTab.zoomedPane)
+      .every((l) => getComputedStyle(l.el).visibility === 'hidden')`);
+    check('and none of them is drawn behind it', hidden === true);
 
     // The terminal in it was resized to match, or it would be drawing at its old size
     const cols = await w.eval('state.activeTab.activePane.term.cols');

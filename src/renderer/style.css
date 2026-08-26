@@ -432,7 +432,12 @@ body.frameless #win-controls {
   z-index: 6;
 }
 
-.tab-content.has-zoom .divider {
+/* Everything the zoomed pane covers is hidden, not merely covered: a pane draws
+   the wallpaper through itself, so two of them stacked showed both lots of text
+   through each other. visibility rather than display, which would take the pane
+   out of layout and leave its terminal measuring zero until it came back. */
+.tab-content.has-zoom .divider,
+.tab-content.has-zoom .pane:not(.zoomed) {
   visibility: hidden;
 }
 

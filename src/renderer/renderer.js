@@ -938,9 +938,14 @@ function toggleZoom() {
     return;
   }
   const leaf = tab.activePane || firstLeaf(tab.root);
-  // One pane already fills the tab; zooming it would look like nothing happened
+  // One pane already fills the tab, so zooming it would look like nothing
+  // happened. Says how to get a second one rather than only that there is not:
+  // zoom is the answer to a split layout, so whoever presses it here has most
+  // likely not met splitting yet.
   if (!leaf || allLeaves(tab.root).length < 2) {
-    toast('Nothing to zoom — this tab has one pane');
+    toast('Zoom fills the tab with one terminal — split first with Alt+Shift+= or Alt+Shift+-', {
+      ms: 6000
+    });
     return;
   }
   setPaneZoom(tab, leaf);
