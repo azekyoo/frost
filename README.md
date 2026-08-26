@@ -60,6 +60,11 @@ running and supervising Claude Code agents with live status and diff watching.
   underlined once they're confirmed to exist on disk, so prose doesn't light up.
   Nothing found in terminal output is ever passed through a shell, and only
   `http`, `https` and `mailto` are ever opened
+- **Panes that get out of the way** — `Alt+Shift+Z` lays the focused pane over
+  its whole tab and puts it back, with the other shells still running behind it
+  the whole time; the tab is marked while one is zoomed, since otherwise it looks
+  like a tab that never had splits. `Alt+Shift+←` `→` `↑` `↓` move the boundary
+  the pane sits against, a step at a time, so the dividers do not need a mouse
 - **Search that can be narrowed** — `Ctrl+F` finds text in the buffer, with
   **Aa** for match case, **ab** for whole word and **.\*** for a regular
   expression, on the bar itself or on `Alt+C` / `Alt+W` / `Alt+R` without leaving
@@ -178,6 +183,7 @@ npm run shots        # re-render the screenshots above
 npm run test:status  # end-to-end check of agent status reporting
 npm run test:tabs    # drag-reorder, rename, and moving a tab to a new window
 npm run test:search  # the buffer search's case, whole-word and regex options
+npm run test:panes   # pane zoom and keyboard resize, measured on screen
 ```
 
 `npm run test:status` drives a real Frost over the debugging protocol: it opens
@@ -239,6 +245,8 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Ctrl+Shift+W` | Close pane (last pane closes tab) |
 | `Alt+Shift+=` / `Alt+Shift+-` | Split right / down (inherits directory) |
 | `Alt+←` `→` `↑` `↓` | Move focus to the pane in that direction |
+| `Alt+Shift+←` `→` `↑` `↓` | Move that pane's edge — resize without the mouse |
+| `Alt+Shift+Z` | Zoom the pane over its tab, and back |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the whole UI in / out / reset — remembered per monitor |
 | `Ctrl+F` | Search buffer (`Alt+C` case, `Alt+W` whole word, `Alt+R` regex) |
 | `Ctrl+Shift+K` | Clear buffer |

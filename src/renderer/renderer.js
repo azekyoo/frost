@@ -903,6 +903,101 @@ function makeDivider(splitNode, index) {
   return d;
 }
 
+// ---------- zooming a pane ----------
+// Splitting is cheap, so panes get small; then one of them is where the work is
+// and the others are context you want back in a keystroke. Zoom lays the focused
+// pane over its tab rather than rebuilding the layout: the tree, the sizes and
+// every other shell are untouched, which is what makes it a view state that can
+// be turned off without anything having moved.
+
+function setPaneZoom(tab, leaf) {
+  if (!tab || tab.kind === 'agents') return;
+  const previous = tab.zoomedPane || null;
+  if (previous) previous.el.classList.remove('zoomed');
+  tab.zoomedPane = leaf || null;
+  if (leaf) leaf.el.classList.add('zoomed');
+  tab.contentEl.classList.toggle('has-zoom', Boolean(leaf));
+  renderTabs(); // the strip carries the marker: a zoomed tab hides its own splits
+  // The pane changed size, so the shell it holds has a different window than it
+  // did a moment ago and has to be told
+  const affected = leaf || previous;
+  if (affected) requestAnimationFrame(() => affected.fit.fit());
+}
+
+// Anything that changes the layout has to let go of the zoom first, or it
+// changes a layout nobody can see.
+function unzoom(tab) {
+  if (tab?.zoomedPane) setPaneZoom(tab, null);
+}
+
+function toggleZoom() {
+  const tab = state.activeTab;
+  if (!tab || tab.kind === 'agents' || !tab.root) return;
+  if (tab.zoomedPane) {
+    setPaneZoom(tab, null);
+    return;
+  }
+  const leaf = tab.activePane || firstLeaf(tab.root);
+  // One pane already fills the tab; zooming it would look like nothing happened
+  if (!leaf || allLeaves(tab.root).length < 2) {
+    toast('Nothing to zoom — this tab has one pane');
+    return;
+  }
+  setPaneZoom(tab, leaf);
+  focusPane(leaf);
+}
+
+// ---------- resizing panes from the keyboard ----------
+// The dividers can be dragged, which needs a mouse, a small target and a steady
+// hand. These move the same boundary a step at a time.
+
+const RESIZE_STEP = 0.06; // of the split's own total, so it feels the same at any depth
+const RESIZE_MIN = 0.08; // the floor the divider drag uses too
+
+// The nearest ancestor split running along the axis being resized, and which of
+// its children the pane sits inside — a pane deep in a column stack still
+// widens by moving the boundary of the row split above it.
+function splitAlong(tab, leaf, dir) {
+  const wanted = dir === 'left' || dir === 'right' ? 'row' : 'col';
+  let node = leaf;
+  let parent = tab.root === node ? null : findParent(tab.root, node);
+  while (parent) {
+    if (parent.dir === wanted) return { split: parent, index: parent.children.indexOf(node) };
+    node = parent;
+    parent = tab.root === node ? null : findParent(tab.root, node);
+  }
+  return null;
+}
+
+function resizePane(dir) {
+  const tab = state.activeTab;
+  if (!tab || tab.kind === 'agents' || !tab.activePane) return;
+  // A zoomed pane has no visible neighbours to take space from
+  if (tab.zoomedPane) return;
+  const found = splitAlong(tab, tab.activePane, dir);
+  if (!found) return;
+  const { split, index } = found;
+  const last = split.children.length - 1;
+  const forward = dir === 'right' || dir === 'down';
+  // The boundary this pane owns in that direction — and if it has none, because
+  // it is the last child, the one on its other side. Moving that one the same
+  // way shrinks the pane, which is what "the edge moves right" means when the
+  // pane is already against the wall.
+  const edge = forward ? (index < last ? index : index - 1) : index > 0 ? index - 1 : index;
+  if (edge < 0 || edge >= last + 1) return;
+  const sum = split.sizes.reduce((a, b) => a + b, 0);
+  const step = (forward ? 1 : -1) * RESIZE_STEP * sum;
+  const a = split.sizes[edge] + step;
+  const b = split.sizes[edge + 1] - step;
+  if (a < RESIZE_MIN || b < RESIZE_MIN) return; // already as far as it goes
+  split.sizes[edge] = a;
+  split.sizes[edge + 1] = b;
+  const kids = [...split.el.children].filter((c) => !c.classList.contains('divider'));
+  kids[edge].style.flex = `${a} 1 0%`;
+  kids[edge + 1].style.flex = `${b} 1 0%`;
+  saveSession(); // each pane refits itself: they are watched for resize
+}
+
 function renderTab(tab) {
   tab.contentEl.replaceChildren(renderNode(tab.root));
   allLeaves(tab.root).forEach((leaf) => leaf.fit.fit());
@@ -923,6 +1018,7 @@ function focusPane(node) {
 async function splitPane(dir) {
   const tab = state.activeTab;
   if (!tab || !tab.activePane) return;
+  unzoom(tab); // a new pane hidden behind a zoomed one reads as a split that failed
   const target = tab.activePane;
   // a split keeps the shell and directory you were already in
   const newLeaf = await createPane({ profileId: target.profileId, cwd: target.cwd });
@@ -959,6 +1055,7 @@ function destroyLeaf(node) {
 function removePane(node, { killPty = true } = {}) {
   const tab = tabOfPane(node);
   if (!tab) return;
+  unzoom(tab);
 
   if (killPty) destroyLeaf(node);
   else {
@@ -1097,6 +1194,15 @@ function renderTabs() {
       const title = document.createElement('span');
       title.className = 'title';
       title.textContent = tabLabel(tab);
+      // A zoomed tab looks like a tab with one pane, and the difference matters:
+      // the other shells are still running behind it.
+      if (tab.zoomedPane) {
+        const mark = document.createElement('span');
+        mark.className = 'tab-zoom';
+        mark.textContent = '⤢';
+        mark.title = 'One pane is zoomed';
+        title.appendChild(mark);
+      }
       const close = document.createElement('button');
       close.className = 'close';
       close.textContent = '×';
@@ -1449,6 +1555,7 @@ function serializeNodeForMove(node) {
 // pane the shell to claim plus the text that was on screen. Taking it hands the
 // shells over and closes the tab here — the caller decides where they go next.
 function takeTab(tab) {
+  unzoom(tab);
   const payload = {
     title: tab.title,
     customTitle: tab.customTitle || null,
@@ -2905,6 +3012,9 @@ function activePane() {
 // Geometric pane navigation: works for any split tree, unlike walking the tree,
 // because what "left" means on screen is a question about rectangles.
 function focusDirection(dir) {
+  // Moving to a pane covered by the zoomed one: the zoom is the thing being
+  // left, so it ends here rather than focusing something invisible.
+  unzoom(state.activeTab);
   const tab = state.activeTab;
   if (!tab || !tab.root || tab.kind === 'agents') return;
   const cur = tab.activePane;
@@ -2977,6 +3087,11 @@ cmd('pane.close', 'Close pane', () => {
   if (tab.activePane) removePane(tab.activePane);
   else closeTab(tab); // agent tabs have no pane tree to close into
 });
+cmd('pane.zoom', 'Zoom pane (hide the others in this tab)', () => toggleZoom());
+cmd('pane.resizeLeft', 'Move the pane edge left', () => resizePane('left'));
+cmd('pane.resizeRight', 'Move the pane edge right', () => resizePane('right'));
+cmd('pane.resizeUp', 'Move the pane edge up', () => resizePane('up'));
+cmd('pane.resizeDown', 'Move the pane edge down', () => resizePane('down'));
 cmd('pane.focusLeft', 'Focus pane left', () => focusDirection('left'));
 cmd('pane.focusRight', 'Focus pane right', () => focusDirection('right'));
 cmd('pane.focusUp', 'Focus pane up', () => focusDirection('up'));
@@ -3035,6 +3150,11 @@ const DEFAULT_BINDINGS = [
   { keys: 'ctrl+9', command: 'tab.last' },
   { keys: 'alt+shift+=', command: 'pane.splitRight' },
   { keys: 'alt+shift+-', command: 'pane.splitDown' },
+  { keys: 'alt+shift+z', command: 'pane.zoom' },
+  { keys: 'alt+shift+left', command: 'pane.resizeLeft' },
+  { keys: 'alt+shift+right', command: 'pane.resizeRight' },
+  { keys: 'alt+shift+up', command: 'pane.resizeUp' },
+  { keys: 'alt+shift+down', command: 'pane.resizeDown' },
   { keys: 'alt+left', command: 'pane.focusLeft' },
   { keys: 'alt+right', command: 'pane.focusRight' },
   { keys: 'alt+up', command: 'pane.focusUp' },

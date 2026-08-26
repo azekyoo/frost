@@ -14,6 +14,7 @@
     "test:windows": "electron tools/windowtest.js",
     "test:tabs": "electron tools/tabtest.js",
     "test:search": "electron tools/searchtest.js",
+    "test:panes": "electron tools/panetest.js",
     "test:backdrop": "electron tools/backdroptest.js",
     "test:restore": "electron tools/restoretest.js",
     "test:resume": "electron tools/resumetest.js"

@@ -7,6 +7,20 @@ Notable changes per release. Dates are release dates; versions follow
 
 ### Added
 
+- **Panes zoom, and resize from the keyboard.** A split layout could be made but
+  not worked: the only way to change a pane's size was to drag a 6px divider, and
+  there was no way to give one pane the whole tab for a minute. `Alt+Shift+Z`
+  lays the focused pane over its tab and puts it back — over, not instead of, so
+  the tree, the sizes and every other shell are untouched and unzooming restores
+  the layout exactly rather than rebuilding it. The tab is marked while it lasts,
+  because a zoomed tab is indistinguishable from a tab that never had splits.
+  `Alt+Shift+←` `→` `↑` `↓` move the boundary the pane sits against by a step of
+  the split it belongs to, so it feels the same however deep the pane is; a pane
+  already against the wall moves its other edge instead, which is what "the edge
+  moves right" has to mean there. Splitting, closing a pane, moving focus out or
+  handing the tab to another window all let go of the zoom first — each of them
+  otherwise changes a layout nobody can see.
+
 - **The buffer search can be narrowed.** `Ctrl+F` passed the addon a term and
   nothing else, so every search was case-insensitive, substring, literal — and
   the three options that would fix that were already implemented, just never

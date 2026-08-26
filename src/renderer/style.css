@@ -237,6 +237,14 @@ body.glass #glass-tint {
   outline: none;
 }
 
+/* The tab of a zoomed pane looks like a tab with one pane; this says otherwise */
+.tab .tab-zoom {
+  margin-left: 5px;
+  font-size: 10px;
+  opacity: 0.75;
+  color: var(--accent);
+}
+
 .tab .close {
   border: none;
   background: transparent;
@@ -410,6 +418,22 @@ body.frameless #win-controls {
   width: 100%;
   height: 100%;
   display: flex;
+  /* the ground a zoomed pane is laid over */
+  position: relative;
+}
+
+/* Zoom covers the layout rather than replacing it: the splits, their sizes and
+   every shell behind stay exactly as they were, so turning it off puts the tab
+   back rather than rebuilding it. The dividers go, since there is nothing
+   visible left to drag them between. */
+.pane.zoomed {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+}
+
+.tab-content.has-zoom .divider {
+  visibility: hidden;
 }
 
 .tab-content > * {
