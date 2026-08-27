@@ -633,6 +633,10 @@ const LIGATURES =
   /(<!--|-->|<==>|<=>|===|!==|=\/=|\.\.\.|\|\|=|&&=|<<=|>>=|\/\*|\*\/|\/\/|=>|->|<-|>=|<=|!=|==|\+\+|--|\|\||&&|::|\.\.|\|>|<\||>>|<<|\?\?|:=)/g;
 
 function applyLigatures(node, on) {
+  // The joiner groups the characters into one run; the class is what lets the
+  // browser shape that run, by dropping the letter-spacing that would otherwise
+  // suppress the substitution. Neither works without the other.
+  document.body.classList.toggle('ligatures', Boolean(on));
   if (Boolean(on) === Boolean(node.ligatureId !== undefined)) return;
   if (!on) {
     try {

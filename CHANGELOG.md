@@ -27,7 +27,13 @@ Notable changes per release. Dates are release dates; versions follow
   access. What that addon does with the knowledge is register a character
   joiner, so the joiner is registered directly against the sequences programming
   fonts ligate; a font without one of them simply draws the characters it always
-  did. Off by default, and honest about why: Frost's own default font is Cascadia
+  did. Joining is only half of it, which is why the first attempt did visibly
+  nothing: xterm's DOM renderer puts a sub-pixel letter-spacing correction on
+  every span so that n characters measure exactly n cells, and Chromium turns
+  ligature substitution off for any text whose letter-spacing is not zero,
+  however small. That correction is dropped while ligatures are on — a hundredth
+  of a pixel per character, around one across a full row, against a feature that
+  is otherwise dead. Off by default, and honest about why: Frost's own default font is Cascadia
   **Mono**, whose entire difference from Cascadia **Code** is having no
   ligatures, so the setting says which fonts are worth switching to.
 

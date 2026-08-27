@@ -73,8 +73,13 @@ async function waitReady(c, timeout = 40000) {
 }
 
 // What the clipboard holds, put there through the page so the paste path is the
-// real one — read back by the same navigator.clipboard the renderer uses.
-const setClipboard = (text) => `navigator.clipboard.writeText(${JSON.stringify(text)}).then(() => true)`;
+// real one — read back by the same navigator.clipboard the renderer uses. The
+// clipboard refuses a document that is not focused, and another window stealing
+// focus mid-run is ordinary, so the page is brought to the front each time.
+async function setClipboard(w, text) {
+  await w.send('Page.bringToFront');
+  await w.eval(`navigator.clipboard.writeText(${JSON.stringify(text)}).then(() => true)`);
+}
 
 const modalState = `(() => {
   const root = document.getElementById('modal');
@@ -131,7 +136,7 @@ const modalState = `(() => {
     console.log('window ready');
 
     // --- one line goes straight through ------------------------------------
-    await w.eval(setClipboard('echo one-liner'));
+    await setClipboard(w, 'echo one-liner');
     await w.eval('(() => { pasteInto(activePane().term); return true })()');
     await sleep(600);
     const quiet = await w.eval(modalState);
@@ -140,7 +145,7 @@ const modalState = `(() => {
     // --- several lines ask first --------------------------------------------
     // Inert on purpose: this is typed at a real shell, and a confirmed paste
     // does run it — which is the very thing the warning exists for
-    await w.eval(setClipboard('echo first\necho second\necho third\n'));
+    await setClipboard(w, 'echo first\necho second\necho third\n');
     await w.eval('(() => { pasteInto(activePane().term); return true })()');
     await sleep(600);
     const asked = await w.eval(modalState);
@@ -170,7 +175,7 @@ const modalState = `(() => {
 
     // --- turned off, nothing is asked ---------------------------------------
     await w.eval(`(() => { applyTheme({ ...state.theme, paste: { warnMultiline: false } }, undefined); return true })()`);
-    await w.eval(setClipboard('echo alpha\necho beta\n'));
+    await setClipboard(w, 'echo alpha\necho beta\n');
     await w.eval('(() => { pasteInto(activePane().term); return true })()');
     await sleep(700);
     const off = await w.eval(modalState);
@@ -197,12 +202,32 @@ const modalState = `(() => {
       return found.join(' '); })()`);
     check('and it finds the sequences a ligature font draws', ranges === '!= => ->', ranges);
 
+    // Joining alone renders nothing: Chromium suppresses ligature substitution
+    // for any text whose letter-spacing is not zero, and xterm's DOM renderer
+    // puts a sub-pixel correction on every span. This is the half that was
+    // missing when the feature first went in and did visibly nothing.
+    await w.eval(`(() => { activePane().term.write('a != b => c\\r\\n'); return true })()`);
+    await sleep(600);
+    const spacing = await w.eval(`(() => {
+      const rows = [...document.querySelectorAll('.xterm-rows > div')];
+      const row = rows.find((r) => r.textContent.includes('!='));
+      const span = row && [...row.children].find((c) => c.textContent === '=>');
+      if (!span) return 'no joined span';
+      return getComputedStyle(span).letterSpacing; })()`);
+    check('the joined run is left unspaced, so the font can shape it', spacing === 'normal' || spacing === '0px', String(spacing));
+
     await w.eval(`(() => {
       applyTheme({ ...state.theme, font: { ...state.theme.font, ligatures: false } }, undefined);
       return true })()`);
     await sleep(400);
     const gone = await w.eval('activePane().ligatureId === undefined');
     check('and turning them off takes it away again', gone === true);
+    const restored = await w.eval(`(() => {
+      const rows = [...document.querySelectorAll('.xterm-rows > div')];
+      const row = rows.find((r) => r.textContent.includes('!='));
+      const span = row && row.children[0];
+      return span ? getComputedStyle(span).letterSpacing : 'none'; })()`);
+    check('and the cell-width correction comes back', restored !== 'normal' && restored !== '0px', String(restored));
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

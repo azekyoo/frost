@@ -1686,6 +1686,17 @@ body.frameless #win-controls {
   line-height: 1.45;
 }
 
+/* Ligatures, when they are on. xterm's DOM renderer puts a sub-pixel
+   letter-spacing correction on every span so that n characters measure exactly
+   n cells — and Chromium turns ligature substitution off for any text whose
+   letter-spacing is not zero, however small. So the correction goes while
+   ligatures are on: it is a hundredth of a pixel per character, about one pixel
+   across a full row, against a feature that is otherwise silently dead.
+   !important because the value is set inline, on every span, every frame. */
+body.ligatures .xterm-rows span {
+  letter-spacing: 0 !important;
+}
+
 /* ---------- scrollbars ---------- */
 /* Every panel that scrolls uses this one, the terminal excepted — its scrollbar
    carries the command ticks and is styled with them. Firefox takes the two
