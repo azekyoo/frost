@@ -3,53 +3,61 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
-## Unreleased
+## 0.5.0 — 2026-08-27
 
 ### Added
 
-- **Pasting several lines asks first.** Text with line breaks in it is typed at
-  the shell as if it had been typed by hand, and a line that ends in a newline
-  runs on arrival — that is what makes a clipboard copied from a web page, a chat
-  window or someone else's terminal worth a second look. Frost now holds a
-  multi-line paste and says how many lines it is and what the first one says,
-  before any of it reaches the shell. Bracketed paste does not make this
-  unnecessary: it is the program's to enable, and a shell that has not — or has
-  handed the terminal to something that reads raw input — runs the lines anyway.
-  The test for this feature demonstrated exactly that against a real PowerShell.
-  `paste.warnMultiline` in `theme.json`, and a checkbox beside copy-on-select.
+- **Frost updates itself.** Every release so far had to be noticed on GitHub and
+  reinstalled by hand, which means the version people run is whichever one they
+  happened to download. An installed build now asks the releases feed for a newer
+  version at startup and every six hours, downloads it in the background, and
+  installs it the next time you quit — never mid-session, because a terminal
+  holds running work and open scrollback that a restart of its own choosing would
+  throw away. Settings gained an **Updates** section: the version you are running
+  beside the latest one, **Check now**, and **Restart and install** once
+  something is downloaded. `update` in `theme.json` — `{ "check": true,
+  "download": true }` — turns either half off, and **Check for updates** is in
+  the command palette. The download is verified against the `sha512` in the
+  release's `latest.yml`, which is the only thing standing in for a code
+  signature these builds do not have. A portable exe was never installed, so
+  there is nothing for an installer to replace: it reports that instead of
+  checking, and so does a run from source.
 
-- **Ligatures, for fonts that have them.** `=>`, `!=`, `->` and the rest are
-  drawn as the single glyphs their designers cut, rather than as the characters
-  they are typed from. The official xterm addon could not be used: it reads the
-  font file off disk to learn which ligatures exist, through font-finder and
-  opentype.js, and this renderer has no Node — deliberately, since it draws
-  whatever a program cares to print, and that is not a place to hand out file
-  access. What that addon does with the knowledge is register a character
-  joiner, so the joiner is registered directly against the sequences programming
-  fonts ligate; a font without one of them simply draws the characters it always
-  did. Joining is only half of it, which is why the first attempt did visibly
-  nothing: xterm's DOM renderer puts a sub-pixel letter-spacing correction on
-  every span so that n characters measure exactly n cells, and Chromium turns
-  ligature substitution off for any text whose letter-spacing is not zero,
-  however small. That correction is dropped while ligatures are on — a hundredth
-  of a pixel per character, around one across a full row, against a feature that
-  is otherwise dead. On by default, because it costs nothing when there is
-  nothing to do: the renderer asks the font whether it draws `=>` as one glyph —
-  two glyphs shaped together differ pixel for pixel from the same two placed side
-  by side — and leaves everything alone when the answer is no. So Cascadia Mono
-  renders exactly as it did, and switching to a font that has ligatures shows
-  them without a setting to find. Off by default, and honest about why: Frost's own default font is Cascadia
-  **Mono**, whose entire difference from Cascadia **Code** is having no
-  ligatures, so the setting says which fonts are worth switching to.
+- **Tabs reorder, take a name, and move between windows.** The strip was fixed:
+  tabs opened in the order they were created and stayed in it, said
+  `directory · branch` and nothing else, and could not leave the window they were
+  born in — while `Ctrl+Shift+N` had been opening extra windows all along.
+  Dragging a tab sideways now reorders it, dropping it on another Frost window
+  hands it over, and letting go anywhere else opens it in a window of its own.
+  A copy of the tab follows the cursor the whole way, outlined for which of the
+  three letting go would be; it is drawn in a small window of its own, because a
+  page cannot paint outside the window it belongs to and an in-page copy vanished
+  at the edge — exactly where dragging a tab out starts to matter.
 
+  Moving a tab does not restart its shells. Main keeps them running and re-points
+  their output at the window that claims them, so a build still building keeps
+  building and the directory is still the directory; output arriving while the
+  tab is between windows is held and replayed rather than dropped. The scrollback
+  is serialised across, since a terminal's buffer lives in the renderer that drew
+  it — without that the move would read as a wipe. Double-click a tab to name it,
+  which is what tells two tabs in the same repo apart: the name persists, travels
+  with a moved tab, and emptying it hands the tab back to its live title.
+  Right-click gives rename, duplicate, move to a new window and close, and the
+  last two are in the command palette. The agent view stays where it is — it is
+  one per app by design.
 
-- **Scrollback is yours to set.** Every pane kept 10,000 lines and there was no
-  way to say otherwise — a long install or a chatty server pushes older output
-  out permanently, and what is pushed out is gone rather than hidden: it cannot
-  be scrolled to and `Ctrl+F` cannot find it. `scrollback` in `theme.json` and a
-  slider in settings now set it, between 1,000 and 200,000 because it is memory
-  rather than a preference, and it reaches the panes already open rather than
-  waiting for new ones.
+- **Panes zoom, and resize from the keyboard.** A split layout could be made but
+  not worked: the only way to change a pane's size was to drag a 6px divider, and
+  there was no way to give one pane the whole tab for a minute. `Alt+Shift+Z`
+  lays the focused pane over its tab and puts it back — over, not instead of, so
+  the tree, the sizes and every other shell are untouched and unzooming restores
+  the layout exactly rather than rebuilding it. The tab is marked while it lasts,
+  because a zoomed tab is otherwise indistinguishable from a tab that never had
+  splits, and the panes underneath are hidden rather than merely covered: a pane
+  draws the wallpaper through itself, so two stacked showed both lots of text
+  through each other. `Alt+Shift+←` `→` `↑` `↓` move the boundary the pane sits
+  against by a step of the split it belongs to, so it feels the same however deep
+  the pane is; a pane already against the wall moves its other edge instead.
 
 - **One command's output, on the clipboard, without selecting it.** Frost has
   known where every command starts and ends since the prompt hooks were added —
@@ -60,27 +68,11 @@ Notable changes per release. Dates are release dates; versions follow
   tedious to make by hand, because the output is usually taller than the screen
   and dragging past both ends without overshooting is the whole difficulty.
   Wrapped rows come back as the single lines they were printed as, so a copied
-  path or JSON blob can be pasted back rather than arriving broken where the
-  window happened to end. Scrolled back it takes the command being looked at
-  rather than the last one run — the two are the same rule read from the top of
-  the screen, which is also why a session still short enough to fit on one screen
-  does not read as "scrolled to the very first command". **Select the last
-  command's output** and **Select everything in this pane** are in the palette;
-  the second was missing entirely, since a terminal has no Ctrl+A of its own.
-
-- **Panes zoom, and resize from the keyboard.** A split layout could be made but
-  not worked: the only way to change a pane's size was to drag a 6px divider, and
-  there was no way to give one pane the whole tab for a minute. `Alt+Shift+Z`
-  lays the focused pane over its tab and puts it back — over, not instead of, so
-  the tree, the sizes and every other shell are untouched and unzooming restores
-  the layout exactly rather than rebuilding it. The tab is marked while it lasts,
-  because a zoomed tab is indistinguishable from a tab that never had splits.
-  `Alt+Shift+←` `→` `↑` `↓` move the boundary the pane sits against by a step of
-  the split it belongs to, so it feels the same however deep the pane is; a pane
-  already against the wall moves its other edge instead, which is what "the edge
-  moves right" has to mean there. Splitting, closing a pane, moving focus out or
-  handing the tab to another window all let go of the zoom first — each of them
-  otherwise changes a layout nobody can see.
+  path or JSON blob pastes back rather than arriving broken where the window
+  happened to end. Scrolled back it takes the command being looked at rather than
+  the last one run. **Select the last command's output** and **Select everything
+  in this pane** are in the palette; the second was missing entirely, since a
+  terminal has no `Ctrl+A` of its own.
 
 - **The buffer search can be narrowed.** `Ctrl+F` passed the addon a term and
   nothing else, so every search was case-insensitive, substring, literal — and
@@ -88,92 +80,82 @@ Notable changes per release. Dates are release dates; versions follow
   asked for. The bar now carries **Aa**, **ab** and **.\***, also on `Alt+C` /
   `Alt+W` / `Alt+R` so they are reachable without leaving the box, and they are
   one set for the whole app rather than per pane: a search is a habit, and having
-  to set match case again in the next pane is the same annoyance as not having it.
-  A regular expression is checked before it is run, because a pattern is a broken
-  pattern most of the way through typing it — the box says *Bad pattern* instead
-  of reporting no results, which would read as an answer. Flipping an option also
-  clears the addon's match cache: it keys that cache on the term, so with the term
-  unchanged the count went on answering the old question — turning on match case
-  moved the selection but still counted every casing.
+  to set match case again in the next pane is the same annoyance as not having
+  it. A regular expression is checked before it is run, because a pattern is a
+  broken pattern most of the way through typing it — the box says *Bad pattern*
+  instead of reporting no results, which would read as an answer.
 
-- **The tab being dragged follows the cursor across the desktop.** It was drawn
-  in the window it came from, and a page cannot paint outside its own window — so
-  the moment it crossed the window edge it vanished, which is exactly where
-  dragging a tab out starts to matter: the gesture worked, but you were aiming
-  blind. It is now a window of its own — frameless, transparent, click-through,
-  never focused, above everything — so it stays under the cursor over the desktop
-  and over other Frost windows, and it still carries the outline that says what
-  letting go would do. One such window is kept for the whole session rather than
-  made per drag, because creating one costs a visible frame; it is destroyed with
-  the last real window, since a window nobody can see would otherwise keep Frost
-  from ever quitting.
+- **Ligatures, for fonts that have them.** `=>`, `!=`, `->` and the rest are
+  drawn as the single glyphs their designers cut, rather than as the characters
+  they are typed from. The official xterm addon could not be used: it reads the
+  font file off disk to learn which ligatures exist, through font-finder and
+  opentype.js, and this renderer has no Node — deliberately, since it draws
+  whatever a program cares to print, and that is not a place to hand out file
+  access. What that addon does with the knowledge is register a character joiner,
+  so the joiner is registered directly against the sequences programming fonts
+  ligate. Joining is only half of it: xterm's DOM renderer puts a sub-pixel
+  letter-spacing correction on every span so that n characters measure exactly n
+  cells, and Chromium turns ligature substitution off for any text whose
+  letter-spacing is not zero, however small — so that correction is dropped while
+  ligatures are on, a hundredth of a pixel per character against a feature that
+  is otherwise dead. On by default, and free when there is nothing to do: the
+  renderer asks the font whether it draws `=>` as one glyph before changing
+  anything, so Cascadia **Mono** — the default here, and one whose whole
+  difference from Cascadia **Code** is having no ligatures — renders exactly as
+  it did.
 
-- **A tab can be dropped on another window, and the drag is visible.** Two
-  things the first cut got wrong. The tab jumped to its new place the instant the
-  pointer crossed another tab, with nothing following the cursor — so a reorder
-  that had already happened looked like one that had not, and there was no way to
-  see what letting go would do. A copy of the tab now follows the cursor,
-  outlined for what the drop means, over a dimmed placeholder where it would
-  land; a copy rather than the tab itself because the strip scrolls sideways and
-  clips vertically, which would cut the tab off exactly when the gesture stops
-  being a reorder. And a tab dragged out could not be put back: dropping it on
-  another Frost window now hands it to that window, which is what every other
-  tabbed application does. Only main can work out which window is under the
-  pointer — the window being dropped onto is a different renderer and never sees
-  the drag, since the pointer stays captured by the window the gesture started
-  in — so it converts the point through the dragging window's zoom and content
-  origin and answers from the window list. It is asked on a timer while dragging,
-  which is what keeps the label right when the pointer is held still, and again
-  at the drop, which is what actually decides. Dropping on the window you started
-  from still means a window of its own, however far from the strip you are.
+- **Pasting several lines asks first.** Text with line breaks in it is typed at
+  the shell as if it had been typed by hand, and a line that ends in a newline
+  runs on arrival — that is what makes a clipboard copied from a web page, a chat
+  window or someone else's terminal worth a second look. Frost now holds a
+  multi-line paste and says how many lines it is and what the first one says,
+  before any of it reaches the shell. Bracketed paste does not make this
+  unnecessary: it is the program's to enable, and a shell that has not — or has
+  handed the terminal to something that reads raw input — runs the lines anyway.
+  The check written for this demonstrated exactly that against a real PowerShell.
+  `paste.warnMultiline` in `theme.json`, and a checkbox beside copy-on-select.
 
-- **Tabs move, reorder and take a name.** The strip was fixed: tabs opened in
-  the order they were created and stayed in it, said `directory · branch` and
-  nothing else, and could not leave the window they were born in — while
-  `Ctrl+Shift+N` had been opening extra windows all along. Dragging a tab
-  sideways now reorders it; dragging it off the strip opens it in a window of its
-  own. The shells are not restarted for that: main keeps them running and
-  re-points their output at the new window, so a build still building keeps
-  building, and the scrollback is serialised across so the text on screen
-  survives too — output arriving in the moment between the two windows is held
-  and replayed rather than dropped. Double-click a tab to name it, which is what
-  tells two tabs in the same repo apart; the name persists in the session,
-  travels with a moved tab, and emptying it hands the tab back to its live
-  title. Right-click gives rename, duplicate, move to a new window and close,
-  and the last two are commands in the palette. The agent view stays put — it is
-  one per app by design.
-
-- **Frost updates itself.** Every release so far had to be noticed on GitHub and
-  reinstalled by hand, which means the version people run is whichever one they
-  happened to download. An installed build now asks the releases feed for a newer
-  version at startup and every six hours, downloads it in the background, and
-  installs it the next time you quit — never mid-session, because a terminal
-  holds running work and open scrollback that a restart of its own choosing would
-  throw away. The settings panel gained an **Updates** section: the version you
-  are running beside the latest one, **Check now**, and **Restart and install**
-  once something is downloaded, for anyone who does not want to wait for a quit.
-  `update` in `theme.json` — `{ "check": true, "download": true }` — turns either
-  half off, and **Check for updates** is in the command palette. The check is
-  verified against the `sha512` in the release's `latest.yml`, which is the only
-  thing standing in for a code signature these builds do not have. A portable exe
-  was never installed, so there is nothing for an installer to replace: it
-  reports that instead of checking, and so does a run from source.
+- **Scrollback is yours to set.** Every pane kept 10,000 lines and there was no
+  way to say otherwise — a long install or a chatty server pushes older output
+  out permanently, and what is pushed out is gone rather than hidden: it cannot
+  be scrolled to and `Ctrl+F` cannot find it. `scrollback` in `theme.json` and a
+  slider in settings now set it, between 1,000 and 200,000 because it is memory
+  rather than a preference, and it reaches the panes already open rather than
+  waiting for new ones.
 
 ### Changed
 
 - **The renderer is ten files rather than one.** `renderer.js` had reached four
   thousand lines and was the whole interface — panes, tabs, agents, diffs,
   settings, the palette — which made every change a search through everything
-  else. It is split along the seams that were already there in its section
-  comments: core, panes, tabs, profiles, agents, diff, commands, palette,
-  settings, boot. Still plain scripts sharing one scope, not modules: the
-  terminal, its panes and its tabs are one live object graph, nothing stands
-  between the source and the window, and the checks in `tools/` drive a real
-  window by evaluating these names inside it. Nothing about what runs changed —
-  the same 74 checks pass across the five suites, plus the window and restore
-  ones.
+  else. It is split along the seams already drawn in its section comments: core,
+  panes, tabs, profiles, agents, diff, commands, palette, settings, boot. Still
+  plain scripts sharing one scope rather than modules: the terminal, its panes
+  and its tabs are one live object graph, nothing stands between the source and
+  the window, and the checks in `tools/` drive a real window by evaluating these
+  names inside it.
+
+- **A pane is asked for sooner.** The first terminal used to wait on
+  `document.fonts.ready`, which waits for every font the page will ever load, and
+  that wait sat between the window appearing and the first shell being asked for.
+  Only the terminal's own face is awaited now, and only for up to 400ms; the
+  atlas refresh already scheduled after boot is what makes the short wait safe.
+  For the record, since it is the rest of that wait: from window to prompt is
+  about 3.7 seconds here, of which the shell itself is around two — a PowerShell
+  profile accounts for 1.6 of them. Starting a shell before the window asks for
+  one was tried and reverted: PowerShell starting competes with the renderer
+  starting, and it pushed the window's own appearance from 1.1 to 5.5 seconds to
+  save two later.
 
 ### Fixed
+
+- **Output held for a shell without an owner reached the pane that wanted it.**
+  A tab moving between windows leaves its shells ownerless for a moment, and what
+  they printed in that moment was replayed from inside the call that hands them
+  over — before that call returns, and therefore before the new window has wired
+  the pane to the shell. It arrived at a window that did not yet know where to
+  put it and was dropped. The renderer now asks for the replay once the pane is
+  listening.
 
 - **The search count no longer states a total it does not have.** The addon
   stops collecting matches at a thousand and reports that number as the total, so
@@ -183,10 +165,16 @@ Notable changes per release. Dates are release dates; versions follow
   `1000+ matches`, which is what is actually known.
 
 - **The command palette's scrollbar looks like the rest of Frost.** It was the
-  browser's own, white and wide, because the styling had been written three
-  times for three panels and the palette was not one of them. One rule now covers
-  every panel that scrolls; the terminal keeps its own, since that scrollbar
-  carries the command ticks.
+  browser's own, white and wide, because the styling had been written three times
+  for three panels and the palette was not one of them. One rule now covers every
+  panel that scrolls; the terminal keeps its own, since that scrollbar carries the
+  command ticks.
+
+- **The drag ghost stopped talking to a page that was still loading.**
+  `MaxListenersExceededWarning` in the log: it pushed its outline with
+  `executeJavaScript` on every mouse move, and Electron parks each such call
+  behind a one-shot `did-stop-loading` listener while the page loads. The outline
+  is now pushed only when it changes, and only once the page is up.
 
 ## 0.4.4 — 2026-08-20
 
