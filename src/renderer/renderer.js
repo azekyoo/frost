@@ -73,10 +73,54 @@ function debounce(fn, ms) {
 // ---------- theme ----------
 
 // paste via term.paste(): respects bracketed paste mode, so multi-line
-// pastes don't execute line-by-line in the shell
+// pastes don't execute line-by-line in the shell — where the shell supports it.
+// PowerShell and bash do; a program reading raw input may not, and neither does
+// a shell in the middle of a here-doc, which is why the warning below exists at
+// all rather than being made redundant by bracketed paste.
+
+// A newline in pasted text is a command the shell may run the instant it
+// arrives, and clipboards are picked up from web pages, chat and other people's
+// terminals. This is the one place Frost can put a step between "what I think I
+// copied" and "what runs", so it does — an answer nobody reads is still cheaper
+// than a command nobody meant.
+function pasteWarningFor(text, theme) {
+  if (theme?.paste?.warnMultiline === false) return null;
+  const lines = String(text).split(/\r\n|\r|\n/);
+  // A single trailing newline still means "and press Enter", so it counts
+  if (lines.length < 2) return null;
+  const real = lines.filter((l) => l.trim().length > 0);
+  const first = (real[0] || '').trim();
+  return {
+    count: real.length,
+    // Enough of the first line to recognise the paste by, and no more: the
+    // clipboard may hold something the person would rather not see printed on a
+    // shared screen, and the modal is not a viewer.
+    preview: first.length > 70 ? first.slice(0, 70) + '…' : first
+  };
+}
+
 function pasteInto(term) {
-  navigator.clipboard.readText().then((t) => {
-    if (t) term.paste(t);
+  navigator.clipboard.readText().then((text) => {
+    if (!text) return;
+    const warn = pasteWarningFor(text, state.theme);
+    if (!warn) {
+      term.paste(text);
+      return;
+    }
+    askModal(
+      {
+        title: `Paste ${warn.count} lines?`,
+        detail:
+          'Pasted text with line breaks in it is typed into the shell as if you had typed it, and any line that ends in a newline runs. Check it is what you meant to copy.',
+        note: warn.preview ? `First line: ${warn.preview}` : '',
+        confirmLabel: 'Paste',
+        cancelLabel: 'Cancel'
+      },
+      () => {
+        term.paste(text);
+        term.focus();
+      }
+    );
   });
 }
 
@@ -200,6 +244,7 @@ function applyTheme(theme, css) {
     // Live: xterm keeps what it already holds when the limit grows, and drops
     // the oldest when it shrinks, so this needs no new pane and no restart
     term.options.scrollback = scrollbackFor(theme);
+    applyLigatures(node, theme.font?.ligatures === true);
     term.options.theme = xtermTheme(theme);
     try {
       term.unicode.activeVersion = theme.unicodeVersion || '11';
@@ -571,6 +616,44 @@ function attachLinks(node) {
   });
 }
 
+// ---------- ligatures ----------
+// The official addon is not usable here: it reads the font file off disk to
+// learn which ligatures it has, through font-finder and opentype.js, and this
+// renderer has no Node — deliberately, since it draws whatever a program cares
+// to print. What the addon does with that knowledge is register a character
+// joiner, which tells the renderer to draw a run of characters as one piece of
+// text rather than cell by cell; the font's own shaping does the rest. So the
+// joiner is registered directly, against the sequences programming fonts
+// actually ligate, and a font that has no ligature for one of them simply draws
+// it as the characters it already was.
+//
+// Off by default because Frost's default font is Cascadia Mono, which has none —
+// switch to Cascadia Code, Fira Code, JetBrains Mono or Iosevka to see anything.
+const LIGATURES =
+  /(<!--|-->|<==>|<=>|===|!==|=\/=|\.\.\.|\|\|=|&&=|<<=|>>=|\/\*|\*\/|\/\/|=>|->|<-|>=|<=|!=|==|\+\+|--|\|\||&&|::|\.\.|\|>|<\||>>|<<|\?\?|:=)/g;
+
+function applyLigatures(node, on) {
+  if (Boolean(on) === Boolean(node.ligatureId !== undefined)) return;
+  if (!on) {
+    try {
+      node.term.deregisterCharacterJoiner(node.ligatureId);
+    } catch {}
+    node.ligatureId = undefined;
+    return;
+  }
+  try {
+    node.ligatureId = node.term.registerCharacterJoiner((text) => {
+      const ranges = [];
+      LIGATURES.lastIndex = 0;
+      let m;
+      while ((m = LIGATURES.exec(text))) ranges.push([m.index, m.index + m[0].length]);
+      return ranges;
+    });
+  } catch {
+    node.ligatureId = undefined;
+  }
+}
+
 // ---------- buffer search ----------
 
 const SEARCH_DECORATIONS = {
@@ -834,6 +917,7 @@ async function createPane(opts = {}) {
     oscTitle: null
   };
   applyGpu(node);
+  applyLigatures(node, theme.font?.ligatures === true);
   attachPaneSearch(node);
   attachCwdTracking(node);
   attachCommandMarks(node);
@@ -3366,12 +3450,15 @@ function closeModal() {
   activePane()?.term.focus();
 }
 
-function askModal({ title, detail, note, confirmLabel = 'Restart now' }, onConfirm) {
+function askModal({ title, detail, note, confirmLabel = 'Restart now', cancelLabel = 'Later' }, onConfirm) {
   modal.title.textContent = title;
   modal.detail.textContent = detail;
   modal.note.textContent = note || '';
   modal.note.style.display = note ? '' : 'none';
   modal.confirm.textContent = confirmLabel;
+  // "Later" is right for a restart that can wait and wrong for a paste, which
+  // either happens now or does not happen
+  modal.later.textContent = cancelLabel;
   modal.root.classList.add('open');
   modal.confirm.focus();
   modal.onConfirm = onConfirm;
@@ -3555,6 +3642,8 @@ const s = {
   notifySecondsVal: document.getElementById('s-notify-seconds-val'),
   autoDetect: document.getElementById('s-autodetect'),
   copyOnSelect: document.getElementById('s-copyonselect'),
+  pasteWarn: document.getElementById('s-paste-warn'),
+  ligatures: document.getElementById('s-ligatures'),
   startDir: document.getElementById('s-startdir'),
   editor: document.getElementById('s-editor'),
   tintColor: document.getElementById('s-tint-color'),
@@ -3690,6 +3779,8 @@ function syncSettingsUI() {
   s.notifySecondsVal.textContent = secs ? secs + 's' : 'Off';
   s.autoDetect.checked = t.autoDetectAgents !== false;
   s.copyOnSelect.checked = t.copyOnSelect !== false;
+  s.pasteWarn.checked = t.paste?.warnMultiline !== false;
+  s.ligatures.checked = t.font?.ligatures === true;
   s.startDir.value = t.startDir || '';
   s.editor.value = t.editor || '';
   s.tintColor.value = tint.hex;
@@ -3750,6 +3841,7 @@ function onSettingChange() {
   };
   t.autoDetectAgents = s.autoDetect.checked;
   t.copyOnSelect = s.copyOnSelect.checked;
+  t.paste = { ...(t.paste || {}), warnMultiline: s.pasteWarn.checked };
   t.startDir = s.startDir.value.trim();
   t.editor = s.editor.value.trim();
   t.tint = `rgba(${r}, ${g}, ${b}, ${alpha})`;
@@ -3757,6 +3849,7 @@ function onSettingChange() {
   t.font = t.font || {};
   if (s.fontFamily.value) t.font.family = `"${s.fontFamily.value}", Consolas, monospace`;
   t.font.size = +s.fontSize.value;
+  t.font.ligatures = s.ligatures.checked;
   t.font.weight = +s.fontWeight.value;
   t.font.lineHeight = +s.lineHeight.value;
   t.terminal = t.terminal || {};

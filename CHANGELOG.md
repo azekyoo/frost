@@ -5,6 +5,32 @@ Notable changes per release. Dates are release dates; versions follow
 
 ## Unreleased
 
+### Added
+
+- **Pasting several lines asks first.** Text with line breaks in it is typed at
+  the shell as if it had been typed by hand, and a line that ends in a newline
+  runs on arrival — that is what makes a clipboard copied from a web page, a chat
+  window or someone else's terminal worth a second look. Frost now holds a
+  multi-line paste and says how many lines it is and what the first one says,
+  before any of it reaches the shell. Bracketed paste does not make this
+  unnecessary: it is the program's to enable, and a shell that has not — or has
+  handed the terminal to something that reads raw input — runs the lines anyway.
+  The test for this feature demonstrated exactly that against a real PowerShell.
+  `paste.warnMultiline` in `theme.json`, and a checkbox beside copy-on-select.
+
+- **Ligatures, for fonts that have them.** `=>`, `!=`, `->` and the rest are
+  drawn as the single glyphs their designers cut, rather than as the characters
+  they are typed from. The official xterm addon could not be used: it reads the
+  font file off disk to learn which ligatures exist, through font-finder and
+  opentype.js, and this renderer has no Node — deliberately, since it draws
+  whatever a program cares to print, and that is not a place to hand out file
+  access. What that addon does with the knowledge is register a character
+  joiner, so the joiner is registered directly against the sequences programming
+  fonts ligate; a font without one of them simply draws the characters it always
+  did. Off by default, and honest about why: Frost's own default font is Cascadia
+  **Mono**, whose entire difference from Cascadia **Code** is having no
+  ligatures, so the setting says which fonts are worth switching to.
+
 ### Fixed
 
 - **The search count no longer states a total it does not have.** The addon

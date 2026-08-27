@@ -60,6 +60,11 @@ running and supervising Claude Code agents with live status and diff watching.
   underlined once they're confirmed to exist on disk, so prose doesn't light up.
   Nothing found in terminal output is ever passed through a shell, and only
   `http`, `https` and `mailto` are ever opened
+- **Asks before pasting several lines** — text with line breaks in it is typed
+  at the shell as if you had typed it, and a line ending in a newline runs. A
+  clipboard picked up from a web page or a chat window gets one question, with
+  the line count and the first line, before any of it reaches the shell. Off in
+  settings if you would rather it did not ask
 - **Panes that get out of the way** — `Alt+Shift+Z` lays the focused pane over
   its whole tab and puts it back, with the other shells still running behind it
   the whole time; the tab is marked while one is zoomed, since otherwise it looks
@@ -190,6 +195,7 @@ npm run test:tabs    # drag-reorder, rename, and moving a tab to a new window
 npm run test:search  # the buffer search's case, whole-word and regex options
 npm run test:panes   # pane zoom and keyboard resize, measured on screen
 npm run test:marks   # copying one command's output, against a real shell
+npm run test:paste   # the multi-line paste question, and the ligature joiner
 ```
 
 `npm run test:status` drives a real Frost over the debugging protocol: it opens
@@ -315,7 +321,12 @@ for an installed build, in the repo's `config/` when running from source:
   so it can override or unset both.
 
   `font` takes `family`, `size` (CSS pixels — Windows Terminal counts in points,
-  where its 12pt default is these 16), `lineHeight`, and `weight` / `weightBold`.
+  where its 12pt default is these 16), `lineHeight`, `weight` / `weightBold` and
+  `ligatures`. Ligatures are off, and would do nothing on: the default font is
+  Cascadia **Mono**, whose whole difference from Cascadia **Code** is having
+  none. With a font that has them — Cascadia Code, Fira Code, JetBrains Mono,
+  Iosevka — `=>`, `!=` and `->` are drawn as the single glyphs the font designer
+  cut for them.
   Weight exists because a transparent window is composited, and composited text
   gets grayscale antialiasing rather than ClearType. Against white text over a
   photograph those soft edges read as extra mass, so the default is 350 — below

@@ -160,6 +160,16 @@
             title="The default foreground. Colours a program asks for by name are unaffected." />
         </label>
 
+        <label class="field row">
+          <input type="checkbox" id="s-ligatures" />
+          <span>Ligatures &mdash; draw <b>=&gt;</b> and <b>!=</b> as one glyph</span>
+        </label>
+        <p class="hint">
+          Needs a font that has them: Cascadia <b>Code</b>, Fira Code, JetBrains
+          Mono, Iosevka. Cascadia <b>Mono</b>, the default here, deliberately has
+          none, so this does nothing until the font is changed above.
+        </p>
+
         <label class="field">
           <span>Line height <em id="s-line-height-val"></em></span>
           <input type="range" id="s-line-height" min="1" max="1.6" step="0.05"
@@ -203,6 +213,11 @@
         <label class="field row">
           <input type="checkbox" id="s-autodetect" />
           <span>Auto-detect claude sessions</span>
+        </label>
+
+        <label class="field row">
+          <input type="checkbox" id="s-paste-warn" />
+          <span>Ask before pasting several lines</span>
         </label>
 
         <label class="field row">

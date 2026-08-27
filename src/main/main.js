@@ -91,6 +91,10 @@ const DEFAULT_THEME = {
   update: { check: true, download: true },
   agentLayout: { rail: 210, diff: 340 },
   copyOnSelect: true,
+  // Text with line breaks in it is typed into the shell as typed input, and a
+  // line ending in a newline runs. The clipboard is not always the user's own
+  // writing, so the paste is confirmed once rather than trusted silently.
+  paste: { warnMultiline: true },
   unicodeVersion: '11',
   tint: 'rgba(0, 0, 0, 0.00)',
   accent: '#80a8ff',
@@ -110,7 +114,11 @@ const DEFAULT_THEME = {
     // opaque terminal. 350 is Cascadia's variable axis interpolating genuinely
     // lighter (the axis runs 200–700), so the strokes thin without losing a pixel
     // anywhere, and bold at 700 is still bold.
-    weight: 350
+    weight: 350,
+    // Off, and it would do nothing on: Cascadia Mono has no ligatures — that is
+    // what distinguishes it from Cascadia Code. Turn it on after picking a font
+    // that has them.
+    ligatures: false
   },
   cursor: { style: 'bar', blink: true },
   // smoothMs: 0 restores xterm's instant row-at-a-time scroll. lines is rows per
