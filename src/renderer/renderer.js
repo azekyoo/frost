@@ -347,6 +347,71 @@ function attachCommandMarks(node) {
   });
 }
 
+// ---------- what one command printed ----------
+// The marks already know where every command began; between two of them is
+// exactly one command's output, which is the thing worth having on the
+// clipboard and the thing that is most tedious to select by hand — it is
+// usually longer than the screen, so selecting it means dragging past both
+// ends without overshooting.
+//
+// A mark sits on the line the prompt was drawn on, and the next mark on the
+// line of the prompt after it. So the output is what lies between them, minus
+// the rows the prompt and the typed command themselves take up: a long command
+// wraps, and every wrapped row belongs to the command, not to its output.
+
+function liveMarks(node) {
+  return (node?.marks || []).filter((m) => !m.marker.isDisposed).sort((a, b) => a.marker.line - b.marker.line);
+}
+
+// The command being looked at: the last finished one that starts at or above the
+// top of the screen. Scrolled to the bottom that is the command that just ran;
+// scrolled up it is the one whose output fills the screen, which is the one
+// being read — anchoring on the top of the viewport rather than the bottom is
+// what makes those the same rule. A screen showing no prompt at all falls back
+// to the last finished command, since that is the only one it could mean.
+function commandRegion(node) {
+  const term = node?.term;
+  if (!term) return null;
+  const marks = liveMarks(node);
+  if (marks.length < 2) return null;
+  const buf = term.buffer.active;
+  // At the bottom, the command being looked at is the one that just ran — and
+  // saying "at or above the top of the screen" would pick the first command in
+  // the session while everything still fits on one screen, where the top of the
+  // screen is the top of the buffer.
+  const scrolledBack = buf.viewportY < buf.baseY;
+  let index = marks.length - 2; // the last one that has finished
+  if (scrolledBack) {
+    for (let i = 0; i < marks.length - 1; i++) {
+      if (marks[i].marker.line <= buf.viewportY) index = i;
+    }
+  }
+
+  let start = marks[index].marker.line + 1;
+  // Past the rows the command line itself wrapped onto
+  while (start < marks[index + 1].marker.line && buf.getLine(start)?.isWrapped) start++;
+  const end = marks[index + 1].marker.line - 1;
+  if (end < start) return null; // a command that printed nothing
+  return { start, end };
+}
+
+function selectCommandOutput(node) {
+  const region = commandRegion(node);
+  if (!region) {
+    // cmd and WSL profiles install no prompt hook, so they never report one
+    toast(
+      liveMarks(node).length
+        ? 'That command printed nothing'
+        : 'No command marks yet — this shell has not reported one'
+    );
+    return null;
+  }
+  node.term.selectLines(region.start, region.end);
+  // xterm's own selection knows which rows are continuations of one long line,
+  // so this is the output as it was printed rather than as it was wrapped
+  return node.term.getSelection();
+}
+
 // Scrolls to the nearest command prompt above or below what's on screen.
 function jumpToMark(node, dir) {
   if (!node?.marks?.length) return;
@@ -3127,6 +3192,25 @@ cmd('view.clear', 'Clear buffer', () => {
 });
 cmd('command.previous', 'Jump to previous command', () => jumpToMark(activePane(), -1));
 cmd('command.next', 'Jump to next command', () => jumpToMark(activePane(), 1));
+cmd('command.copyOutput', "Copy the last command's output", () => {
+  const node = activePane();
+  if (!node) return;
+  const text = selectCommandOutput(node);
+  if (text === null) return;
+  navigator.clipboard.writeText(text);
+  const lines = text ? text.split('\n').length : 0;
+  toast(`Copied ${lines} line${lines === 1 ? '' : 's'}`);
+});
+cmd('command.selectOutput', "Select the last command's output", () => {
+  const node = activePane();
+  if (node) selectCommandOutput(node);
+});
+cmd('view.selectAll', 'Select everything in this pane', () => {
+  const node = activePane();
+  if (!node) return;
+  node.term.selectAll();
+  node.term.focus();
+});
 cmd('view.scrollToTop', 'Scroll to top', () => activePane()?.term.scrollToTop());
 cmd('view.scrollToBottom', 'Scroll to bottom', () => activePane()?.term.scrollToBottom());
 
@@ -3173,6 +3257,7 @@ const DEFAULT_BINDINGS = [
   { keys: 'ctrl+shift+k', command: 'view.clear' },
   { keys: 'ctrl+shift+up', command: 'command.previous' },
   { keys: 'ctrl+shift+down', command: 'command.next' },
+  { keys: 'ctrl+shift+o', command: 'command.copyOutput' },
   { keys: 'ctrl+shift+p', command: 'app.palette' },
   // Ctrl+1..8 pick a tab, Ctrl+Shift+1..9 open the Nth shell profile
   ...Array.from({ length: 8 }, (_, i) => ({

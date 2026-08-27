@@ -7,6 +7,23 @@ Notable changes per release. Dates are release dates; versions follow
 
 ### Added
 
+- **One command's output, on the clipboard, without selecting it.** Frost has
+  known where every command starts and ends since the prompt hooks were added —
+  it draws the scrollbar ticks from exactly that — but nothing used it beyond
+  jumping. `Ctrl+Shift+O` now copies the output of one command: the lines between
+  its prompt and the next one, so the command line itself, the prompt and
+  anything that ran afterwards are left out. That is the selection that is most
+  tedious to make by hand, because the output is usually taller than the screen
+  and dragging past both ends without overshooting is the whole difficulty.
+  Wrapped rows come back as the single lines they were printed as, so a copied
+  path or JSON blob can be pasted back rather than arriving broken where the
+  window happened to end. Scrolled back it takes the command being looked at
+  rather than the last one run — the two are the same rule read from the top of
+  the screen, which is also why a session still short enough to fit on one screen
+  does not read as "scrolled to the very first command". **Select the last
+  command's output** and **Select everything in this pane** are in the palette;
+  the second was missing entirely, since a terminal has no Ctrl+A of its own.
+
 - **Panes zoom, and resize from the keyboard.** A split layout could be made but
   not worked: the only way to change a pane's size was to drag a 6px divider, and
   there was no way to give one pane the whole tab for a minute. `Alt+Shift+Z`

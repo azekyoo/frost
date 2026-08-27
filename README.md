@@ -74,7 +74,12 @@ running and supervising Claude Code agents with live status and diff watching.
 - **Knows where your commands are** — the prompt hooks emit command marks, so
   Frost knows where each command started and how it ended. Failed commands get a
   red tick in the scrollbar, successful ones green, and `Ctrl+Shift+↑` / `↓`
-  jump between them however far you've scrolled
+  jump between them however far you've scrolled. `Ctrl+Shift+O` copies one
+  command's whole output — just the output, without the prompt, the command line
+  or anything that ran after it, and without you dragging a selection past both
+  ends of it. Scrolled back, it takes the command you're looking at rather than
+  the last one you ran; wrapped lines come back as the single lines they were
+  printed as, so what you paste is what the program wrote
 - **Tells you when a long command finishes** — if a command ran longer than your
   threshold and Frost is in the background, you get a notification and a taskbar
   flash. Timed from the same prompt hook that drives tab titles, so there's no
@@ -184,6 +189,7 @@ npm run test:status  # end-to-end check of agent status reporting
 npm run test:tabs    # drag-reorder, rename, and moving a tab to a new window
 npm run test:search  # the buffer search's case, whole-word and regex options
 npm run test:panes   # pane zoom and keyboard resize, measured on screen
+npm run test:marks   # copying one command's output, against a real shell
 ```
 
 `npm run test:status` drives a real Frost over the debugging protocol: it opens
@@ -251,6 +257,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Ctrl+F` | Search buffer (`Alt+C` case, `Alt+W` whole word, `Alt+R` regex) |
 | `Ctrl+Shift+K` | Clear buffer |
 | `Ctrl+Shift+↑` / `↓` | Jump to previous / next command |
+| `Ctrl+Shift+O` | Copy that command's output, without selecting it |
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
 | `Ctrl+click` | Open a file path in your editor, or a URL in your browser |
