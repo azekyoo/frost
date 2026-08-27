@@ -33,7 +33,12 @@ Notable changes per release. Dates are release dates; versions follow
   ligature substitution off for any text whose letter-spacing is not zero,
   however small. That correction is dropped while ligatures are on — a hundredth
   of a pixel per character, around one across a full row, against a feature that
-  is otherwise dead. Off by default, and honest about why: Frost's own default font is Cascadia
+  is otherwise dead. On by default, because it costs nothing when there is
+  nothing to do: the renderer asks the font whether it draws `=>` as one glyph —
+  two glyphs shaped together differ pixel for pixel from the same two placed side
+  by side — and leaves everything alone when the answer is no. So Cascadia Mono
+  renders exactly as it did, and switching to a font that has ligatures shows
+  them without a setting to find. Off by default, and honest about why: Frost's own default font is Cascadia
   **Mono**, whose entire difference from Cascadia **Code** is having no
   ligatures, so the setting says which fonts are worth switching to.
 

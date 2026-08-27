@@ -182,14 +182,24 @@ const modalState = `(() => {
     check('the warning can be turned off', off.open === false, JSON.stringify(off.title));
 
     // --- ligatures -----------------------------------------------------------
-    const noJoiner = await w.eval('activePane().ligatureId === undefined');
-    check('ligatures are off by default', noJoiner === true);
+    // On by default, and idle by default: the test config uses Cascadia Mono,
+    // which has none, so nothing should have been joined or unspaced for it
+    const monoJoiner = await w.eval('activePane().ligatureId === undefined');
+    check('a font without ligatures is left alone', monoJoiner === true);
+    check(
+      'and the font itself is what says so',
+      (await w.eval(`fontHasLigatures('"Cascadia Mono", monospace')`)) === false
+    );
+    check(
+      'a font that has them is recognised',
+      (await w.eval(`fontHasLigatures('"Cascadia Code", monospace')`)) === true
+    );
     await w.eval(`(() => {
-      applyTheme({ ...state.theme, font: { ...state.theme.font, ligatures: true } }, undefined);
+      applyTheme({ ...state.theme, font: { ...state.theme.font, family: '"Cascadia Code", monospace' } }, undefined);
       return true })()`);
-    await sleep(400);
+    await sleep(600);
     const joined = await w.eval('typeof activePane().ligatureId === "number"');
-    check('turning them on registers a joiner', joined === true);
+    check('switching to it joins the runs, with no setting to find', joined === true);
 
     // The joiner is what decides which characters are drawn as one run
     const ranges = await w.eval(`(() => {

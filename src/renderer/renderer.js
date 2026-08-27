@@ -244,7 +244,7 @@ function applyTheme(theme, css) {
     // Live: xterm keeps what it already holds when the limit grows, and drops
     // the oldest when it shrinks, so this needs no new pane and no restart
     term.options.scrollback = scrollbackFor(theme);
-    applyLigatures(node, theme.font?.ligatures === true);
+    applyLigatures(node, theme.font?.ligatures !== false);
     term.options.theme = xtermTheme(theme);
     try {
       term.unicode.activeVersion = theme.unicodeVersion || '11';
@@ -632,11 +632,51 @@ function attachLinks(node) {
 const LIGATURES =
   /(<!--|-->|<==>|<=>|===|!==|=\/=|\.\.\.|\|\|=|&&=|<<=|>>=|\/\*|\*\/|\/\/|=>|->|<-|>=|<=|!=|==|\+\+|--|\|\||&&|::|\.\.|\|>|<\||>>|<<|\?\?|:=)/g;
 
-function applyLigatures(node, on) {
+// Whether this font actually has the ligatures, asked of the font rather than
+// assumed from its name. Two glyphs drawn as one differ from the same two drawn
+// side by side; a font with no ligature for the pair draws them identically. The
+// answer decides whether the letter-spacing correction is worth dropping, so a
+// font without ligatures pays nothing for the setting being on.
+const ligatureFonts = new Map(); // font family -> boolean
+
+function fontHasLigatures(family) {
+  if (!family) return false;
+  if (ligatureFonts.has(family)) return ligatureFonts.get(family);
+  let answer = false;
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 80;
+    canvas.height = 40;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.font = `28px ${family}`;
+    const advance = ctx.measureText('=').width;
+    const pixels = () => [...new Uint8Array(ctx.getImageData(0, 0, 80, 40).data)].join(',');
+
+    ctx.clearRect(0, 0, 80, 40);
+    ctx.fillText('=>', 4, 30);
+    const together = pixels();
+
+    // The same two characters, placed by hand where the font would put them.
+    // Identical pixels mean the font drew two characters either way.
+    ctx.clearRect(0, 0, 80, 40);
+    ctx.fillText('=', 4, 30);
+    ctx.fillText('>', 4 + advance, 30);
+    answer = together !== pixels();
+  } catch {
+    answer = false;
+  }
+  ligatureFonts.set(family, answer);
+  return answer;
+}
+
+function applyLigatures(node, wanted) {
   // The joiner groups the characters into one run; the class is what lets the
   // browser shape that run, by dropping the letter-spacing that would otherwise
-  // suppress the substitution. Neither works without the other.
-  document.body.classList.toggle('ligatures', Boolean(on));
+  // suppress the substitution. Neither does anything without the other, and
+  // neither is worth doing for a font that has nothing to substitute.
+  const family = node.term?.options?.fontFamily || state.theme?.font?.family;
+  const on = Boolean(wanted) && fontHasLigatures(family);
+  document.body.classList.toggle('ligatures', on);
   if (Boolean(on) === Boolean(node.ligatureId !== undefined)) return;
   if (!on) {
     try {
@@ -921,7 +961,7 @@ async function createPane(opts = {}) {
     oscTitle: null
   };
   applyGpu(node);
-  applyLigatures(node, theme.font?.ligatures === true);
+  applyLigatures(node, theme.font?.ligatures !== false);
   attachPaneSearch(node);
   attachCwdTracking(node);
   attachCommandMarks(node);
@@ -3784,7 +3824,7 @@ function syncSettingsUI() {
   s.autoDetect.checked = t.autoDetectAgents !== false;
   s.copyOnSelect.checked = t.copyOnSelect !== false;
   s.pasteWarn.checked = t.paste?.warnMultiline !== false;
-  s.ligatures.checked = t.font?.ligatures === true;
+  s.ligatures.checked = t.font?.ligatures !== false;
   s.startDir.value = t.startDir || '';
   s.editor.value = t.editor || '';
   s.tintColor.value = tint.hex;

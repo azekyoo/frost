@@ -322,11 +322,12 @@ for an installed build, in the repo's `config/` when running from source:
 
   `font` takes `family`, `size` (CSS pixels — Windows Terminal counts in points,
   where its 12pt default is these 16), `lineHeight`, `weight` / `weightBold` and
-  `ligatures`. Ligatures are off, and would do nothing on: the default font is
-  Cascadia **Mono**, whose whole difference from Cascadia **Code** is having
-  none. With a font that has them — Cascadia Code, Fira Code, JetBrains Mono,
-  Iosevka — `=>`, `!=` and `->` are drawn as the single glyphs the font designer
-  cut for them.
+  `ligatures`. Ligatures are on and cost nothing when there is nothing to draw:
+  Frost asks the font whether it has them before changing anything, so the
+  default — Cascadia **Mono**, whose whole difference from Cascadia **Code** is
+  having none — renders exactly as it did. Pick a font that has them (Cascadia
+  Code, Fira Code, JetBrains Mono, Iosevka) and `=>`, `!=` and `->` appear as the
+  single glyphs their designer cut, with no setting to go and find.
   Weight exists because a transparent window is composited, and composited text
   gets grayscale antialiasing rather than ClearType. Against white text over a
   photograph those soft edges read as extra mass, so the default is 350 — below

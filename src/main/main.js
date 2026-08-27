@@ -115,10 +115,12 @@ const DEFAULT_THEME = {
     // lighter (the axis runs 200–700), so the strokes thin without losing a pixel
     // anywhere, and bold at 700 is still bold.
     weight: 350,
-    // Off, and it would do nothing on: Cascadia Mono has no ligatures — that is
-    // what distinguishes it from Cascadia Code. Turn it on after picking a font
-    // that has them.
-    ligatures: false
+    // On, and free where there is nothing to do: the renderer asks the font
+    // whether it draws => as one glyph before changing anything, so the default
+    // font here — Cascadia Mono, which has no ligatures, that being its whole
+    // difference from Cascadia Code — is rendered exactly as it was. Pick a font
+    // that has them and they appear without a setting to find.
+    ligatures: true
   },
   cursor: { style: 'bar', blink: true },
   // smoothMs: 0 restores xterm's instant row-at-a-time scroll. lines is rows per
