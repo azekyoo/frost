@@ -171,6 +171,35 @@ const setOptions = (opts) => `(() => {
     check('a half-typed pattern is reported, not searched', bad === 'Bad pattern', bad);
     check('and the box says so', marked === true);
 
+    // --- more matches than the addon tracks --------------------------------
+    // Past its highlight limit it stops knowing which match is current and
+    // reports -1, which used to render as "0/1000": a position it does not have,
+    // and a total that is only the ceiling.
+    await w.eval(setOptions({ caseSensitive: false, wholeWord: false, regex: false }));
+    await w.eval(`(() => {
+      const t = activePane().term;
+      for (let i = 0; i < 40; i++) t.write('hay '.repeat(40) + '\\r\\n');
+      return true; })()`);
+    await sleep(800);
+    await w.eval(typeQuery('hay'));
+    await sleep(1200);
+    const many = await w.eval(countText);
+    check('past the tracking limit it says so rather than claiming 0', /\+ matches$/.test(many), many);
+
+    // --- how much is kept -------------------------------------------------
+    const limit = await w.eval('activePane().term.options.scrollback');
+    check('scrollback follows the setting', limit === 10000, String(limit));
+    const changed = await w.eval(`(() => {
+      const t = { ...state.theme, scrollback: 25000 };
+      applyTheme(t, undefined);
+      return activePane().term.options.scrollback; })()`);
+    check('and a new value reaches the panes already open', changed === 25000, String(changed));
+    const clamped = await w.eval(`(() => {
+      applyTheme({ ...state.theme, scrollback: 5 }, undefined);
+      return activePane().term.options.scrollback; })()`);
+    check('an unusable value is brought into range', clamped === 1000, String(clamped));
+    await w.eval(`(() => { applyTheme({ ...state.theme, scrollback: 10000 }, undefined); return true })()`);
+
     // The options are one set for the app, so a second pane's buttons show them
     await w.eval('(async () => { await splitPane("row"); return true })()');
     await sleep(2500);
@@ -179,7 +208,7 @@ const setOptions = (opts) => `(() => {
       const other = panes[panes.length - 1];
       openPaneSearch(other);
       return other.searchToggles.map((b) => b.classList.contains('on')).join(','); })()`);
-    check('a new pane shows the same options', shown === 'false,false,true', shown);
+    check('a new pane shows the same options', shown === 'false,false,false', shown);
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

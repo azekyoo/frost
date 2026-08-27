@@ -236,6 +236,21 @@
       </div>
 
       <div class="group">
+        <h3>Scrollback</h3>
+
+        <label class="field">
+          <span>Lines kept per pane <em id="s-scrollback-val"></em></span>
+          <input type="range" id="s-scrollback" min="1000" max="200000" step="1000" />
+        </label>
+        <p class="hint">
+          What scrolls off the top is kept until this fills, then the oldest goes
+          &mdash; and what goes is gone: not scrollable, not findable by
+          <b>Ctrl+F</b>. It is memory, so a large number costs real RAM in every
+          pane at once. Takes effect immediately, in the panes already open.
+        </p>
+      </div>
+
+      <div class="group">
         <h3>Cursor</h3>
 
         <label class="field">

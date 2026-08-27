@@ -116,6 +116,10 @@ const DEFAULT_THEME = {
   // smoothMs: 0 restores xterm's instant row-at-a-time scroll. lines is rows per
   // wheel notch, fastLines the same while Shift is held.
   scroll: { smoothMs: 90, lines: 3, fastLines: 10 },
+  // Lines kept after they scroll off the top, per pane. What is not kept cannot
+  // be scrolled to and cannot be found by search — it is gone rather than
+  // hidden — and it is memory, so the renderer holds this to 1,000–200,000.
+  scrollback: 10000,
   // Not Campbell. Windows Terminal's palette assumes an opaque black background,
   // and half of it — red, blue, magenta — is too dark to read through a window
   // that shows the wallpaper behind it. Nor is it a muted designer scheme: those

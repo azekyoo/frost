@@ -332,6 +332,11 @@ for an installed build, in the repo's `config/` when running from source:
   **Restart and install** in settings. With `check` off nothing is looked for and
   **Check now** is still there for when you want to ask.
 
+  `scrollback` is how many lines a pane keeps after they scroll off the top,
+  10,000 by default and held between 1,000 and 200,000 — it is memory, and what
+  is not kept is gone rather than hidden: not scrollable, not findable. It
+  applies to the panes already open the moment it is saved.
+
   `notify` controls background alerts:
   `{ "agentBlocked": true, "agentDone": true, "commandSeconds": 20 }`.
   `commandSeconds` is the threshold for the long-command notification, and `0`

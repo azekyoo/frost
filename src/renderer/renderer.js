@@ -143,6 +143,19 @@ function xtermTheme(theme) {
   };
 }
 
+// How much of what has scrolled off the top is kept. It is memory, and wide
+// output is roughly a kilobyte a line, so the range is bounded rather than
+// unlimited: a million lines would be a gigabyte per pane with nothing on screen
+// to suggest where it went.
+const SCROLLBACK_MIN = 1000;
+const SCROLLBACK_MAX = 200000;
+
+function scrollbackFor(theme) {
+  const asked = Number(theme?.scrollback);
+  if (!Number.isFinite(asked)) return 10000;
+  return Math.min(SCROLLBACK_MAX, Math.max(SCROLLBACK_MIN, Math.round(asked)));
+}
+
 function applyTheme(theme, css) {
   if (!theme) return;
   state.theme = theme;
@@ -184,6 +197,9 @@ function applyTheme(theme, css) {
     term.options.smoothScrollDuration = theme.scroll?.smoothMs ?? 90;
     term.options.scrollSensitivity = theme.scroll?.lines ?? 3;
     term.options.fastScrollSensitivity = theme.scroll?.fastLines ?? 10;
+    // Live: xterm keeps what it already holds when the limit grows, and drops
+    // the oldest when it shrinks, so this needs no new pane and no restart
+    term.options.scrollback = scrollbackFor(theme);
     term.options.theme = xtermTheme(theme);
     try {
       term.unicode.activeVersion = theme.unicodeVersion || '11';
@@ -579,8 +595,13 @@ const SEARCH_TOGGLES = [
   { key: 'regex', label: '.*', title: 'Regular expression (Alt+R)', code: 'KeyR' }
 ];
 
+// The addon stops adding to its match list at this many and reports that number
+// as the total, so a count equal to it is a floor rather than an answer. Named
+// here because the bar has to know the same number to say so.
+const SEARCH_HIGHLIGHT_LIMIT = 1000;
+
 function attachPaneSearch(node) {
-  const search = new SearchAddon.SearchAddon();
+  const search = new SearchAddon.SearchAddon({ highlightLimit: SEARCH_HIGHLIGHT_LIMIT });
   node.term.loadAddon(search);
   node.search = search;
 
@@ -623,7 +644,19 @@ function attachPaneSearch(node) {
   node.searchInput = input;
 
   search.onDidChangeResults(({ resultIndex, resultCount }) => {
-    count.textContent = resultCount === 0 ? 'No results' : `${resultIndex + 1}/${resultCount}`;
+    if (resultCount === 0) {
+      count.textContent = 'No results';
+      return;
+    }
+    // At the limit the total is a ceiling, not a count — there may be ten times
+    // as many — and past it the addon stops tracking which match is current and
+    // reports -1, which used to render as the position "0". Neither is a thing
+    // to state as fact, so both say what is actually known.
+    if (resultCount >= SEARCH_HIGHLIGHT_LIMIT || resultIndex < 0) {
+      count.textContent = `${SEARCH_HIGHLIGHT_LIMIT}+ matches`;
+      return;
+    }
+    count.textContent = `${resultIndex + 1}/${resultCount}`;
   });
 
   function go(dir, incremental) {
@@ -747,7 +780,7 @@ async function createPane(opts = {}) {
   const term = new Terminal({
     allowProposedApi: true, // unicode width API is gated behind this in xterm 6
     allowTransparency: true,
-    scrollback: 10000,
+    scrollback: scrollbackFor(theme),
     fontFamily: theme.font?.family || 'Consolas, monospace',
     fontSize: theme.font?.size || 16,
     lineHeight: theme.font?.lineHeight || 1.15,
@@ -3540,6 +3573,8 @@ const s = {
   paddingVal: document.getElementById('s-padding-val'),
   radius: document.getElementById('s-radius'),
   radiusVal: document.getElementById('s-radius-val'),
+  scrollback: document.getElementById('s-scrollback'),
+  scrollbackVal: document.getElementById('s-scrollback-val'),
   cursorStyle: document.getElementById('s-cursor-style'),
   cursorBlink: document.getElementById('s-cursor-blink'),
   updateCheck: document.getElementById('s-update-check'),
@@ -3680,6 +3715,9 @@ function syncSettingsUI() {
   s.paddingVal.textContent = (t.padding ?? 14) + 'px';
   s.radius.value = t.cornerRadius ?? 8;
   s.radiusVal.textContent = (t.cornerRadius ?? 8) + 'px';
+  const scrollback = scrollbackFor(t);
+  s.scrollback.value = scrollback;
+  s.scrollbackVal.textContent = scrollback.toLocaleString() + ' lines';
   s.cursorStyle.value = t.cursor?.style || 'bar';
   s.cursorBlink.checked = t.cursor?.blink !== false;
   s.updateCheck.checked = t.update?.check !== false;
@@ -3725,6 +3763,7 @@ function onSettingChange() {
   t.terminal.foreground = s.fg.value;
   t.padding = +s.padding.value;
   t.cornerRadius = +s.radius.value;
+  t.scrollback = scrollbackFor({ scrollback: +s.scrollback.value });
   t.cursor = t.cursor || {};
   t.cursor.style = s.cursorStyle.value;
   t.cursor.blink = s.cursorBlink.checked;

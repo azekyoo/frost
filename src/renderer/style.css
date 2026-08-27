@@ -651,8 +651,6 @@ body.frameless #win-controls {
   border: 1px solid var(--hairline);
   border-radius: var(--radius);
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-3) transparent;
   color: #ffffff;
 }
 
@@ -1077,8 +1075,6 @@ body.frameless #win-controls {
      outgoing lines scroll through in plain sight. The gap is put on the first
      file instead, where it scrolls away with everything else. */
   padding: 0 8px 8px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-3) transparent;
 }
 
 .diff-body > .diff-file:first-child {
@@ -1431,21 +1427,6 @@ body.frameless #win-controls {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-3) transparent;
-}
-
-.settings-body::-webkit-scrollbar {
-  width: 8px;
-}
-
-.settings-body::-webkit-scrollbar-thumb {
-  background: var(--surface-2);
-  border-radius: 4px;
-}
-
-.settings-body::-webkit-scrollbar-thumb:hover {
-  background: var(--surface-3);
 }
 
 .group {
@@ -1703,6 +1684,55 @@ body.frameless #win-controls {
   font-size: 11px;
   color: color-mix(in srgb, var(--fg) 45%, transparent);
   line-height: 1.45;
+}
+
+/* ---------- scrollbars ---------- */
+/* Every panel that scrolls uses this one, the terminal excepted — its scrollbar
+   carries the command ticks and is styled with them. Firefox takes the two
+   standard properties; Chromium wants the pseudo-elements, and it is Chromium
+   that Frost actually runs on, so the palette looked like a web page from 2010
+   until it was listed here too. */
+.settings-body,
+#palette-list,
+.agents-rail,
+.agents-diff,
+.diff-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+
+.settings-body::-webkit-scrollbar,
+#palette-list::-webkit-scrollbar,
+.agents-rail::-webkit-scrollbar,
+.agents-diff::-webkit-scrollbar,
+.diff-body::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.settings-body::-webkit-scrollbar-track,
+#palette-list::-webkit-scrollbar-track,
+.agents-rail::-webkit-scrollbar-track,
+.agents-diff::-webkit-scrollbar-track,
+.diff-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-body::-webkit-scrollbar-thumb,
+#palette-list::-webkit-scrollbar-thumb,
+.agents-rail::-webkit-scrollbar-thumb,
+.agents-diff::-webkit-scrollbar-thumb,
+.diff-body::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+
+.settings-body::-webkit-scrollbar-thumb:hover,
+#palette-list::-webkit-scrollbar-thumb:hover,
+.agents-rail::-webkit-scrollbar-thumb:hover,
+.agents-diff::-webkit-scrollbar-thumb:hover,
+.diff-body::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-3);
 }
 
 /* ---------- command palette ---------- */
