@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   ptyResize: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),
   ptyKill: (id) => ipcRenderer.send('pty:kill', { id }),
   ptyOrphan: (id) => ipcRenderer.send('pty:orphan', { id }),
+  ptyFlush: (id) => ipcRenderer.send('pty:flush', { id }),
   ptyAdopt: (id, cols, rows) => ipcRenderer.invoke('pty:adopt', { id, cols, rows }),
   tabDetach: (payload) => ipcRenderer.send('tab:detach', payload),
   tabPending: () => ipcRenderer.invoke('tab:pending'),

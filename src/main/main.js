@@ -1121,9 +1121,15 @@ function branchFor(cwd) {
 
 ipcMain.handle('git:branch', (_e, cwd) => branchFor(cwd));
 
-ipcMain.handle('pty:create', (event, { cols, rows, cwd, run, profileId }) => {
+// owner is the window the output belongs to. It can be null, for a shell that
+// exists before any pane does — nothing does that today, and the buffering
+// below is what a tab in flight between windows relies on.
+function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
   const id = String(++ptyCounter);
-  ptyOwners.set(id, event.sender);
+  if (owner) ptyOwners.set(id, owner);
+  // No owner yet: whatever the shell prints in the meantime is held, by the
+  // same buffer a tab in flight between windows uses, and replayed on claim.
+  else detachedPtys.set(id, { chunks: [], bytes: 0 });
   const profile = findProfile(profileId);
   const autoDetect = (readTheme() || DEFAULT_THEME).autoDetectAgents !== false;
   // agentWrapper names the shell dialect: it decides both how the `claude`
@@ -1203,7 +1209,9 @@ ipcMain.handle('pty:create', (event, { cols, rows, cwd, run, profileId }) => {
     }, 1500);
   }
   return { id, profileId: profile.id, profileName: profile.name };
-});
+}
+
+ipcMain.handle('pty:create', (event, opts) => spawnShell({ ...opts, owner: event.sender }));
 
 ipcMain.handle('profiles:list', () =>
   getProfiles().map(({ id, name, agentWrapper }) => ({ id, name, agentWrapper: agentWrapper || 'none' }))
@@ -1272,18 +1280,27 @@ ipcMain.handle('pty:adopt', (event, { id, cols, rows }) => {
   const held = detachedPtys.get(id);
   if (!p || !held || ptyOwners.has(id)) return null;
   ptyOwners.set(id, event.sender);
-  detachedPtys.delete(id);
   if (cols > 0 && rows > 0) {
     try {
       p.resize(cols, rows);
     } catch {}
   }
-  // Replay before anything else reaches the window, so the output arrives in
-  // the order the program wrote it
-  for (const data of held.chunks) event.sender.send('pty:data', { id, data });
-  if (held.exit !== undefined) event.sender.send('pty:exit', { id, exitCode: held.exit });
+  // The replay waits for pty:flush, for the same reason it does when a warm
+  // shell is claimed: this call has not returned yet, so the pane it belongs to
+  // has not been wired up to receive anything.
   const meta = ptyMeta.get(id) || {};
   return { id, profileId: meta.profileId || null, profileName: meta.profileName || null };
+});
+
+// Asked for by the renderer once the pane is listening. Everything the shell
+// said before anyone was there to hear it arrives now, in the order it was said,
+// ahead of whatever it says next.
+ipcMain.on('pty:flush', (event, { id }) => {
+  const held = detachedPtys.get(id);
+  if (!held || ptyOwners.get(id) !== event.sender) return;
+  detachedPtys.delete(id);
+  for (const data of held.chunks) event.sender.send('pty:data', { id, data });
+  if (held.exit !== undefined) event.sender.send('pty:exit', { id, exitCode: held.exit });
 });
 
 ipcMain.on('tab:detach', (_e, payload) => {

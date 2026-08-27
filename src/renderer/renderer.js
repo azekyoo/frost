@@ -1049,6 +1049,11 @@ async function createPane(opts = {}) {
   node.profileId = profileId;
   node.profileName = profileName;
   panesByPty.set(ptyId, node);
+  // Now that this pane is the one output for that shell reaches, anything it
+  // said earlier can be let through: a shell started before the window asked for
+  // it, or one that changed windows. Nothing is held for a shell started here,
+  // so this is a no-op in the ordinary case.
+  api.ptyFlush(ptyId);
   term.onData((d) => {
     // Enter starts the clock that the next prompt stops
     if (d.includes('\r')) node.enterAt = Date.now();
@@ -4098,12 +4103,16 @@ document.getElementById('btn-close').addEventListener('click', () => api.winClos
   populateProfileSelect();
   populateFontList();
 
-  // Wait for the terminal font before opening the first terminal — opening
-  // with a fallback font bakes wrong glyph metrics into the renderer atlas
-  // (garbled emoji/status lines until a manual renderer reset).
+  // Wait for the terminal font before opening the first terminal — opening with
+  // a fallback font bakes wrong glyph metrics into the renderer atlas (garbled
+  // emoji and status lines until a manual reset). Only that one face, and not
+  // for long: document.fonts.ready waits for every font the document will ever
+  // load, which on this page meant the first shell was not even asked for until
+  // a second after the window appeared. The atlas is refreshed again below once
+  // everything has settled, which is what makes a short wait safe.
   try {
-    await document.fonts.load(`${theme.font?.size || 14}px ${theme.font?.family || 'monospace'}`);
-    await document.fonts.ready;
+    const face = document.fonts.load(`${theme.font?.size || 14}px ${theme.font?.family || 'monospace'}`);
+    await Promise.race([face, new Promise((r) => setTimeout(r, 400))]);
   } catch {}
 
   // A window opened to receive a tab dragged out of another one: it exists for
