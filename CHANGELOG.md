@@ -31,22 +31,6 @@ Notable changes per release. Dates are release dates; versions follow
   **Mono**, whose entire difference from Cascadia **Code** is having no
   ligatures, so the setting says which fonts are worth switching to.
 
-### Fixed
-
-- **The search count no longer states a total it does not have.** The addon
-  stops collecting matches at a thousand and reports that number as the total, so
-  a buffer with ten thousand of them read `1/1000` — a total that is really a
-  floor — and past the limit it stops tracking which match is current and reports
-  the index as -1, which rendered as the position `0`. Both now read
-  `1000+ matches`, which is what is actually known.
-
-- **The command palette's scrollbar looks like the rest of Frost.** It was the
-  browser's own, white and wide, because the styling had been written three
-  times for three panels and the palette was not one of them. One rule now covers
-  every panel that scrolls; the terminal keeps its own, since that scrollbar
-  carries the command ticks.
-
-### Added
 
 - **Scrollback is yours to set.** Every pane kept 10,000 lines and there was no
   way to say otherwise — a long install or a chatty server pushes older output
@@ -163,6 +147,21 @@ Notable changes per release. Dates are release dates; versions follow
   thing standing in for a code signature these builds do not have. A portable exe
   was never installed, so there is nothing for an installer to replace: it
   reports that instead of checking, and so does a run from source.
+
+### Fixed
+
+- **The search count no longer states a total it does not have.** The addon
+  stops collecting matches at a thousand and reports that number as the total, so
+  a buffer with ten thousand of them read `1/1000` — a total that is really a
+  floor — and past the limit it stops tracking which match is current and reports
+  the index as -1, which rendered as the position `0`. Both now read
+  `1000+ matches`, which is what is actually known.
+
+- **The command palette's scrollbar looks like the rest of Frost.** It was the
+  browser's own, white and wide, because the styling had been written three
+  times for three panels and the palette was not one of them. One rule now covers
+  every panel that scrolls; the terminal keeps its own, since that scrollbar
+  carries the command ticks.
 
 ## 0.4.4 — 2026-08-20
 
