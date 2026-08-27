@@ -159,6 +159,20 @@ Notable changes per release. Dates are release dates; versions follow
   was never installed, so there is nothing for an installer to replace: it
   reports that instead of checking, and so does a run from source.
 
+### Changed
+
+- **The renderer is ten files rather than one.** `renderer.js` had reached four
+  thousand lines and was the whole interface — panes, tabs, agents, diffs,
+  settings, the palette — which made every change a search through everything
+  else. It is split along the seams that were already there in its section
+  comments: core, panes, tabs, profiles, agents, diff, commands, palette,
+  settings, boot. Still plain scripts sharing one scope, not modules: the
+  terminal, its panes and its tabs are one live object graph, nothing stands
+  between the source and the window, and the checks in `tools/` drive a real
+  window by evaluating these names inside it. Nothing about what runs changed —
+  the same 74 checks pass across the five suites, plus the window and restore
+  ones.
+
 ### Fixed
 
 - **The search count no longer states a total it does not have.** The addon

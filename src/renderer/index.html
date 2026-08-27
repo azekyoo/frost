@@ -374,6 +374,19 @@
   <script src="../../node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js"></script>
   <script src="../../node_modules/@xterm/addon-search/lib/addon-search.js"></script>
   <script src="../../node_modules/@xterm/addon-serialize/lib/addon-serialize.js"></script>
-  <script src="renderer.js"></script>
+  <!-- One scope, loaded in dependency order: core first, boot last. Plain
+       scripts rather than modules — the terminal, its panes and its tabs are one
+       live object graph, and the tools in tools/ drive a real window by
+       evaluating these names in it. -->
+  <script src="core.js"></script>
+  <script src="panes.js"></script>
+  <script src="tabs.js"></script>
+  <script src="profiles.js"></script>
+  <script src="agents.js"></script>
+  <script src="diff.js"></script>
+  <script src="commands.js"></script>
+  <script src="palette.js"></script>
+  <script src="settings.js"></script>
+  <script src="boot.js"></script>
 </body>
 </html>
