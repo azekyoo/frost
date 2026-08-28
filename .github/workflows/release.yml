@@ -59,12 +59,31 @@ jobs:
           # the blockmap lets it download only the changed blocks. Without them
           # the exes are here but no installed copy ever learns about them.
           assets=(dist/*.exe dist/latest.yml dist/*.blockmap)
+
+          # The release body is the version's own CHANGELOG section: what
+          # changed, written for the people it changed for. --generate-notes
+          # lists the commits instead, which is the wrong thing to hand someone
+          # who clicked "Release notes" in the update panel. Everything from the
+          # version's heading down to the next one, and nothing else.
+          awk -v v="## ${TAG#v} " '$0 ~ "^" v {f=1; next} f && /^## /{exit} f' \
+            CHANGELOG.md > notes.md
+
+          # A tag pushed before its section was written still gets a release,
+          # with the commit list rather than an empty page.
+          if [ -s notes.md ]; then
+            notes=(--notes-file notes.md)
+          else
+            echo "no CHANGELOG section for ${TAG#v} - generated notes instead" >&2
+            notes=(--generate-notes)
+          fi
+
           # Idempotent: a release may already exist if it was cut by hand, and
-          # re-running the job must not fail on that.
+          # re-running the job must not fail on that. Its body is left as it is:
+          # whoever wrote it meant what it says.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "${assets[@]}" --clobber
           else
             gh release create "$TAG" "${assets[@]}" \
               --title "Frost $TAG" \
-              --generate-notes
+              "${notes[@]}"
           fi
