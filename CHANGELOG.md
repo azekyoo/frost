@@ -3,6 +3,57 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 0.5.1 — 2026-08-28
+
+### Fixed
+
+- **Links in a pane work again — all of them.** The renderer's files are plain
+  scripts sharing one scope, and two of them defined a `lineText`: one reads a
+  row out of the terminal buffer, the other builds a line of the diff view. The
+  diff's loaded second and won, so the link provider called it on every hover and
+  threw, which took xterm's provider chain down with it. Neither a URL nor a file
+  path had been clickable since, and nothing said so — no underline on hover, and
+  Ctrl+click doing nothing, is exactly what a line with no links in it looks
+  like.
+
+- **Restoring several windows left most of them invisible.** A window is created
+  hidden and shown once its renderer paints, and a window that comes back
+  underneath another one may never be painted: Windows reports it occluded and
+  the compositor skips it. It then stayed hidden for good — three saved windows
+  opened as one, and closing that one did not end Frost, because the two nobody
+  could see were still holding it open. The paint is still the moment worth
+  waiting for; it no longer gets to decide whether the window is ever shown.
+
+- **Closing windows one at a time only brought the last one back.** The saved set
+  was written from the windows still open, so every close rewrote it a window
+  shorter and the first two were gone before the third had closed. A closed
+  window's geometry and tabs are now kept for twenty seconds and saved alongside
+  the ones still open: long enough to cover the last clicks of leaving, short
+  enough that a window closed in the morning is not waiting the next day.
+
+### Changed
+
+- **Tooltips are Frost's own.** The `title` on a tab or a button was drawn by
+  Windows — white box, system font, its own idea of where the corner goes —
+  which next to the command palette and the settings sheet read as another
+  program's UI. They are now the same glass panel as the menus, and a tab's
+  tooltip puts the directory in the terminal's own face with the shell's name
+  dimmed under it.
+
+- **A pane shows the arrow cursor, not an I-beam.** xterm.js styles a terminal
+  as a text field. A console window does not, and neither does Windows Terminal;
+  dragging a selection works the same under an arrow. The pointer over a link and
+  the crosshair during a column select are unchanged.
+
+- **Pasting several lines into a claude session no longer asks first.** The
+  confirmation is there because a line ending in a newline runs the moment it
+  reaches a shell. In an agent session it does not: logs, a stack trace or a diff
+  are ordinary input, they land in a prompt box, and nothing runs until the agent
+  is told to run it. Asking every time only trained the answer, which is how a
+  guard stops working. Frost already knows which panes have a session running, so
+  those panes stay quiet; **Ask in claude sessions too**, under the paste warning
+  in settings, brings the question back.
+
 ## 0.5.0 — 2026-08-27
 
 ### Added
