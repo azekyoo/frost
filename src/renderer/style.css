@@ -562,6 +562,15 @@ body.frameless #win-controls {
   background: transparent !important;
 }
 
+/* xterm.js hands the whole pane an I-beam, on the theory that a terminal is a
+   text field. Windows Terminal doesn't, and neither does a console window: the
+   arrow is the shell's cursor, and selection works under it just the same. The
+   pointer for a link still wins — xterm adds .xterm-cursor-pointer, which is
+   the more specific rule — as does the crosshair while a column select is on. */
+.xterm {
+  cursor: default;
+}
+
 /* ---------- buffer search ---------- */
 
 .pane-search {
