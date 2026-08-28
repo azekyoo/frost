@@ -587,6 +587,13 @@ function applyWindowTheme(theme) {
 const sessionLayouts = new Map(); // frostId -> { tabs, activeTab } as reported
 const lastBounds = new Map(); // frostId -> bounds, for windows that are minimised
 const pendingLayouts = new Map(); // frostId -> the layout a new window should restore
+// Closing three windows one at a time is how a person leaves; closing one and
+// carrying on with the other two is a decision to have one window fewer. The
+// difference is only visible in the timing, so a closed window's entry is kept
+// for a while: long enough to cover the last few clicks of leaving, short
+// enough that a window closed and forgotten about does not come back tomorrow.
+const CLOSE_GRACE_MS = SHOT?.closeGraceMs ?? 20000;
+const recentlyClosed = new Map(); // frostId -> { at, entry }, pruned on write
 
 // Every shell in a moved tab's saved tree, however deeply it is split
 function ptyIdsOf(node) {
@@ -662,26 +669,40 @@ function defaultBoundsFor(display) {
 
 const cursorDisplay = () => screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
 
+// Everything worth writing down about one window, measured now.
+function windowEntry(w) {
+  // A minimised window reports nonsense bounds, so keep the last real ones.
+  if (!w.isMinimized()) {
+    const d = screen.getDisplayMatching(w.getBounds());
+    lastBounds.set(w.frostId, {
+      bounds: w.getNormalBounds(),
+      maximized: w.isMaximized(),
+      display: { key: displayKeyOf(d), workArea: d.workArea }
+    });
+  }
+  const geometry = lastBounds.get(w.frostId) || {};
+  return { ...geometry, ...(sessionLayouts.get(w.frostId) || { tabs: [], activeTab: 0 }) };
+}
+
 function flushWindowState() {
   clearTimeout(sessionTimer);
   sessionTimer = null;
-  const live = liveWindows();
-  // Nothing left to describe — during shutdown every window is gone, and an
-  // empty file would throw away the layout we're trying to preserve.
-  if (!live.length) return;
-  const windows = live.map((w) => {
-    // A minimised window reports nonsense bounds, so keep the last real ones.
-    if (!w.isMinimized()) {
-      const d = screen.getDisplayMatching(w.getBounds());
-      lastBounds.set(w.frostId, {
-        bounds: w.getNormalBounds(),
-        maximized: w.isMaximized(),
-        display: { key: displayKeyOf(d), workArea: d.workArea }
-      });
-    }
-    const geometry = lastBounds.get(w.frostId) || {};
-    return { ...geometry, ...(sessionLayouts.get(w.frostId) || { tabs: [], activeTab: 0 }) };
-  });
+  const now = Date.now();
+  for (const [id, rec] of recentlyClosed) {
+    if (now - rec.at > CLOSE_GRACE_MS) recentlyClosed.delete(id);
+  }
+  // A window in the middle of closing is still live, and its entry was taken
+  // when the close began — the one in hand is the better of the two.
+  const entries = [
+    ...liveWindows()
+      .filter((w) => !recentlyClosed.has(w.frostId))
+      .map((w) => ({ seq: w.frostId, entry: windowEntry(w) })),
+    ...[...recentlyClosed].map(([id, rec]) => ({ seq: id, entry: rec.entry }))
+  ].sort((a, b) => a.seq - b.seq);
+  // Nothing left to describe: an empty file would throw away the layout we're
+  // trying to preserve.
+  if (!entries.length) return;
+  const windows = entries.map((e) => e.entry);
   try {
     fs.writeFileSync(WINDOW_FILE, JSON.stringify({ windows }, null, 2));
   } catch {}
@@ -848,8 +869,12 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) {
     w.on(ev, saveWindowStateSoon);
   }
-  // Written while the window still exists, so its geometry is captured.
-  w.on('close', flushWindowState);
+  // Recorded while the window still exists, so its geometry and tabs are
+  // captured rather than measured from a window that is already gone.
+  w.on('close', () => {
+    recentlyClosed.set(w.frostId, { at: Date.now(), entry: windowEntry(w) });
+    flushWindowState();
+  });
 
   currentMaterial = material;
   w.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
@@ -891,8 +916,8 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
     }
     // hand primary status on, so the last window standing still saves its state
     if (win === w) win = liveWindows()[0] || null;
-    // Closing one of several windows should drop it from the saved set; closing
-    // the last one should not, or quitting would erase everything.
+    // The window's own entry is already held, and stays held for the grace
+    // period; this write is for the ones still open.
     if (!quitting && liveWindows().length) saveWindowStateSoon();
   });
   return w;

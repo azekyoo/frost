@@ -81,7 +81,9 @@ async function waitReady(c, timeout = 40000) {
   }, null, 2));
   fs.writeFileSync(path.join(configDir, 'agents.json'), JSON.stringify({ spaces: [] }, null, 2));
 
-  const env = { ...process.env, FROST_SHOT: JSON.stringify({ configDir, bounds: { x: 40, y: 40, width: 1000, height: 640 } }) };
+  // A short grace keeps the closing checks below to seconds rather than the
+  // twenty the app gives a person who is on their way out.
+  const env = { ...process.env, FROST_SHOT: JSON.stringify({ configDir, bounds: { x: 40, y: 40, width: 1000, height: 640 }, closeGraceMs: 3000 }) };
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
   const child = spawn(process.execPath, [ROOT, `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(TMP, 'ud')}`],
     { cwd: ROOT, stdio: 'ignore', env });
@@ -131,6 +133,24 @@ async function waitReady(c, timeout = 40000) {
     const claim2 = await w2.eval(`(async () => { const t = await newAgentTab(); return Boolean(t); })()`);
     check('first window gets the agent tab', claim1 === true);
     check('second window is refused it', claim2 === false);
+
+    // Closing windows one at a time is how a person leaves, and all of them
+    // should be there on the next launch — the saved set used to shrink to
+    // whichever window happened to be closed last.
+    const savedWindows = () => {
+      try { return JSON.parse(fs.readFileSync(path.join(configDir, 'window.json'), 'utf8')).windows.length; }
+      catch { return 0; }
+    };
+    check('both windows are in the saved set', savedWindows() === 2, savedWindows() + ' entries');
+    await w2.eval('api.winClose(), true');
+    await sleep(1500);
+    check('closing one keeps it while the app might be closing too', savedWindows() === 2, savedWindows() + ' entries');
+
+    // ...but a window closed and then forgotten about is not part of leaving
+    await sleep(4000);
+    await w1.eval('runCommand("tab.new"), true'); // any layout change writes the file
+    await sleep(2000);
+    check('and drops it once the grace period is over', savedWindows() === 1, savedWindows() + ' entries');
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {
