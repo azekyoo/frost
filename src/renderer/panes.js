@@ -285,7 +285,7 @@ function looksLikePath(value) {
   return /[\\/]/.test(value) || /^[\w.@$+-]+\.[A-Za-z][\w]{0,9}$/.test(value);
 }
 
-function lineText(term, y) {
+function bufferLineText(term, y) {
   const line = term.buffer.active.getLine(y - 1);
   return line ? line.translateToString(true) : '';
 }
@@ -307,7 +307,7 @@ function attachLinks(node) {
 
   term.registerLinkProvider({
     provideLinks(y, callback) {
-      const text = lineText(term, y);
+      const text = bufferLineText(term, y);
       if (!text) return callback(undefined);
 
       // Python tracebacks put the line number in a separate word
