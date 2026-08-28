@@ -31,7 +31,10 @@ const SHOT = (() => {
 // same lock — launching the dev build just told the installed one to open a tab
 // — and Chromium's caches are already held open by the running release, which
 // is what the "Unable to move the cache" errors were.
-if (!app.isPackaged) {
+// --user-data-dir already says where to put it — the test tools pass one per
+// run, and overriding it here put every one of them on the same folder, and so
+// on the same single-instance lock: the second app to start just quit.
+if (!app.isPackaged && !process.argv.some((a) => a.startsWith('--user-data-dir'))) {
   app.setPath('userData', path.join(app.getPath('appData'), 'Frost (source)'));
 }
 
