@@ -103,7 +103,10 @@ const DEFAULT_THEME = {
   // Text with line breaks in it is typed into the shell as typed input, and a
   // line ending in a newline runs. The clipboard is not always the user's own
   // writing, so the paste is confirmed once rather than trusted silently.
-  paste: { warnMultiline: true },
+  // warnInAgent is off: inside a claude session a wall of logs is ordinary
+  // input, nothing runs on arrival, and a prompt answered by reflex guards
+  // nothing.
+  paste: { warnMultiline: true, warnInAgent: false },
   unicodeVersion: '11',
   tint: 'rgba(0, 0, 0, 0.00)',
   accent: '#80a8ff',

@@ -730,7 +730,7 @@ async function createPane(opts = {}) {
       // paste event, returning false keeps ^V away from the shell (PSReadLine
       // would paste on raw ^V too) — then paste exactly once ourselves
       ev.preventDefault();
-      pasteInto(term);
+      pasteInto(node);
       return false;
     }
     if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyC' && term.hasSelection()) {
@@ -758,7 +758,7 @@ async function createPane(opts = {}) {
       await navigator.clipboard.writeText(term.getSelection());
       term.clearSelection();
     } else {
-      pasteInto(term);
+      pasteInto(node);
     }
   });
 

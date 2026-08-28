@@ -1501,6 +1501,15 @@ body.frameless #win-controls {
   gap: 8px;
 }
 
+/* a checkbox that only qualifies the one above it */
+.field.row.sub {
+  margin-left: 22px;
+}
+
+.field.row.sub span {
+  color: color-mix(in srgb, var(--fg) 58%, transparent);
+}
+
 .field-pair {
   display: flex;
   gap: 10px;

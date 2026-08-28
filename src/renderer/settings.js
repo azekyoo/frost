@@ -20,6 +20,7 @@ const s = {
   autoDetect: document.getElementById('s-autodetect'),
   copyOnSelect: document.getElementById('s-copyonselect'),
   pasteWarn: document.getElementById('s-paste-warn'),
+  pasteWarnAgent: document.getElementById('s-paste-warn-agent'),
   ligatures: document.getElementById('s-ligatures'),
   startDir: document.getElementById('s-startdir'),
   editor: document.getElementById('s-editor'),
@@ -157,6 +158,7 @@ function syncSettingsUI() {
   s.autoDetect.checked = t.autoDetectAgents !== false;
   s.copyOnSelect.checked = t.copyOnSelect !== false;
   s.pasteWarn.checked = t.paste?.warnMultiline !== false;
+  s.pasteWarnAgent.checked = t.paste?.warnInAgent === true;
   s.ligatures.checked = t.font?.ligatures !== false;
   s.startDir.value = t.startDir || '';
   s.editor.value = t.editor || '';
@@ -218,7 +220,11 @@ function onSettingChange() {
   };
   t.autoDetectAgents = s.autoDetect.checked;
   t.copyOnSelect = s.copyOnSelect.checked;
-  t.paste = { ...(t.paste || {}), warnMultiline: s.pasteWarn.checked };
+  t.paste = {
+    ...(t.paste || {}),
+    warnMultiline: s.pasteWarn.checked,
+    warnInAgent: s.pasteWarnAgent.checked
+  };
   t.startDir = s.startDir.value.trim();
   t.editor = s.editor.value.trim();
   t.tint = `rgba(${r}, ${g}, ${b}, ${alpha})`;

@@ -83,8 +83,13 @@ function debounce(fn, ms) {
 // terminals. This is the one place Frost can put a step between "what I think I
 // copied" and "what runs", so it does — an answer nobody reads is still cheaper
 // than a command nobody meant.
-function pasteWarningFor(text, theme) {
+function pasteWarningFor(text, theme, node) {
   if (theme?.paste?.warnMultiline === false) return null;
+  // A claude session is the case the warning was never for: many lines of logs,
+  // a stack trace or a diff is ordinary input there, it goes into a prompt box
+  // rather than to a shell, and nothing runs until the agent is told to run it.
+  // Asking every time trained the answer, which is how a guard stops working.
+  if (theme?.paste?.warnInAgent !== true && agentsByPty.has(node?.ptyId)) return null;
   const lines = String(text).split(/\r\n|\r|\n/);
   // A single trailing newline still means "and press Enter", so it counts
   if (lines.length < 2) return null;
@@ -99,10 +104,11 @@ function pasteWarningFor(text, theme) {
   };
 }
 
-function pasteInto(term) {
+function pasteInto(node) {
+  const term = node.term;
   navigator.clipboard.readText().then((text) => {
     if (!text) return;
-    const warn = pasteWarningFor(text, state.theme);
+    const warn = pasteWarningFor(text, state.theme, node);
     if (!warn) {
       term.paste(text);
       return;
