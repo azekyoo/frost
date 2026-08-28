@@ -26,6 +26,15 @@ const SHOT = (() => {
   }
 })();
 
+// A run from source shares nothing with an installed Frost: they would
+// otherwise sit on the same userData folder, so the single-instance lock is the
+// same lock — launching the dev build just told the installed one to open a tab
+// — and Chromium's caches are already held open by the running release, which
+// is what the "Unable to move the cache" errors were.
+if (!app.isPackaged) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'Frost (source)'));
+}
+
 // Installed builds live somewhere unwritable (Program Files, or a read-only
 // asar), so their config goes to %APPDATA%. Running from source keeps using the
 // repo's config/ folder, which keeps the dev loop and .gitignore intact.
