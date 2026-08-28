@@ -142,7 +142,9 @@ async function waitReady(c, timeout = 40000) {
       catch { return 0; }
     };
     check('both windows are in the saved set', savedWindows() === 2, savedWindows() + ' entries');
-    await w2.eval('api.winClose(), true');
+    // The reply to this never comes — the window it was evaluated in is the
+    // one being closed — so the call is sent and the close is waited for.
+    w2.eval('api.winClose(), true').catch(() => {});
     await sleep(1500);
     check('closing one keeps it while the app might be closing too', savedWindows() === 2, savedWindows() + ' entries');
 
