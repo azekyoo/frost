@@ -406,6 +406,44 @@ body.frameless #win-controls {
   color: #fff !important;
 }
 
+/* ---------- tooltips ---------- */
+
+#tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 300;
+  max-width: 320px;
+  padding: 6px 9px;
+  background: rgba(16, 18, 27, 0.94);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  color: color-mix(in srgb, var(--fg) 88%, transparent);
+  font-family: var(--ui-font);
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s var(--ease);
+}
+
+#tooltip.show {
+  opacity: 1;
+}
+
+/* a path reads better in the terminal's own face than in the UI one */
+#tooltip.mono .tip-main {
+  font-family: var(--font);
+  font-size: 11.5px;
+}
+
+#tooltip .tip-sub {
+  color: color-mix(in srgb, var(--fg) 52%, transparent);
+  font-size: 11px;
+}
+
 /* ---------- content / panes ---------- */
 
 #content {
