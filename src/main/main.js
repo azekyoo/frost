@@ -878,10 +878,23 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
 
   currentMaterial = material;
   w.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-  w.once('ready-to-show', () => {
+  // ready-to-show waits for the renderer's first paint, and a window that opens
+  // underneath another one may never get painted: Windows reports it occluded,
+  // the compositor skips it, and the window stays invisible for good — holding
+  // the app open with nothing on screen. Restoring several windows at once is
+  // exactly that situation. The event is still the moment worth waiting for,
+  // since it shows a drawn window rather than an empty frame; the timer is the
+  // deadline on waiting.
+  let revealed = false;
+  const reveal = () => {
+    if (revealed || w.isDestroyed()) return;
+    revealed = true;
+    clearTimeout(revealTimer);
     if (restore?.maximized) w.maximize();
     w.show();
-  });
+  };
+  const revealTimer = setTimeout(reveal, 1500);
+  w.once('ready-to-show', reveal);
   w.on('closed', () => {
     windows.delete(w);
     // Closed before its renderer claimed the tab it was opened for — a load
