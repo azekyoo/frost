@@ -1374,6 +1374,7 @@ let ghostWin = null;
 let ghostKey = ''; // which tab it is showing, so it is not reloaded per move
 let ghostReady = false; // its page has loaded and can be talked to
 let ghostMode = ''; // the outline it should be showing: reorder | detach | merge
+let ghostSize = null; // the size it was shown at, so a move never has to ask for it
 
 function ghostWindow() {
   if (ghostWin && !ghostWin.isDestroyed()) return ghostWin;
@@ -1415,6 +1416,7 @@ function ghostWindow() {
     ghostKey = '';
     ghostReady = false;
     ghostMode = '';
+    ghostSize = null;
   });
   return ghostWin;
 }
@@ -1463,12 +1465,11 @@ ipcMain.on('ghost:show', (event, { label, mode, x, y, width, height, accent, fg,
     // outline may have moved on since
     paintGhostMode();
   }
-  w.setBounds({
-    x: pt.x,
-    y: pt.y,
+  ghostSize = {
     width: Math.max(60, Math.round((width || 160) * pt.zoom)),
     height: Math.max(20, Math.round((height || 34) * pt.zoom))
-  });
+  };
+  w.setBounds({ x: pt.x, y: pt.y, ...ghostSize });
   if (!w.isVisible()) w.showInactive(); // showInactive: the drag keeps its window
 });
 
@@ -1476,8 +1477,13 @@ ipcMain.on('ghost:move', (event, { x, y, mode }) => {
   const from = windowOf(event);
   if (!from || !ghostWin || ghostWin.isDestroyed() || !ghostWin.isVisible()) return;
   const pt = toScreen(from, x, y);
-  const b = ghostWin.getBounds();
-  ghostWin.setBounds({ x: pt.x, y: pt.y, width: b.width, height: b.height });
+  // Position only. Reading the size back and setting it again resolves it
+  // against the primary display's scale rather than the one the ghost is on
+  // (the same trap as the note in createWindow), so on a mixed-DPI desktop
+  // every mouse move multiplied the ghost by that ratio — it grew across the
+  // screen for as long as the drag lasted. The size it was shown at is the
+  // size it keeps.
+  ghostWin.setPosition(pt.x, pt.y);
   // Moving is every mouse move; repainting is only when what the drop would do
   // actually changes, which is a handful of times per drag at most.
   if (mode && mode !== ghostMode) {

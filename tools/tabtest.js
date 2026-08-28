@@ -76,6 +76,18 @@ async function ghostTarget() {
   return (await targets()).find((t) => t.type === 'page' && isGhost(t)) || null;
 }
 
+// The copy used to be re-sized from its own bounds on every mouse move, which
+// on a mixed-DPI desktop re-resolved them against the wrong screen and grew it
+// a little further each time.
+async function ghostSize() {
+  const g = await ghostTarget();
+  if (!g?.webSocketDebuggerUrl) return null;
+  const c = connect(g.webSocketDebuggerUrl);
+  await c.ready;
+  await c.send('Runtime.enable');
+  return c.eval('window.outerWidth + "x" + window.outerHeight').catch(() => null);
+}
+
 async function pageClients() {
   const list = (await targets()).filter((t) => t.type === 'page' && t.webSocketDebuggerUrl && !isGhost(t));
   const out = [];
@@ -113,11 +125,12 @@ const bufferText = `(() => {
   for (let i = 0; i < b.length; i++) { const l = b.getLine(i); if (l) s += l.translateToString(true) + '\\n'; }
   return s; })()`;
 
-async function drag(c, from, to, { steps = 8, midway = null, hold = 0 } = {}) {
+async function drag(c, from, to, { steps = 8, midway = null, onStep = null, hold = 0 } = {}) {
   await c.mouse('mousePressed', from.x, from.y);
   for (let i = 1; i <= steps; i++) {
     await c.mouse('mouseMoved', from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
     await sleep(30);
+    if (onStep) await onStep(i);
     if (midway && i === steps) await midway();
   }
   if (hold) await sleep(hold);
@@ -183,7 +196,11 @@ async function drag(c, from, to, { steps = 8, midway = null, hold = 0 } = {}) {
     const first = await w1.eval(tabRect(0));
     const third = await w1.eval(tabRect(2));
     let ghostSeen = null;
+    const sizes = [];
     await drag(w1, first, { x: third.x, y: third.y }, {
+      onStep: async (i) => {
+        if (i === 3 || i === 8) sizes.push(await ghostSize());
+      },
       midway: async () => {
         const ghost = await ghostTarget();
         ghostSeen = ghost
@@ -204,6 +221,11 @@ async function drag(c, from, to, { steps = 8, midway = null, hold = 0 } = {}) {
     const domOrder = await w1.eval('[...el.tabstrip.children].map((n) => n.tabData.id)');
     check('the strip and the tab list agree afterwards', domOrder.join(',') === after.join(','), domOrder.join(','));
     check('a copy of the tab follows the cursor', Boolean(ghostSeen), JSON.stringify(ghostSeen));
+    check(
+      'and it is the same size at the end of the drag as at the start',
+      sizes.length === 2 && sizes[0] && sizes[0] === sizes[1],
+      sizes.join(' then ')
+    );
     check('and the tab it came from is left as a placeholder', ghostSeen?.placeholder === true);
     check('no placeholder is left once dropped', (await w1.eval('!document.querySelector(".tab.dragging")')) === true);
 
