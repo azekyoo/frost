@@ -541,6 +541,12 @@ body.frameless #win-controls {
     0 0 18px -6px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
+.pane.drop-over {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent),
+    0 0 22px -6px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
 .term-host {
   width: 100%;
   height: 100%;

@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   ptyCreate: (cols, rows, opts = {}) => ipcRenderer.invoke('pty:create', { cols, rows, ...opts }),
@@ -37,6 +37,17 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   notifyCommand: (info) => ipcRenderer.send('notify:command', info),
   onAgentReveal: (cb) => ipcRenderer.on('agent:reveal', (_e, id) => cb(id)),
+  // A dropped File no longer carries its path in Electron 32+; webUtils is the
+  // only way back to one, and it lives on this side of the bridge.
+  filePath: (file) => {
+    try {
+      return webUtils.getPathForFile(file) || '';
+    } catch {
+      return '';
+    }
+  },
+  imageFromUrl: (url) => ipcRenderer.invoke('image:fromUrl', url),
+  imageFromClipboard: () => ipcRenderer.invoke('image:fromClipboard'),
   resolvePaths: (cwd, candidates) => ipcRenderer.invoke('paths:resolve', { cwd, candidates }),
   openPath: (opts) => ipcRenderer.invoke('paths:open', opts),
   agentsGetConfig: () => ipcRenderer.invoke('agents:getConfig'),

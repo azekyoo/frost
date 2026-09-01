@@ -106,8 +106,15 @@ function pasteWarningFor(text, theme, node) {
 
 function pasteInto(node) {
   const term = node.term;
-  navigator.clipboard.readText().then((text) => {
-    if (!text) return;
+  navigator.clipboard.readText().then(async (text) => {
+    if (!text) {
+      // A screenshot on the clipboard has no text at all, and a terminal cannot
+      // be handed pixels. Writing it to a file and typing that path is the only
+      // paste it can do — and the one an agent in the pane can act on.
+      const file = await api.imageFromClipboard();
+      if (file) typeInto(node, quotePath(file));
+      return;
+    }
     const warn = pasteWarningFor(text, state.theme, node);
     if (!warn) {
       term.paste(text);

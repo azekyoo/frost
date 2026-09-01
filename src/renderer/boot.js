@@ -30,6 +30,13 @@ async function initGlass() {
   api.onWinBounds(updateGlassPos);
 }
 
+// A drop that misses a pane has to do nothing. Chromium's default is to
+// navigate the window to the dropped file, which would take every shell in the
+// window with it; will-navigate in main already refuses that, and this keeps it
+// from being asked in the first place.
+window.addEventListener('dragover', (ev) => ev.preventDefault());
+window.addEventListener('drop', (ev) => ev.preventDefault());
+
 api.onZoom(({ factor }) => {
   uiZoom = factor || 1;
   // The resize gutters are a hit target for the mouse, not part of the UI, so
