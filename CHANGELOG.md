@@ -3,6 +3,36 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## Unreleased
+
+### Added
+
+- **An image dropped or pasted into a pane arrives as a path.** A terminal
+  carries text, so an image had nowhere to go: dragging a file onto a pane did
+  nothing at all, and `Ctrl+V` with a screenshot on the clipboard read an empty
+  string and gave up. That is the input a claude session most often wants, and
+  claude reads an image off disk — a path is the thing to hand it. Dropping
+  files now types their paths, quoted where the shell would otherwise split them
+  on a space. An image dragged out of a browser is a URL rather than a file, so
+  it is downloaded first and the path to that copy is typed instead; anything
+  else dropped falls back to its text, because a link is more useful on the
+  prompt line as itself. A bitmap on the clipboard takes the same route, read
+  through Electron rather than the page — that sees the same DIB the Snipping
+  Tool writes and needs no permission prompt. Downloaded and pasted images live
+  in `%TEMP%rost-images`, which is swept of anything over a day old each time
+  something is written to it.
+
+### Fixed
+
+- **A tab dragged along the strip no longer grows as it moves.** Every mouse
+  move set the dragged copy's bounds from the bounds it had reported a moment
+  earlier, and a rectangle read back and applied again is resolved against the
+  primary display's scale rather than the screen the window is actually on. On a
+  desktop mixing scale factors the copy was multiplied by that ratio on every
+  move and grew across the screen for as long as the drag lasted. A move now
+  sets the position and nothing else; the size is measured once, when the copy
+  is shown.
+
 ## 0.5.1 — 2026-08-28
 
 ### Fixed
