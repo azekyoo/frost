@@ -5,6 +5,23 @@ Notable changes per release. Dates are release dates; versions follow
 
 ## Unreleased
 
+### Changed
+
+- **Ctrl+R no longer reloads the window, and there is no reload at all.** Frost
+  never set an application menu, so it had Electron's default one — never drawn,
+  since the window is frameless, but a menu's accelerators are live regardless
+  and are handled before the page sees the key. That menu was quietly holding
+  six keys a terminal has its own meaning for: `Ctrl+R` and `Ctrl+Shift+R`
+  reloaded the renderer, which throws the panes away and reads as the shell
+  resetting itself; `Ctrl+W` closed the window where a shell deletes the word
+  behind the cursor; `Ctrl+Q` quit where a shell resumes flow control; `Ctrl+M`
+  minimized where a terminal reads a carriage return; `Ctrl+A` selected the page
+  where readline goes to the start of the line. All of them now reach the shell.
+  There is no reload and no way to ask for one, which is also what Windows
+  Terminal does. `Ctrl+Shift+I` still toggles the developer tools — it is a
+  command in the keybindings table now, so it shows in the palette and can be
+  rebound — and it opens detached, because docking it resizes the panes.
+
 ### Fixed
 
 - **A dragged tab really does keep its size now.** The 0.5.2 fix moved the

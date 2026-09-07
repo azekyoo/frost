@@ -245,6 +245,9 @@ cmd('view.selectAll', 'Select everything in this pane', () => {
 });
 cmd('view.scrollToTop', 'Scroll to top', () => activePane()?.term.scrollToTop());
 cmd('view.scrollToBottom', 'Scroll to bottom', () => activePane()?.term.scrollToBottom());
+// Bound here rather than left to a menu: the application menu is gone, because
+// its accelerators took Ctrl+R, Ctrl+W and Ctrl+Q away from the shell.
+cmd('view.devtools', 'Toggle developer tools', () => api.winDevtools());
 
 cmd('app.checkUpdate', 'Check for updates', async () => {
   if (!el.settings.classList.contains('open')) toggleSettings();
@@ -291,6 +294,7 @@ const DEFAULT_BINDINGS = [
   { keys: 'ctrl+shift+down', command: 'command.next' },
   { keys: 'ctrl+shift+o', command: 'command.copyOutput' },
   { keys: 'ctrl+shift+p', command: 'app.palette' },
+  { keys: 'ctrl+shift+i', command: 'view.devtools' },
   // Ctrl+1..8 pick a tab, Ctrl+Shift+1..9 open the Nth shell profile
   ...Array.from({ length: 8 }, (_, i) => ({
     keys: `ctrl+${i + 1}`,

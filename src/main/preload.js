@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('api', {
   ghostMove: (info) => ipcRenderer.send('ghost:move', info),
   ghostHide: () => ipcRenderer.send('ghost:hide'),
   tabMoveTo: (frostId, payload) => ipcRenderer.send('tab:moveTo', { frostId, payload }),
+  winDevtools: () => ipcRenderer.send('win:devtools'),
   onTabAdopt: (cb) => ipcRenderer.on('tab:adopt', (_e, m) => cb(m)),
   ptyMute: (id, ms) => ipcRenderer.send('pty:mute', { id, ms }),
   onPtyData: (cb) => ipcRenderer.on('pty:data', (_e, m) => cb(m)),

@@ -2,6 +2,7 @@ const {
   app,
   BrowserWindow,
   clipboard,
+  Menu,
   nativeImage,
   net,
   Notification,
@@ -2209,6 +2210,15 @@ ipcMain.on('win:maximize', (event) => {
   else w.maximize();
 });
 ipcMain.on('win:close', (event) => windowOf(event)?.close());
+// The one accelerator worth keeping from the menu that was removed: it is not a
+// key any shell wants, and having no way in to the developer tools would be a
+// step back from what the default menu gave.
+ipcMain.on('win:devtools', (event) => {
+  const wc = windowOf(event)?.webContents;
+  if (!wc) return;
+  if (wc.isDevToolsOpened()) wc.closeDevTools();
+  else wc.openDevTools({ mode: 'detach' }); // detached: docking it resizes the panes
+});
 ipcMain.on('win:new', () => createWindow());
 
 ipcMain.handle('theme:save', (_e, theme) => {
@@ -2688,6 +2698,20 @@ app.whenReady().then(() => {
   // identified by its own executable and must stay that way, for the reason
   // below.
   if (!app.isPackaged) app.setAppUserModelId('dev.azekyoo.frost.source');
+
+  // No application menu at all. An app that never sets one gets Electron's
+  // default, and although the window is frameless and never shows it, its
+  // accelerators are live and take the key before the terminal does. That menu
+  // binds six keys a terminal has its own meaning for: Ctrl+R and Ctrl+Shift+R
+  // reload the renderer, which throws the panes away and looks like the shell
+  // resetting itself; Ctrl+W closes the window where a shell deletes the word
+  // behind the cursor; Ctrl+Q quits where a shell resumes flow control; Ctrl+M
+  // minimizes where a terminal reads a carriage return; Ctrl+A selects the page
+  // where readline goes to the start of the line. Nothing here wants a reload —
+  // there is no such thing in Windows Terminal either — and every key this
+  // frees belongs to the shell. What is worth keeping is bound in the
+  // renderer's own table, where it can be seen and rebound.
+  Menu.setApplicationMenu(null);
 
   // No setAppUserModelId for packaged builds. It groups the taskbar button under an id of our
   // choosing, and Windows then resolves that button's icon through the id rather
