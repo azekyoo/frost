@@ -1479,13 +1479,17 @@ ipcMain.on('ghost:move', (event, { x, y, mode }) => {
   const from = windowOf(event);
   if (!from || !ghostWin || ghostWin.isDestroyed() || !ghostWin.isVisible()) return;
   const pt = toScreen(from, x, y);
-  // Position only. Reading the size back and setting it again resolves it
-  // against the primary display's scale rather than the one the ghost is on
-  // (the same trap as the note in createWindow), so on a mixed-DPI desktop
-  // every mouse move multiplied the ghost by that ratio — it grew across the
-  // screen for as long as the drag lasted. The size it was shown at is the
-  // size it keeps.
-  ghostWin.setPosition(pt.x, pt.y);
+  // The size it was shown at is set again on every move, rather than moving it
+  // and leaving the size alone. setPosition is not position-only: it is a
+  // setBounds carrying the size it reads back off the window, and a rectangle
+  // read back and re-applied is resolved against a different display's scale
+  // than the one it came from (the same trap as the note in createWindow), so
+  // on a mixed-DPI desktop every mouse move multiplied the ghost by that ratio
+  // and it grew across the screen for as long as the drag lasted. Passing the
+  // size we already know never reads anything back, so there is nothing to
+  // multiply.
+  if (ghostSize) ghostWin.setBounds({ x: pt.x, y: pt.y, ...ghostSize });
+  else ghostWin.setPosition(pt.x, pt.y);
   // Moving is every mouse move; repainting is only when what the drop would do
   // actually changes, which is a handful of times per drag at most.
   if (mode && mode !== ghostMode) {

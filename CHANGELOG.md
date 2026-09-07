@@ -3,6 +3,21 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## Unreleased
+
+### Fixed
+
+- **A dragged tab really does keep its size now.** The 0.5.2 fix moved the
+  read-back rather than removing it: `setPosition` is not position-only, it is a
+  `setBounds` carrying the size Electron reads back off the window itself, so
+  the rectangle was still resolved against a different screen's scale than the
+  one it came from and the copy still grew by that ratio on every mouse move —
+  on a 2x screen next to a 1.5x one it went from 157x54 to 165x62 in the length
+  of one drag along the strip. Each move now sets the size the copy was shown
+  at, which reads nothing back and leaves nothing to multiply. The test that was
+  meant to catch this was written on a single-scale desktop where there is no
+  ratio to multiply by; it fails on a mixed one against 0.5.2 and passes now.
+
 ## 0.5.2 — 2026-09-01
 
 ### Added
