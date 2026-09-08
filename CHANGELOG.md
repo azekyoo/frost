@@ -3,7 +3,7 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
-## Unreleased
+## 0.5.3 — 2026-09-08
 
 ### Changed
 
