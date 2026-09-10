@@ -2565,6 +2565,7 @@ let updateState = {
 };
 let updater = null; // the electron-updater singleton, required on first use
 let updateTimer = null;
+let readyVersion = null; // the release already downloaded and waiting to install
 
 // A portable exe was never installed, so there is no installation for an NSIS
 // installer to update — running one would quietly install a second, separate
@@ -2593,22 +2594,34 @@ function getUpdater() {
   // Required lazily: a run from source and a portable build never check, and
   // neither should pay to load the module at startup.
   const { autoUpdater } = require('electron-updater');
-  autoUpdater.autoDownload = false; // decided per check, from theme.json
+  // Never electron-updater's own automatic download: whether to fetch a release
+  // is decided in the update-available handler below, which is also the only
+  // place that knows whether the release found is the one already waiting.
+  autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('checking-for-update', () => setUpdateState({ stage: 'checking', message: '' }));
   autoUpdater.on('update-not-available', (info) =>
     setUpdateState({ stage: 'current', latest: info?.version || null, message: '' })
   );
   autoUpdater.on('update-available', (info) => {
-    setUpdateState({ stage: 'available', latest: info?.version || null, percent: 0, message: '' });
-    if (autoUpdater.autoDownload) startUpdateDownload();
+    const version = info?.version || null;
+    // The release waiting to install is found again by every later check. It is
+    // already on disk, so the check ends where it started rather than fetching
+    // a hundred megabytes a second time.
+    if (readyVersion && version === readyVersion) {
+      setUpdateState({ stage: 'ready', latest: version, percent: 100, message: '' });
+      return;
+    }
+    setUpdateState({ stage: 'available', latest: version, percent: 0, message: '' });
+    if (updateCfg().download) startUpdateDownload();
   });
   autoUpdater.on('download-progress', (p) =>
     setUpdateState({ stage: 'downloading', percent: Math.round(p?.percent || 0) })
   );
-  autoUpdater.on('update-downloaded', (info) =>
-    setUpdateState({ stage: 'ready', latest: info?.version || null, percent: 100, message: '' })
-  );
+  autoUpdater.on('update-downloaded', (info) => {
+    readyVersion = info?.version || null;
+    setUpdateState({ stage: 'ready', latest: readyVersion, percent: 100, message: '' });
+  });
   autoUpdater.on('error', (err) => {
     // Offline is the common case, and it reads as a stack trace otherwise
     const raw = String(err?.message || err || 'unknown error');
@@ -2650,12 +2663,18 @@ function checkForUpdates({ byUser = false } = {}) {
   }
   const cfg = updateCfg();
   if (!byUser && !cfg.check) return updateState;
-  // Already downloaded, or downloading: re-checking would restart the download
-  if (updateState.stage === 'ready' || updateState.stage === 'downloading') return updateState;
-  const up = getUpdater();
-  up.autoDownload = cfg.download;
+  // A download in flight is the one thing a check must not interrupt.
+  if (updateState.stage === 'downloading') return updateState;
+  // A release already downloaded used to stop the checking altogether, on the
+  // reasoning that there was nothing left to find. There was: the release after
+  // it. Frost stays open for days, so a version could be waiting to install
+  // while two newer ones came and went, and the panel went on offering the old
+  // one however many times it was asked to check. The check runs; it is the
+  // handler that knows to leave a waiting release alone.
   setUpdateState({ autoDownload: cfg.download });
-  up.checkForUpdates().catch(() => {}); // the error event already reported it
+  getUpdater()
+    .checkForUpdates()
+    .catch(() => {}); // the error event already reported it
   return updateState;
 }
 
