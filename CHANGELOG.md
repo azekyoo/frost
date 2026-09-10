@@ -3,6 +3,28 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 0.5.4 — 2026-09-10
+
+### Changed
+
+- **Frost opens one tab, at the size a terminal opens at.** Restoring the tabs
+  and the window geometry from last time was on by default, so closing Frost
+  with six tabs open meant opening it to six tabs — and what came back was six
+  empty shells in the right directories, because the work that was in them is
+  gone either way. Every other terminal on Windows opens one tab, at the
+  directory it is configured to start in, and forgets the rest. That is the
+  default now. The setting is still in Settings, unchanged, for anyone who
+  wants the old behaviour back.
+
+- **A window with nothing to restore is 120 columns by 30 rows.** It used to be
+  a share of the display the pointer was on — 62% wide, 72% tall — which is a
+  sensible-looking rule that makes a terminal two thirds of a 4K monitor wide
+  for no reason anyone asked for. Windows Terminal opens at a fixed 120x30
+  grid, and Frost's default font is Windows Terminal's default font at its
+  default size, so the same grid lands on the same window. The cell is measured
+  from the configured font size and line height, so a larger font gets a larger
+  window rather than fewer columns.
+
 ## 0.5.3 — 2026-09-08
 
 ### Changed
