@@ -3,6 +3,32 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 0.5.5 — 2026-09-10
+
+### Fixed
+
+- **A tab dragged along the strip could stop the strip working at all.** The
+  reorder took the dragged tab's position from where its node sat in the strip
+  and used that as an index into the tab list. The two agreed until they didn't:
+  a single node left in the strip for a tab no longer in the list put every
+  position after it one out, and splicing at a position past the end of a list
+  returns nothing — so an `undefined` went into the list where a tab should be.
+  From there the window was finished: everything that walks the tabs threw on
+  the hole, including the thing that repaints the strip, so the strip froze
+  while the shells behind it carried on running, clicks landed on nodes that no
+  longer stood for anything, and a tab appeared to be duplicated. Both positions
+  are now looked up in the tab list itself, through the tab each node carries,
+  and a node that answers to no tab is not a drop position at all.
+
+- **Renaming a tab no longer settles the name on its own.** The strip is
+  repainted every time a pane reports a title — with a claude session in a tab,
+  that is constantly — and taking the rename box out of the document blurs it,
+  which is what commits the name. A name was therefore saved half-typed,
+  seemingly at random. The box now rides through the repaint with its text and
+  caret where they were, and only a blur that is not the repaint's doing ends
+  the rename. Double-clicking three tabs also used to leave three boxes open,
+  because the guard against a second one was per tab; there is one at most now.
+
 ## 0.5.4 — 2026-09-10
 
 ### Changed
