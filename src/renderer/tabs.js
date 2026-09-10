@@ -93,6 +93,15 @@ function closeTab(tab, { killPtys = true } = {}) {
 }
 
 function renderTabs() {
+  rebuildingStrip = true;
+  try {
+    paintTabs();
+  } finally {
+    rebuildingStrip = false;
+  }
+}
+
+function paintTabs() {
   el.tabstrip.replaceChildren(
     ...state.tabs.map((tab) => {
       const t = document.createElement('div');
@@ -148,6 +157,7 @@ function renderTabs() {
       return t;
     })
   );
+  reapplyRename();
   document.title = state.activeTab ? `${tabLabel(state.activeTab)} — Frost` : 'Frost';
   // With many tabs the strip scrolls, so the one you just switched to has to be
   // brought into view or it may be off-screen entirely.
@@ -331,15 +341,23 @@ function onTabDragMove(ev) {
 
   // Reorder against whichever tab the pointer is over, moving the element
   // itself: a strip rebuilt mid-drag would throw away the node being dragged.
-  const nodes = [...el.tabstrip.children];
-  const from = nodes.indexOf(d.el);
-  const over = nodes.find((n) => {
+  const over = [...el.tabstrip.children].find((n) => {
     if (n === d.el) return false;
     const r = n.getBoundingClientRect();
     return ev.clientX >= r.left && ev.clientX <= r.right;
   });
   if (!over) return;
-  const to = nodes.indexOf(over);
+  // Both positions are looked up in state.tabs, through the tab each node
+  // carries, rather than taken from where the nodes sit in the strip. Those two
+  // agreed until they didn't: one node left in the strip for a tab no longer in
+  // state put every position after it one out, and splicing at a position past
+  // the end returns nothing — which spliced an `undefined` into state.tabs.
+  // From there every walk over the tabs threw on it, renderTabs included, so
+  // the strip stopped repainting entirely while the shells carried on running
+  // behind it. A node that answers to no tab now simply isn't a drop position.
+  const from = state.tabs.indexOf(d.tab);
+  const to = state.tabs.indexOf(over.tabData);
+  if (from < 0 || to < 0 || from === to) return;
   el.tabstrip.insertBefore(d.el, to > from ? over.nextSibling : over);
   const [moved] = state.tabs.splice(from, 1);
   state.tabs.splice(to, 0, moved);
@@ -385,7 +403,43 @@ async function endTabDrag(ev) {
 // doing in each, and only you know that. A name typed here sticks until it is
 // cleared, survives a restart, and travels with the tab to another window.
 
+// A rename in progress is a DOM node living inside the strip, and the strip is
+// rebuilt every time a pane reports a new title — which, with a claude session
+// in a tab, is constantly. Removing a focused input fires blur, and blur is
+// what commits the name, so a rebuild used to end the rename in the middle of a
+// word and save whatever had been typed by then. A blur from an input that is
+// no longer in the document is the rebuild talking, not the user: the box is
+// carried into the new strip with its text and caret where they were, and only
+// a blur from a box still on screen means the name is finished.
+let renaming = null; // { tab, input, finish }
+let rebuildingStrip = false;
+
+function reapplyRename() {
+  if (!renaming) return;
+  // The tab was closed or handed to another window while its name was being
+  // typed. There is nothing left to name, and the box must not outlive it.
+  if (!state.tabs.includes(renaming.tab)) {
+    const r = renaming;
+    renaming = null;
+    r.finish(false, { rerender: false });
+    return;
+  }
+  const titleEl = tabElementOf(renaming.tab)?.querySelector('.title');
+  if (!titleEl) return;
+  const { input } = renaming;
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  titleEl.replaceWith(input);
+  input.focus();
+  try {
+    input.setSelectionRange(start, end);
+  } catch {}
+}
+
 function startTabRename(tab) {
+  // One name at a time, and settled first: committing the other one rebuilds
+  // the strip, and the nodes looked up before that would be the old ones.
+  if (renaming) renaming.finish(true);
   const node = tabElementOf(tab);
   const titleEl = node?.querySelector('.title');
   if (!titleEl || node.querySelector('.tab-rename')) return;
@@ -400,9 +454,10 @@ function startTabRename(tab) {
   input.select();
 
   let done = false;
-  const finish = (commit) => {
+  const finish = (commit, { rerender = true } = {}) => {
     if (done) return;
     done = true;
+    if (renaming?.input === input) renaming = null;
     if (commit) {
       const value = input.value.trim().slice(0, 60);
       // Empty is not a name, it is "stop naming it": the live directory · branch
@@ -410,12 +465,18 @@ function startTabRename(tab) {
       tab.customTitle = value && value !== tab.title ? value : null;
       saveSession();
     }
-    renderTabs();
+    if (rerender) renderTabs();
     activePane()?.term.focus();
   };
+  renaming = { tab, input, finish };
   input.addEventListener('mousedown', (ev) => ev.stopPropagation());
   input.addEventListener('dblclick', (ev) => ev.stopPropagation());
-  input.addEventListener('blur', () => finish(true));
+  // Taking the input out of the document blurs it, and blur is what commits the
+  // name — so a repaint would settle a name the user is still typing. Only a
+  // blur that is not the repaint's doing means they have gone somewhere else.
+  input.addEventListener('blur', () => {
+    if (!rebuildingStrip) finish(true);
+  });
   input.addEventListener('keydown', (ev) => {
     ev.stopPropagation(); // the window-level shortcut handler is not wanted here
     if (ev.key === 'Enter') {

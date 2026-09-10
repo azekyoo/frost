@@ -229,6 +229,28 @@ async function drag(c, from, to, { steps = 8, midway = null, onStep = null, hold
     check('and the tab it came from is left as a placeholder', ghostSeen?.placeholder === true);
     check('no placeholder is left once dropped', (await w1.eval('!document.querySelector(".tab.dragging")')) === true);
 
+    // A strip node for a tab that is no longer in the tab list used to make the
+    // reorder count positions in the wrong list: every position after the stale
+    // node was one out, and splicing past the end of the list returns nothing,
+    // which put an `undefined` into it. After that every walk over the tabs
+    // threw on the hole — renderTabs included — so the strip stopped repainting
+    // while the shells carried on running behind it, and a rename box opened on
+    // top of it could never be cleared. The stale node is faked here: the drag
+    // that left one in the wild took a drop that went nowhere to arrive at.
+    await w1.eval(`(() => {
+      const stale = el.tabstrip.children[0].cloneNode(true);
+      stale.tabData = { id: 'no-such-tab', title: 'gone', root: null };
+      el.tabstrip.insertBefore(stale, el.tabstrip.firstChild);
+      return true; })()`);
+    const realFirst = await w1.eval(tabRect(1));
+    const realLast = await w1.eval(tabRect(3));
+    await drag(w1, realFirst, { x: realLast.x, y: realLast.y });
+    await sleep(400);
+    const holes = await w1.eval('state.tabs.filter((t) => !t).length');
+    check('a stale strip node cannot put a hole in the tab list', holes === 0, String(holes));
+    const survived = await w1.eval('(() => { renderTabs(); return state.tabs.length })()');
+    check('and the strip still repaints afterwards', survived === 3, String(survived));
+
     // --- rename ----------------------------------------------------------
     await w1.eval(`(() => {
       startTabRename(state.tabs[0]);
@@ -252,6 +274,37 @@ async function drag(c, from, to, { steps = 8, midway = null, onStep = null, hold
     await sleep(300);
     const cleared = await w1.eval('state.tabs[0].customTitle');
     check('emptying it restores the live title', cleared === null, String(cleared));
+
+    // The strip is rebuilt every time a pane reports a title, and a rename in
+    // progress lives in the strip. Chromium fires no blur for an input removed
+    // from the document, so a rebuild used to end the rename in silence: the
+    // box disappeared mid-word and nothing was saved.
+    await w1.eval(`(() => {
+      startTabRename(state.tabs[0]);
+      const input = document.querySelector('.tab-rename');
+      input.value = 'survives';
+      renderTabs();
+      return true; })()`);
+    await sleep(300);
+    const boxAfter = await w1.eval('document.querySelector(".tab-rename")?.value ?? null');
+    check('a rename survives the strip being rebuilt', boxAfter === 'survives', String(boxAfter));
+    const boxes = await w1.eval('document.querySelectorAll(".tab-rename").length');
+    check('and there is only ever one box', boxes === 1, String(boxes));
+    await w1.eval(`(() => { document.querySelector('.tab-rename').blur(); return true })()`);
+    await sleep(300);
+    check(
+      'and it still commits when it is left',
+      (await w1.eval('state.tabs[0].customTitle')) === 'survives'
+    );
+
+    // back to the live title, so the checks after this see an unnamed tab
+    await w1.eval(`(() => {
+      startTabRename(state.tabs[0]);
+      const input = document.querySelector('.tab-rename');
+      input.value = '';
+      input.blur();
+      return true; })()`);
+    await sleep(300);
 
     // --- move a tab to its own window ------------------------------------
     // A marker in the tab about to move, so the scrollback can be recognised
