@@ -98,7 +98,10 @@ const DEFAULT_THEME = {
   // firehose output rather than reading.
   gpuRenderer: false,
   autoDetectAgents: true,
-  restoreSession: true,
+  // Off, like every other Windows terminal: a shell that comes back with
+  // yesterday's tabs in it is a surprise, and the tabs it restores are empty
+  // shells in the right directories rather than the work that was in them.
+  restoreSession: false,
   notify: { agentBlocked: true, agentDone: true, commandSeconds: 20 },
   // check: look for a newer release at startup and every six hours. download:
   // fetch it when one is found. Either way the installer only runs when Frost
@@ -655,13 +658,30 @@ function scaleBoundsTo(b, from, to) {
   };
 }
 
-// The first window on a machine has nothing to restore. A fixed 1100x700 is
-// most of a laptop screen and a postage stamp on a big one, so it is taken as a
-// share of the display the pointer is on instead.
+// A window with nothing to restore is sized the way Windows Terminal sizes its
+// own: 120 columns by 30 rows. A share of the display was the other candidate,
+// and it makes a terminal that is two thirds of a 4K monitor wide for no reason
+// anyone asked for. Frost's default font is Windows Terminal's default font at
+// its default size, so the same grid lands on the same window.
+const DEFAULT_COLS = 120;
+const DEFAULT_ROWS = 30;
+
 function defaultBoundsFor(display) {
+  const theme = readTheme() || DEFAULT_THEME;
+  const font = theme.font || DEFAULT_THEME.font;
+  const size = Number(font.size) > 0 ? Number(font.size) : DEFAULT_THEME.font.size;
+  const lineHeight =
+    Number(font.lineHeight) > 0 ? Number(font.lineHeight) : DEFAULT_THEME.font.lineHeight;
+  const pad = Number.isFinite(theme.padding) ? theme.padding : DEFAULT_THEME.padding;
+  // 0.6em is the advance width of Cascadia Mono and of the faces Windows falls
+  // back to. The real cell is only known once the renderer has measured the
+  // font, so this is close rather than exact — a couple of columns either way.
   const wa = display.workArea;
-  const width = Math.min(wa.width, Math.max(900, Math.round(wa.width * 0.62)));
-  const height = Math.min(wa.height, Math.max(600, Math.round(wa.height * 0.72)));
+  const width = Math.min(wa.width, Math.round(DEFAULT_COLS * size * 0.6 + pad * 2));
+  const height = Math.min(
+    wa.height,
+    Math.round(DEFAULT_ROWS * size * lineHeight + pad * 2) + TITLEBAR_H
+  );
   return {
     width,
     height,
