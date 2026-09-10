@@ -3,6 +3,23 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 0.5.6 — 2026-09-10
+
+### Fixed
+
+- **A release waiting to install no longer stops Frost looking for the next
+  one.** Once a version had been downloaded and was waiting for the next quit,
+  every check after it returned early, on the reasoning that there was nothing
+  left to find. There was — the release after it. Frost stays open for days, so
+  a version could sit waiting while newer ones came and went, and the panel went
+  on offering the old one however many times it was asked to check, which reads
+  as an update mechanism that has stopped working. The check runs now, and the
+  handler decides what the answer means: a release already on disk ends the
+  check where it started rather than being fetched a second time, anything newer
+  is taken as usual, and a download in flight is still the one thing a check
+  will not interrupt. Automatic downloading also moved off electron-updater's
+  own `autoDownload`, which could otherwise start the same download twice.
+
 ## 0.5.5 — 2026-09-10
 
 ### Fixed
