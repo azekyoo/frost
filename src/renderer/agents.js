@@ -1,12 +1,12 @@
 // Agent mode: the rail of running agents, their status, the spaces they are
-// spawned in, and the worktrees they leave behind.
+// spawned in, and the Claude Code sessions that can be picked up again.
 
 // ---------- agent mode ----------
 
-const globalAgents = new Map(); // agentId -> agent {id,name,cwd,branch,git,ptyId,leaf,status}
+const globalAgents = new Map(); // agentId -> agent {id,name,cwd,branch,git,ptyId,leaf,status,sessionId}
 const agentsByPty = new Map(); // ptyId -> agent
 const pendingNames = new Map(); // ptyId -> preferred display name
-let sessions = []; // resumable past sessions [{name,cwd,branch,lastSeen}]
+let claudeSessions = []; // recent Claude Code sessions [{id,cwd,title,branch,lastActive,exists}]
 const STATUS_RANK = { blocked: 4, working: 3, done: 2, idle: 1, exited: 0 };
 
 function agentTabs() {
@@ -59,11 +59,8 @@ async function newAgentTab() {
   // default center terminal: cd anywhere and run `claude` — auto-registers
   const leaf = await createPane({ profileId: agentProfileId() });
   addCenterLeaf(tab, leaf, true);
-  const cfg = await api.agentsGetConfig();
-  renderSpaces(tab, cfg);
-  sessions = await api.agentsGetSessions();
   renderAgentList(tab);
-  await refreshWorktrees();
+  await refreshSessions();
   return tab;
 }
 
@@ -151,20 +148,17 @@ function buildAgentLayout(tab) {
   layout.className = 'agents-layout';
   layout.innerHTML = `
     <div class="agents-rail">
-      <div class="rail-section">
-        <div class="rail-head"><h4>Spaces</h4><button class="rail-add" title="Add a git repo">+</button></div>
-        <div class="spaces-list"></div>
-      </div>
+      <button class="rail-new" title="Start Claude Code in a folder">+ New session</button>
       <div class="rail-section">
         <div class="rail-head"><h4>Agents</h4></div>
         <div class="agents-list"></div>
       </div>
       <div class="rail-section">
         <div class="rail-head">
-          <h4>Worktrees</h4>
-          <button class="rail-prune" title="Forget worktrees whose folder is gone">prune</button>
+          <h4>Sessions</h4>
+          <button class="rail-refresh" title="Look for new Claude Code sessions">refresh</button>
         </div>
-        <div class="worktrees-list"></div>
+        <div class="sessions-list"></div>
       </div>
     </div>
     <div class="agents-gutter" data-edge="rail" title="Drag to resize"></div>
@@ -196,9 +190,8 @@ function buildAgentLayout(tab) {
   tab.diffCwd = null;
   tab.els = {
     layout,
-    spacesList: layout.querySelector('.spaces-list'),
     agentsList: layout.querySelector('.agents-list'),
-    worktreesList: layout.querySelector('.worktrees-list'),
+    sessionsList: layout.querySelector('.sessions-list'),
     center: layout.querySelector('.agents-center'),
     empty: layout.querySelector('.agents-empty'),
     diffTitle: layout.querySelector('.diff-title'),
@@ -231,100 +224,50 @@ function buildAgentLayout(tab) {
   // terminal out entirely
   new ResizeObserver(() => applyAgentColumns(tab)).observe(layout);
 
-  layout.querySelector('.rail-prune').addEventListener('click', async () => {
-    const pruned = await api.worktreesPrune();
-    const total = pruned.reduce((n, p) => n + p.count, 0);
-    toast(total ? `Forgot ${total} missing worktree${total > 1 ? 's' : ''}` : 'Nothing to prune');
-    refreshWorktrees();
-  });
-  layout.querySelector('.rail-add').addEventListener('click', async () => {
-    const cfg = await api.agentsAddSpace();
-    if (!cfg) return;
-    if (cfg.error) {
-      toast(cfg.error);
-      return;
-    }
-    renderSpaces(tab, cfg);
-    refreshWorktrees();
-  });
+  layout.querySelector('.rail-refresh').addEventListener('click', () => refreshSessions());
+  layout.querySelector('.rail-new').addEventListener('click', () => pickSessionFolder(tab));
 }
 
-function renderSpaces(tab, cfg) {
-  tab.els.spacesList.replaceChildren(
-    ...(cfg.spaces || []).map((space) => {
-      const row = document.createElement('div');
-      row.className = 'space-row';
-      const name = document.createElement('span');
-      name.className = 'space-name';
-      name.textContent = space.name;
-      name.title = space.path;
-      const btn = document.createElement('button');
-      btn.textContent = '+ agent';
-      btn.title = 'Spawn a Claude Code agent here';
-      btn.addEventListener('click', () => showSpawnForm(tab, space, row));
-      const del = document.createElement('button');
-      del.className = 'space-remove';
-      del.textContent = '×';
-      del.title = 'Remove this space (repo itself is untouched)';
-      del.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        const cfg = await api.agentsRemoveSpace(space.path);
-        renderSpaces(tab, cfg);
-        refreshWorktrees();
-      });
-      row.append(name, btn, del);
-      return row;
-    })
-  );
-  if (!(cfg.spaces || []).length) {
-    const p = document.createElement('p');
-    p.className = 'hint';
-    p.textContent = 'No spaces yet — add a git repo with +';
-    tab.els.spacesList.appendChild(p);
-  }
-}
+// ---------- new session ----------
+// Starting claude only needs a folder: the name is the folder's until Claude
+// Code titles the session itself. The palette doubles as the picker, offering
+// the folders recent sessions ran in, plus Browse for anywhere else.
 
-function showSpawnForm(tab, space, row) {
-  if (row.nextElementSibling?.classList.contains('spawn-form')) {
-    row.nextElementSibling.remove();
-    return;
-  }
-  tab.els.spacesList.querySelectorAll('.spawn-form').forEach((f) => f.remove());
-  const form = document.createElement('div');
-  form.className = 'spawn-form';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = 'agent name';
-  input.spellcheck = false;
-  const wtLabel = document.createElement('label');
-  wtLabel.className = 'spawn-wt';
-  const wtCheck = document.createElement('input');
-  wtCheck.type = 'checkbox';
-  wtLabel.append(wtCheck, document.createTextNode(' isolate in worktree (own branch)'));
-  form.append(input, wtLabel);
-  row.after(form);
-  input.focus();
-  input.addEventListener('keydown', async (ev) => {
-    if (ev.key === 'Escape') form.remove();
-    if (ev.key === 'Enter' && input.value.trim()) {
-      const task = input.value.trim();
-      const useWorktree = wtCheck.checked;
-      form.remove();
-      await spawnAgent(tab, space, task, useWorktree);
+async function pickSessionFolder(tab) {
+  if (!claudeSessions.length) await refreshSessions();
+  // spaces from before this picker existed still count as places you work
+  const cfg = await api.agentsGetConfig();
+  const seen = new Set();
+  const folders = [];
+  const add = (cwd) => {
+    const key = String(cwd || '').toLowerCase();
+    if (!cwd || seen.has(key)) return;
+    seen.add(key);
+    folders.push({ label: cwd.split(/[\\/]/).pop() || cwd, detail: cwd, cwd });
+  };
+  for (const s of claudeSessions) if (s.exists) add(s.cwd);
+  for (const sp of cfg?.spaces || []) add(sp.path);
+  const browse = { label: 'Browse…', detail: 'pick any folder', always: true, browse: true };
+  openPalette({
+    placeholder: 'Start Claude in…',
+    empty: 'No matching folder',
+    items: () => [...folders, browse],
+    choose: async (it) => {
+      const cwd = it.browse ? await api.pickDir() : it.cwd;
+      if (cwd) startSession(tab, cwd);
     }
   });
 }
 
-async function spawnAgent(tab, space, task, useWorktree = false) {
-  const res = await api.agentsSpawn({ spacePath: space.path, task, useWorktree });
+async function startSession(tab, cwd) {
+  const name = cwd.split(/[\\/]/).pop() || cwd;
+  const res = await api.agentsSpawn({ spacePath: cwd });
   if (!res || res.error) {
-    toast(res?.error || 'Agent spawn failed');
+    toast(res?.error || 'Could not start claude', { error: true });
     return;
   }
   const leaf = await createPane({ cwd: res.cwd, run: res.run, profileId: agentProfileId() });
   addCenterLeaf(tab, leaf, true);
-  if (useWorktree) refreshWorktrees();
-  pendingNames.set(leaf.ptyId, task);
   if (res.agentId) {
     // auto-detect off: agent pre-registered by the main process
     api.agentsTrack({ agentId: res.agentId, ptyId: leaf.ptyId });
@@ -332,14 +275,14 @@ async function spawnAgent(tab, space, task, useWorktree = false) {
       agentId: res.agentId,
       ptyId: leaf.ptyId,
       cwd: res.cwd,
-      name: task,
+      name,
       branch: res.branch,
-      git: true
+      git: res.git
     });
   }
 }
 
-function registerAgent({ agentId, ptyId, cwd, name, branch, git }) {
+function registerAgent({ agentId, ptyId, cwd, name, branch, git, sessionId }) {
   const leaf = panesByPty.get(ptyId);
   if (!leaf) return null;
   const agent = {
@@ -350,10 +293,11 @@ function registerAgent({ agentId, ptyId, cwd, name, branch, git }) {
     git,
     ptyId,
     leaf,
-    status: 'working'
+    status: 'working',
+    sessionId: sessionId || null
   };
   pendingNames.delete(ptyId);
-  resuming.delete(String(cwd || '').toLowerCase());
+  if (leaf.resumedSession) resuming.delete(leaf.resumedSession);
   globalAgents.set(agentId, agent);
   agentsByPty.set(ptyId, agent);
   // if an agent tab hosts this pane in its center, select it there
@@ -378,7 +322,6 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
     tab.diffCwd = agent.cwd || null; // lets a line number in the diff open the file
     api.agentsSelectDiff({ agentId, mode: tab.diffMode });
     renderAgentList(tab);
-    renderWorktrees(tab);
     return;
   }
   // pane lives elsewhere (normal tab or another agent tab) — jump to it
@@ -403,43 +346,57 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
   toast(`${agent.name} is no longer running`, { error: true });
 }
 
-// Resuming is slow: claude has to boot before it registers as an agent, and the
-// row stays on screen until it does. Without a guard a second click starts a
-// second session in the same directory.
-const resuming = new Set(); // lowercased cwds with a resume in flight
-
-const sameDir = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+// Resuming is slow: claude has to boot before the SessionStart hook ties the
+// pane to its session, and the row stays on screen until it does. Without a
+// guard a second click would open the same session twice.
+const resuming = new Set(); // session ids with a resume in flight
 
 async function resumeSession(tab, session) {
-  const cwd = session.cwd;
-  const key = String(cwd || '').toLowerCase();
-
-  const live = [...globalAgents.values()].find((a) => sameDir(a.cwd, cwd));
+  const live = [...globalAgents.values()].find((a) => a.sessionId === session.id);
   if (live) return selectAgent(tab, live.id);
 
-  // Only a pane this resumed counts. Matching any pane that happens to sit in
-  // the directory would focus an ordinary shell and never resume anything —
-  // the agent tab's own starting pane is usually already there.
-  const open = [...tab.centerLeaves].find((l) => sameDir(l.resumedCwd, cwd));
+  // already resumed here, but claude hasn't reported back yet
+  const open = [...tab.centerLeaves].find((l) => l.resumedSession === session.id);
   if (open) return setCenterVisible(tab, open);
 
-  if (resuming.has(key)) return;
-  resuming.add(key);
-  renderAgentList(tab);
+  if (!session.exists) {
+    toast(`${session.cwd} no longer exists`, { error: true });
+    return;
+  }
+  if (resuming.has(session.id)) return;
+  // claimed before asking, so a double click can't raise the dialog twice
+  resuming.add(session.id);
+  const ok =
+    !session.runningElsewhere ||
+    (await confirmModal({
+      title: `"${session.title}" is still open somewhere else`,
+      detail:
+        'Another terminal or Frost window is running this session. Resuming it here as well puts two Claude processes on one history, and they can overwrite each other.',
+      confirmLabel: 'Resume anyway',
+      cancelLabel: 'Cancel',
+      focusCancel: true
+    }));
+  if (!ok) {
+    resuming.delete(session.id);
+    return;
+  }
+  renderSessions();
   try {
+    // --resume by id, not --continue: the folder's latest session is not
+    // necessarily the one that was clicked
     const leaf = await createPane({
-      cwd,
-      run: 'claude --continue',
+      cwd: session.cwd,
+      run: `claude --resume ${session.id}`,
       profileId: agentProfileId()
     });
-    leaf.resumedCwd = cwd;
+    leaf.resumedSession = session.id;
     addCenterLeaf(tab, leaf, true);
-    pendingNames.set(leaf.ptyId, session.name);
+    pendingNames.set(leaf.ptyId, session.title);
   } finally {
-    // released when the agent registers; this is the backstop for a claude that
-    // never starts, so the row doesn't stay stuck forever
+    // released when the session reports in; this is the backstop for a claude
+    // that never starts, so the row doesn't stay stuck forever
     setTimeout(() => {
-      if (resuming.delete(key)) renderAgentLists();
+      if (resuming.delete(session.id)) renderSessions();
     }, 30000);
   }
 }
@@ -454,32 +411,13 @@ function renderAgentList(tab) {
       <span class="agent-name"></span>
       <span class="agent-meta"></span>`;
     row.querySelector('.agent-name').textContent = agent.name;
-    row.querySelector('.agent-meta').textContent = `${agent.branch} · ${agent.status}`;
+    // the repo too, as in the sessions list: a resumed session is named after
+    // its title, which doesn't say where it runs
+    const folder = String(agent.cwd || '').split(/[\\/]/).pop();
+    row.querySelector('.agent-meta').textContent = [folder, agent.branch, agent.status]
+      .filter(Boolean)
+      .join(' · ');
     row.addEventListener('click', () => selectAgent(tab, agent.id));
-    rows.push(row);
-  }
-  // compared case-insensitively: main canonicalises the separators, but Windows
-  // paths can still differ in case for the same directory
-  const liveCwds = new Set([...globalAgents.values()].map((a) => String(a.cwd || '').toLowerCase()));
-  for (const s of sessions) {
-    if (liveCwds.has(String(s.cwd || '').toLowerCase())) continue;
-    const row = document.createElement('div');
-    const busy = resuming.has(String(s.cwd || '').toLowerCase());
-    row.className = 'agent-row dormant' + (busy ? ' busy' : '');
-    row.title = busy ? `Resuming in ${s.cwd}` : `Resume last Claude session in ${s.cwd}`;
-    row.innerHTML = `
-      <span class="agent-dot st-exited"></span>
-      <span class="agent-name"></span>
-      <button class="session-remove" title="Forget this session">×</button>
-      <span class="agent-meta"></span>`;
-    row.querySelector('.agent-name').textContent = s.name;
-    row.querySelector('.agent-meta').textContent = `${s.branch} · ${busy ? 'resuming…' : 'resume'}`;
-    if (!busy) row.addEventListener('click', () => resumeSession(tab, s));
-    row.querySelector('.session-remove').addEventListener('click', async (ev) => {
-      ev.stopPropagation();
-      sessions = await api.agentsRemoveSession(s.cwd);
-      renderAgentLists();
-    });
     rows.push(row);
   }
   tab.els.agentsList.replaceChildren(...rows);
@@ -489,134 +427,70 @@ function renderAgentList(tab) {
     p.textContent = 'No agents yet — run claude in the terminal';
     tab.els.agentsList.appendChild(p);
   }
+  renderSessionList(tab);
 }
 
-// ---------- worktrees ----------
-// An agent isolated in a worktree leaves behind a checkout under <repo>/.frost
-// and a branch. This lists them so the work can be found and reviewed after the
-// agent is gone, instead of only while it's selected.
+// ---------- sessions ----------
+// Recent Claude Code sessions, read from Claude Code's own transcripts, so a
+// claude started in any tab can be found and picked up again from here. One
+// that is running right now is listed under Agents instead, with its status.
 
-let worktrees = [];
-
-async function refreshWorktrees() {
-  worktrees = await api.worktreesList();
-  for (const tab of agentTabs()) renderWorktrees(tab);
+async function refreshSessions() {
+  if (!agentTabs().length) return;
+  // live ones are listed under Agents; main leaves them out before counting
+  const live = [...globalAgents.values()].map((a) => a.sessionId).filter(Boolean);
+  claudeSessions = (await api.claudeSessions(live)) || [];
+  renderSessions();
 }
 
-// Re-issues the diff request for whatever the tab is currently showing, so the
-// Session/Uncommitted toggle works for agents and worktrees alike.
-function reselectDiff(tab) {
-  if (!tab.diffKey) return;
-  if (tab.diffKey.startsWith('agent:')) {
-    api.agentsSelectDiff({ agentId: tab.diffKey.slice(6), mode: tab.diffMode });
-  } else if (tab.diffKey.startsWith('wt:')) {
-    const wt = worktrees.find((w) => 'wt:' + w.path === tab.diffKey);
-    if (wt) api.worktreesSelectDiff({ cwd: wt.path, base: wt.base, mode: tab.diffMode });
-  }
+function renderSessions() {
+  for (const tab of agentTabs()) renderSessionList(tab);
 }
 
-function selectWorktree(tab, wt) {
-  tab.selected = null;
-  tab.diffKey = 'wt:' + wt.path;
-  tab.els.diffTitle.textContent = `${wt.name} · ${wt.branch || 'detached'}`;
-  tab.diffCwd = wt.path || null;
-  api.worktreesSelectDiff({ cwd: wt.path, base: wt.base, mode: tab.diffMode });
-  renderAgentList(tab);
-  renderWorktrees(tab);
+function timeAgo(ms) {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 86400 * 30) return `${Math.floor(s / 86400)}d ago`;
+  return new Date(ms).toLocaleDateString();
 }
 
-function renderWorktrees(tab) {
-  const spaces = new Set(worktrees.map((w) => w.space));
-  const rows = worktrees.map((wt) => {
+function renderSessionList(tab) {
+  if (!tab.els?.sessionsList) return;
+  const live = new Set([...globalAgents.values()].map((a) => a.sessionId).filter(Boolean));
+  const rows = [];
+  for (const s of claudeSessions) {
+    if (live.has(s.id)) continue;
+    const busy = resuming.has(s.id);
     const row = document.createElement('div');
-    row.className = 'wt-row' + (tab.diffKey === 'wt:' + wt.path ? ' selected' : '');
-    row.title = wt.path;
-
-    const name = document.createElement('span');
-    name.className = 'wt-name';
-    // The branch is what you act on, so it gets the row; the space is only worth
-    // naming when more than one is configured.
-    const label = wt.branch || wt.name + ' (detached)';
-    name.textContent = spaces.size > 1 ? `${wt.space}/${label}` : label;
-
-    const actions = document.createElement('span');
-    actions.className = 'wt-actions';
-
-    const act = (label, title, run) => {
-      const b = document.createElement('button');
-      b.className = 'wt-act';
-      b.textContent = label;
-      b.title = title;
-      b.addEventListener('click', async (ev) => {
-        ev.stopPropagation();
-        b.disabled = true;
-        try {
-          await run();
-        } finally {
-          b.disabled = false;
-        }
-      });
-      actions.appendChild(b);
-      return b;
-    };
-
-    if (wt.exists) {
-      act('open', 'Open a tab in this worktree', () => newTab({ cwd: wt.path }));
-      act(
-        'merge',
-        `Merge ${wt.branch || 'this branch'} into ${wt.base}`,
-        async () => {
-          const res = await api.worktreesMerge(wt.path);
-          if (res?.cancelled) return;
-          if (res?.error) return toast(res.error, { error: true });
-          toast(`Merged ${res.branch} into ${res.base}`);
-          refreshWorktrees();
-        }
-      );
-    }
-    act('discard', 'Delete this worktree and its branch', async () => {
-      const res = await api.worktreesDiscard(wt.path);
-      if (res?.cancelled) return;
-      if (res?.error) return toast(res.error, { error: true });
-      if (res?.warning) toast(res.warning, { error: true });
-      else toast(`Discarded ${wt.name}`);
-      // the diff panel may have been showing what we just deleted
-      if (tab.diffKey === 'wt:' + wt.path) {
-        tab.diffKey = null;
-        tab.diffCwd = null;
-        tab.els.diffTitle.textContent = 'Diff watch';
-        tab.els.diffSummary.textContent = '';
-        tab.els.diffBody.innerHTML = '<p class="hint">No agent selected</p>';
-        api.agentsSelectDiff(null);
-      }
-      refreshWorktrees();
-    });
-
-    const meta = document.createElement('span');
-    meta.className = 'wt-meta';
-    // No branch here: it's the row's title now, and repeating it only crowded
-    // out the part that actually changes.
-    const bits = [];
-    if (!wt.exists) bits.push('folder missing');
-    else {
-      if (wt.ahead) bits.push(`${wt.ahead} commit${wt.ahead > 1 ? 's' : ''}`);
-      if (wt.dirty) bits.push('uncommitted');
-      if (!wt.ahead && !wt.dirty) bits.push('no changes');
-    }
-    if (wt.locked) bits.push('locked');
-    meta.textContent = bits.join(' · ');
-
-    row.append(name, actions, meta);
-    if (wt.exists) row.addEventListener('click', () => selectWorktree(tab, wt));
-    else row.classList.add('gone');
-    return row;
-  });
-
-  tab.els.worktreesList.replaceChildren(...rows);
+    row.className = 'agent-row dormant' + (busy ? ' busy' : '') + (s.exists ? '' : ' gone');
+    row.title = `${s.cwd}\n${s.id}`;
+    row.innerHTML = `
+      <span class="agent-dot st-exited"></span>
+      <span class="agent-name"></span>
+      <span class="agent-meta"></span>`;
+    row.querySelector('.agent-name').textContent = s.title;
+    const folder = s.cwd.split(/[\\/]/).pop();
+    const when = !s.exists ? 'folder missing' : s.runningElsewhere ? 'open elsewhere' : timeAgo(s.lastActive);
+    row.querySelector('.agent-meta').textContent = `${folder} · ${busy ? 'resuming…' : when}`;
+    // running, just not here: dimmer than live, brighter than closed
+    if (s.runningElsewhere) row.querySelector('.agent-dot').className = 'agent-dot st-idle';
+    if (!busy) row.addEventListener('click', () => resumeSession(tab, s));
+    rows.push(row);
+  }
+  tab.els.sessionsList.replaceChildren(...rows);
   if (!rows.length) {
     const p = document.createElement('p');
     p.className = 'hint';
-    p.textContent = 'No worktrees — tick "isolate in worktree" when spawning an agent';
-    tab.els.worktreesList.appendChild(p);
+    p.textContent = 'No other Claude Code sessions yet';
+    tab.els.sessionsList.appendChild(p);
   }
+}
+
+// Re-issues the diff request for the selected agent, so the Session/Uncommitted
+// toggle takes effect straight away.
+function reselectDiff(tab) {
+  if (!tab.diffKey?.startsWith('agent:')) return;
+  api.agentsSelectDiff({ agentId: tab.diffKey.slice(6), mode: tab.diffMode });
 }

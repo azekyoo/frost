@@ -19,7 +19,8 @@
     "test:paste": "electron tools/pastetest.js",
     "test:backdrop": "electron tools/backdroptest.js",
     "test:restore": "electron tools/restoretest.js",
-    "test:resume": "electron tools/resumetest.js"
+    "test:resume": "electron tools/resumetest.js",
+    "test:exit": "electron tools/exittest.js"
   },
   "license": "MIT",
   "author": "azekyoo",

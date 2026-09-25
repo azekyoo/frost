@@ -103,7 +103,8 @@ running and supervising Claude Code agents with live status and diff watching.
 - **Picks up where you left off** — every window comes back with its own size,
   position, maximized state, tabs and split layout, each pane reopened in the
   directory it was in. Written continuously, so a crash doesn't lose it. Toggle
-  in settings; agent tabs stay out of it and keep their own resume list
+  in settings; agent tabs stay out of it — their sessions are listed there to
+  resume instead
 - **Keeps itself current** — an installed Frost looks for a new release at
   startup and every six hours, downloads it quietly, and installs it the next
   time you quit. Never mid-session: a terminal holds work a restart of its own
@@ -127,18 +128,20 @@ running and supervising Claude Code agents with live status and diff watching.
 - **Agent mode** — a special tab for AI coding agents (Claude Code first),
   heavily inspired by the excellent [herdr](https://herdr.dev/):
   - run `claude` in any Frost terminal → it auto-registers as an agent with
-    live status: working / **blocked (needs you)** / done / idle
+    live status: working / **blocked (needs you)** / done / idle, under the
+    session's name — the one you gave it with `/rename`, else Claude's own title
+  - **New session** picks a folder — ones you've worked in recently, or any
+    other — and starts `claude` there. Nothing to name, nothing to set up
+  - **Sessions** lists your recent Claude Code sessions, read from Claude Code's
+    own history: one click resumes that exact session (`claude --resume <id>`).
+    One still open in another terminal says so, and asks before a second copy
+    starts writing to the same history
   - diff watch panel: live green/red diff of the agent's repo — **Session**
-    (everything since the agent started, survives commits) or **Uncommitted**
-  - sessions persist: after a restart, one click re-opens the repo and runs
-    `claude --continue`
+    (only what changed since the agent started, commits included, so edits you
+    had lying around beforehand stay out of it) or **Uncommitted**
   - **it tells you when it needs you** — a Windows notification and a taskbar
     flash when an agent goes blocked or finishes, raised only while Frost is in
     the background; clicking the notification jumps to that agent
-  - optional worktree isolation per agent for parallel work on one repo, listed
-    in a **Worktrees** section with its branch, how far ahead of the base branch
-    it is and whether it's dirty — review it in the diff panel long after the
-    agent has gone, then open, merge or discard it without leaving Frost
   - status comes from Claude Code hooks injected per-session via `--settings` —
     your global Claude config is never touched. Kill switch in settings
 - **Terminal quality**: text hinted by the system rather than blended out of a
@@ -196,6 +199,8 @@ npm run test:search  # the buffer search's case, whole-word and regex options
 npm run test:panes   # pane zoom and keyboard resize, measured on screen
 npm run test:marks   # copying one command's output, against a real shell
 npm run test:paste   # the multi-line paste question, and the ligature joiner
+npm run test:resume  # the sessions list, resuming, and the New session picker
+npm run test:exit    # a claude that exits leaves the agent list, however it ends
 ```
 
 `npm run test:status` drives a real Frost over the debugging protocol: it opens
@@ -362,8 +367,7 @@ for an installed build, in the repo's `config/` when running from source:
   with the file
 - `config/theme.css` — raw CSS, injected last, overrides anything
 - `config/keybindings.json` — key overrides (see [Shortcuts](#shortcuts))
-- `config/agents.json` — saved repos ("spaces") for agent mode
-- `config/sessions.json` — resumable agent sessions (managed automatically)
+- `config/agents.json` — extra folders to offer under **New session**
 - `config/window.json` — window geometry and tab layout (managed automatically)
 - `config/zoom.json` — UI zoom per monitor, keyed by resolution and scale (managed automatically)
 

@@ -364,12 +364,22 @@ const modal = {
   later: document.querySelector('#modal .modal-later')
 };
 
+// Anything but the confirm button — Cancel, Esc, a click outside — is a no, and
+// onCancel hears it, so a caller holding something for the answer can let go.
 function closeModal() {
+  const cancel = modal.onCancel;
+  modal.onConfirm = modal.onCancel = null;
   modal.root.classList.remove('open');
   activePane()?.term.focus();
+  cancel?.();
 }
 
-function askModal({ title, detail, note, confirmLabel = 'Restart now', cancelLabel = 'Later' }, onConfirm) {
+// focusCancel: for a risky yes, so a reflexive Enter doesn't take it
+function askModal(
+  { title, detail, note, confirmLabel = 'Restart now', cancelLabel = 'Later', focusCancel = false },
+  onConfirm,
+  onCancel
+) {
   modal.title.textContent = title;
   modal.detail.textContent = detail;
   modal.note.textContent = note || '';
@@ -378,13 +388,22 @@ function askModal({ title, detail, note, confirmLabel = 'Restart now', cancelLab
   // "Later" is right for a restart that can wait and wrong for a paste, which
   // either happens now or does not happen
   modal.later.textContent = cancelLabel;
+  // a question already showing is answered no by the one replacing it
+  if (modal.root.classList.contains('open')) closeModal();
   modal.root.classList.add('open');
-  modal.confirm.focus();
+  (focusCancel ? modal.later : modal.confirm).focus();
   modal.onConfirm = onConfirm;
+  modal.onCancel = onCancel;
+}
+
+// the promise form: resolves true for confirm, false for any way out
+function confirmModal(opts) {
+  return new Promise((resolve) => askModal(opts, () => resolve(true), () => resolve(false)));
 }
 
 modal.confirm.addEventListener('click', () => {
   const run = modal.onConfirm;
+  modal.onCancel = null; // this one is a yes
   closeModal();
   run?.();
 });

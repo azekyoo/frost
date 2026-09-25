@@ -374,7 +374,6 @@ api.onAgentDiff(({ key, patch, status, nogit }) => {
 });
 
 api.onAgentDetected((msg) => {
-  sessions = msg.sessions || sessions;
   const existing = agentsByPty.get(msg.ptyId);
   if (existing) {
     // claude re-launched in the same pane: refresh identity
@@ -382,6 +381,29 @@ api.onAgentDetected((msg) => {
     agentsByPty.delete(msg.ptyId);
   }
   registerAgent(msg);
+  refreshSessions();
+});
+
+// /rename, or Claude Code titling the session: the agent is renamed wherever it
+// is named — its row, and the diff panel if that is showing it.
+api.onAgentTitle(({ agentId, title }) => {
+  const agent = globalAgents.get(agentId);
+  if (!agent || agent.name === title) return;
+  agent.name = title;
+  for (const tab of agentTabs()) {
+    if (tab.diffKey === 'agent:' + agentId) tab.els.diffTitle.textContent = `${agent.name} · ${agent.branch}`;
+  }
+  renderAgentLists();
+});
+
+// The SessionStart hook names the Claude Code session a pane is running, which
+// is what ties a live agent to its row in the sessions list.
+api.onAgentSession(({ agentId, sessionId }) => {
+  const agent = globalAgents.get(agentId);
+  if (!agent) return;
+  agent.sessionId = sessionId;
+  resuming.delete(sessionId);
+  refreshSessions();
 });
 
 // Clicking a notification should land you on the agent it was about.
@@ -401,8 +423,7 @@ api.onAgentReveal((agentId) => {
   }
 });
 
-api.onAgentEnded(({ agentId, sessions: s }) => {
-  if (s) sessions = s;
+api.onAgentEnded(({ agentId }) => {
   const agent = globalAgents.get(agentId);
   if (agent) {
     globalAgents.delete(agentId);
@@ -413,5 +434,5 @@ api.onAgentEnded(({ agentId, sessions: s }) => {
     }
   }
   renderAgentLists();
-  refreshWorktrees();
+  refreshSessions();
 });

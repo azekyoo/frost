@@ -52,7 +52,6 @@ const CONFIG_DIR =
 const THEME_FILE = path.join(CONFIG_DIR, 'theme.json');
 const CSS_FILE = path.join(CONFIG_DIR, 'theme.css');
 const AGENTS_FILE = path.join(CONFIG_DIR, 'agents.json');
-const SESSIONS_FILE = path.join(CONFIG_DIR, 'sessions.json');
 const KEYS_FILE = path.join(CONFIG_DIR, 'keybindings.json');
 const WINDOW_FILE = path.join(CONFIG_DIR, 'window.json');
 const ZOOM_FILE = path.join(CONFIG_DIR, 'zoom.json');
@@ -1077,8 +1076,10 @@ const CLAUDE_WRAPPER =
   '$exe = (Get-Command claude -CommandType Application | Select-Object -First 1).Source; ' +
   'if (-not $exe) { Write-Error "claude not found"; return }; ' +
   'Set-Content -LiteralPath $env:FROST_LAUNCH -Value ("start|" + (Get-Location).Path) -Encoding UTF8; ' +
-  '& $exe --settings $env:FROST_HOOKS @args; ' +
-  'Set-Content -LiteralPath $env:FROST_LAUNCH -Value ("end|" + (Get-Location).Path) -Encoding UTF8 ' +
+  // finally, because Ctrl+C stops the function too, and a plain next line
+  // would never run
+  'try { & $exe --settings $env:FROST_HOOKS @args } ' +
+  'finally { Set-Content -LiteralPath $env:FROST_LAUNCH -Value ("end|" + (Get-Location).Path) -Encoding UTF8 } ' +
   '}';
 
 // Reports the shell's cwd to the app on every prompt via OSC 9;9 (the sequence
@@ -1268,6 +1269,16 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
       if (now - (rec.lastData || 0) > 1500) rec.busySince = now;
       rec.lastData = now;
     }
+    // The shell only prompts again once claude has exited. That catches the
+    // exits the wrapper never reports: on Windows a double Ctrl+C reaches the
+    // shell too, which abandons the wrapper before its "end" line runs.
+    // Only for launches the wrapper announced: those register once claude is
+    // already running, after the prompt it was typed at. One pre-registered
+    // with auto-detect off exists before its shell's first prompt.
+    if (rec?.announced && data.includes('\x1b]133;A')) {
+      const agentId = [...agents].find(([, r]) => r === rec)?.[0];
+      if (agentId) agentEnded(agentId);
+    }
     sendToOwner(id, 'pty:data', { id, data });
   });
   p.onExit(({ exitCode }) => {
@@ -1297,7 +1308,10 @@ ipcMain.on('pty:input', (_e, { id, data }) => {
   const p = ptys.get(id);
   if (p) p.write(data);
   const rec = agentByPty.get(id);
-  if (rec) rec.lastInput = Date.now();
+  // Claude Code turns on focus reporting, so clicking into its pane sends
+  // ESC[I / ESC[O. That is not an answer to anything, and counting it as one
+  // flipped a blocked agent to working just for being looked at.
+  if (rec && data.replace(/\x1b\[[IO]/g, '')) rec.lastInput = Date.now();
 });
 
 ipcMain.on('pty:resize', (_e, { id, cols, rows }) => {
@@ -1590,11 +1604,11 @@ ipcMain.handle('theme:get', (event) => ({
 }));
 
 // ---------- agent mode ----------
-// Agents run Claude Code in an isolated git worktree. Status comes from
-// Claude Code hooks (injected via a per-agent --settings file, the user's
-// own config is never touched) plus an output-activity heuristic.
+// An agent is a Claude Code session running in one of Frost's panes. Status
+// comes from Claude Code hooks (injected via a per-agent --settings file, the
+// user's own config is never touched) plus an output-activity heuristic.
 
-const agents = new Map(); // agentId -> { ptyId, worktree, lastData, lastInput, hook, hookT, status }
+const agents = new Map(); // agentId -> { ptyId, cwd, sessionId, title, lastData, lastInput, hook, hookT, status }
 const agentByPty = new Map(); // ptyId -> same record
 let agentCounter = 0;
 let STATUS_DIR = null;
@@ -1618,25 +1632,6 @@ function canonPath(p) {
   return path.resolve(String(p).trim()).replace(/[\\/]+$/, '');
 }
 
-const samePath = (a, b) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
-
-function readSessions() {
-  try {
-    const raw = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
-    // normalise on read so entries written before this still dedupe
-    return raw.map((s) => ({ ...s, cwd: canonPath(s.cwd) }));
-  } catch {
-    return [];
-  }
-}
-
-function upsertSession(entry) {
-  const cwd = canonPath(entry.cwd);
-  const sessions = readSessions().filter((s) => !samePath(s.cwd, cwd));
-  sessions.unshift({ ...entry, cwd });
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions.slice(0, 30), null, 2));
-}
-
 function gitInfo(cwd) {
   const b = spawnSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' });
   if (b.status !== 0) return { git: false, branch: null, baseCommit: null };
@@ -1648,28 +1643,69 @@ function gitInfo(cwd) {
   };
 }
 
+// What the tracked files looked like when the session started, uncommitted
+// edits included, as a tree object. Diffing against HEAD instead would count
+// work that was already lying around as the session's own. Untracked files stay
+// out of the tree — git diff can't see them, so they would read as deleted —
+// and are remembered by name instead, to be left out of the list. The
+// tree is built in a throwaway index, so the real index and files are never
+// touched; it hangs off no ref, and git's gc collects it in time.
+function snapshotBase(cwd, head) {
+  const untracked = new Set();
+  const st = spawnSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' });
+  for (const line of (st.stdout || '').split(/\r?\n/)) {
+    if (line.startsWith('??')) untracked.add(line);
+  }
+  if (st.status !== 0 || !st.stdout.trim()) return { base: head, untracked };
+  const tmp = path.join(STATUS_DIR, `idx-${process.pid}-${Date.now()}`);
+  try {
+    const real = spawnSync('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-path', 'index'], {
+      encoding: 'utf8'
+    });
+    // starting from a copy of the real index keeps its stat cache: only
+    // changed files get re-hashed
+    try {
+      fs.copyFileSync((real.stdout || '').trim(), tmp);
+    } catch {
+      // without the real index to start from, the snapshot would be empty and
+      // every file would read as added; HEAD is the honest fallback
+      return { base: head, untracked };
+    }
+    const env = { ...process.env, GIT_INDEX_FILE: tmp };
+    const add = spawnSync('git', ['-C', cwd, 'add', '-u'], { encoding: 'utf8', env });
+    if (add.status !== 0) return { base: head, untracked };
+    const tree = spawnSync('git', ['-C', cwd, 'write-tree'], { encoding: 'utf8', env });
+    const hash = (tree.stdout || '').trim();
+    return tree.status === 0 && hash ? { base: hash, untracked } : { base: head, untracked };
+  } finally {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
+}
+
 function registerDetected(agentId, rawCwd) {
   const cwd = canonPath(rawCwd);
   const ptyId = agentId.slice(3); // 'pty<N>' -> '<N>'
   const info = gitInfo(cwd);
+  const snap = info.git ? snapshotBase(cwd, info.baseCommit) : { base: null, untracked: new Set() };
   const rec = {
     ptyId,
     cwd,
-    baseCommit: info.baseCommit,
+    baseCommit: snap.base,
+    untrackedAtStart: snap.untracked,
     git: info.git,
     lastData: Date.now(),
     lastInput: 0,
     hook: null,
     hookT: 0,
     status: 'working',
-    exited: false
+    exited: false,
+    // the SessionStart hook can land before the launch file does
+    sessionId: readSessionId(agentId),
+    announced: true
   };
   agents.set(agentId, rec);
   agentByPty.set(ptyId, rec);
   const name = path.basename(cwd);
-  if (info.git) {
-    upsertSession({ name, cwd, branch: info.branch, lastSeen: Date.now() });
-  }
   if (win) {
     broadcast('agent:detected', {
       agentId,
@@ -1678,9 +1714,21 @@ function registerDetected(agentId, rawCwd) {
       name,
       branch: info.branch || '(no git)',
       git: info.git,
-      sessions: readSessions()
+      sessionId: rec.sessionId
     });
   }
+}
+
+// claude is gone from this pane, however it went: the wrapper said so, or the
+// shell drew a prompt again underneath it.
+function agentEnded(agentId) {
+  const rec = agents.get(agentId);
+  if (rec) {
+    agents.delete(agentId);
+    agentByPty.delete(rec.ptyId);
+  }
+  try { fs.unlinkSync(path.join(STATUS_DIR, 'sid-' + agentId)); } catch {}
+  broadcast('agent:ended', { agentId });
 }
 
 function effectiveStatus(rec) {
@@ -1688,8 +1736,10 @@ function effectiveStatus(rec) {
   // Claude Code's hooks report the turn's real state, so they win over the
   // output heuristic. Typing only invalidates "blocked" — answering the prompt
   // is what unblocks it — while "done" holds until the next prompt is sent.
-  if (rec.hook === 'blocked') return rec.hookT > rec.lastInput ? 'blocked' : 'working';
-  if (rec.hook === 'working') {
+  if (rec.hook === 'blocked' && rec.hookT > rec.lastInput) return 'blocked';
+  // answered: working again, with the same staleness rule, since typing into
+  // it without a turn following would otherwise leave it "working" for good
+  if (rec.hook === 'working' || rec.hook === 'blocked') {
     // don't stay "working" forever if a session died without firing Stop
     return Date.now() - rec.lastData > 60000 ? 'idle' : 'working';
   }
@@ -1710,12 +1760,42 @@ function broadcastStatuses() {
     if (s === rec.status) continue;
     rec.status = s;
     broadcast('agent:status', { agentId: id, status: s });
-    const name = rec.cwd ? path.basename(rec.cwd) : 'agent';
+    const name = rec.title || (rec.cwd ? path.basename(rec.cwd) : 'agent');
     if (s === 'blocked' && settings.agentBlocked !== false) {
       notify({ title: `${name} needs you`, body: 'The agent is waiting on an answer.', agentId: id });
     } else if (s === 'done' && settings.agentDone !== false) {
       notify({ title: `${name} is done`, body: 'The agent finished its turn.', agentId: id });
     }
+  }
+}
+
+// The hook's stdin is a JSON object carrying session_id. No double quotes, $
+// or backticks inside the script: the shell running it sees it inside "...".
+function sessionIdHook(agentId) {
+  const file = path.join(STATUS_DIR, 'sid-' + agentId).replace(/\\/g, '/');
+  return (
+    `node -e "let d='';process.stdin.on('data',(c)=>d+=c).on('end',()=>{` +
+    `try{require('fs').writeFileSync('${file}',JSON.parse(d).session_id)}catch(e){}})"`
+  );
+}
+
+// Notification fires for questions and permission prompts, which really do
+// need you, but also a minute into any idle wait ("Claude is waiting for your
+// input"). That one is not blocked — the turn is over — so it leaves the status
+// alone rather than flipping a done agent to blocked.
+function blockedHook(statusFile) {
+  return (
+    `node -e "let d='';process.stdin.on('data',(c)=>d+=c).on('end',()=>{let j={};try{j=JSON.parse(d)}catch(e){}` +
+    `if(j.notification_type==='idle_prompt'||/waiting for your input/i.test(j.message||''))return;` +
+    `require('fs').writeFileSync('${statusFile}','blocked')})"`
+  );
+}
+
+function readSessionId(agentId) {
+  try {
+    return fs.readFileSync(path.join(STATUS_DIR, 'sid-' + agentId), 'utf8').trim() || null;
+  } catch {
+    return null;
   }
 }
 
@@ -1725,8 +1805,12 @@ function hookSettingsFile(agentId) {
   const cfg = {
     hooks: {
       UserPromptSubmit: [{ hooks: [{ type: 'command', command: write('working') }] }],
-      Notification: [{ hooks: [{ type: 'command', command: write('blocked') }] }],
-      Stop: [{ hooks: [{ type: 'command', command: write('done') }] }]
+      Notification: [{ hooks: [{ type: 'command', command: blockedHook(statusFile) }] }],
+      Stop: [{ hooks: [{ type: 'command', command: write('done') }] }],
+      // Which Claude Code session this pane is running, so the sessions list can
+      // show it as live instead of offering to resume it a second time. Fires
+      // again on /clear and on resume, which is when the id changes.
+      SessionStart: [{ hooks: [{ type: 'command', command: sessionIdHook(agentId) }] }]
     }
   };
   const file = path.join(STATUS_DIR, 'cfg-' + agentId + '.json');
@@ -1742,7 +1826,15 @@ function initAgentInfra() {
     try { fs.unlinkSync(path.join(STATUS_DIR, f)); } catch {}
   }
   chokidar
-    .watch(STATUS_DIR, { ignoreInitial: true })
+    .watch(STATUS_DIR, {
+      ignoreInitial: true,
+      // Every writer here truncates before it writes, and an event fired in
+      // between reads an empty file and is ignored — with the event for the
+      // real write sometimes never following. That lost "end" (an exited
+      // claude left listed as an agent) and "done" (stuck on working). Waiting
+      // for the size to settle costs ~60ms and reads the finished file.
+      awaitWriteFinish: { stabilityThreshold: 60, pollInterval: 15 }
+    })
     .on('all', (_ev, file) => {
       const base = path.basename(file);
       if (base.startsWith('st-')) {
@@ -1754,6 +1846,17 @@ function initAgentInfra() {
           rec.hookT = Date.now();
         } catch {}
         broadcastStatuses();
+        return;
+      }
+      if (base.startsWith('sid-')) {
+        const agentId = base.slice(4);
+        const rec = agents.get(agentId);
+        const sessionId = readSessionId(agentId);
+        if (!rec || !sessionId || rec.sessionId === sessionId) return;
+        rec.sessionId = sessionId;
+        rec.title = null;
+        lastTitleScan = 0;
+        broadcast('agent:session', { agentId, sessionId });
         return;
       }
       if (base.startsWith('ln-')) {
@@ -1771,16 +1874,14 @@ function initAgentInfra() {
         if (ev === 'start') {
           registerDetected(agentId, cwd);
         } else if (ev === 'end') {
-          const rec = agents.get(agentId);
-          if (rec) {
-            agents.delete(agentId);
-            agentByPty.delete(rec.ptyId);
-          }
-          broadcast('agent:ended', { agentId, sessions: readSessions() });
+          agentEnded(agentId);
         }
       }
     });
-  setInterval(broadcastStatuses, 1500);
+  setInterval(() => {
+    broadcastStatuses();
+    refreshAgentTitles();
+  }, 1500);
 }
 
 ipcMain.handle('fonts:list', () => {
@@ -1814,80 +1915,28 @@ ipcMain.handle('dialog:pickDir', async (event) => {
 
 ipcMain.handle('agents:getConfig', () => readAgentsCfg());
 
-ipcMain.handle('agents:addSpace', async (event) => {
-  const r = await dialog.showOpenDialog(windowOf(event) || win, {
-    title: 'Add a repository as a space',
-    properties: ['openDirectory']
-  });
-  if (r.canceled || !r.filePaths.length) return null;
-  const p = r.filePaths[0];
-  const check = spawnSync('git', ['-C', p, 'rev-parse', '--git-dir'], { encoding: 'utf8' });
-  if (check.status !== 0) return { error: 'Not a git repository: ' + p };
-  const cfg = readAgentsCfg();
-  if (!cfg.spaces.some((s) => s.path === p)) {
-    cfg.spaces.push({ name: path.basename(p), path: p });
-    fs.writeFileSync(AGENTS_FILE, JSON.stringify(cfg, null, 2));
-  }
-  return cfg;
-});
-
-ipcMain.handle('agents:removeSpace', (_e, spacePath) => {
-  const cfg = readAgentsCfg();
-  cfg.spaces = (cfg.spaces || []).filter((s) => s.path !== spacePath);
-  fs.writeFileSync(AGENTS_FILE, JSON.stringify(cfg, null, 2));
-  return cfg;
-});
-
-ipcMain.handle('agents:spawn', (_e, { spacePath, task, useWorktree }) => {
-  let cwd = spacePath;
-  let branch;
-
-  if (useWorktree) {
-    const slug = (task || 'agent').toLowerCase().replace(/[^a-z0-9-_]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'agent';
-    const wtBase = path.join(spacePath, '.frost');
-    try {
-      fs.mkdirSync(wtBase, { recursive: true });
-      // keep .frost/ out of git status without touching tracked files
-      const exclude = path.join(spacePath, '.git', 'info', 'exclude');
-      const cur = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : '';
-      if (!cur.includes('.frost/')) fs.appendFileSync(exclude, '\n.frost/\n');
-    } catch (e) {
-      return { error: String(e) };
-    }
-    let name = slug;
-    let n = 1;
-    while (fs.existsSync(path.join(wtBase, name))) name = `${slug}-${++n}`;
-    cwd = path.join(wtBase, name);
-    branch = 'frost/' + name;
-    const r = spawnSync('git', ['-C', spacePath, 'worktree', 'add', cwd, '-b', branch], {
-      encoding: 'utf8'
-    });
-    if (r.status !== 0) return { error: (r.stderr || 'git worktree add failed').trim() };
-  } else {
-    const b = spawnSync('git', ['-C', spacePath, 'rev-parse', '--abbrev-ref', 'HEAD'], {
-      encoding: 'utf8'
-    });
-    branch = (b.stdout || '').trim() || 'HEAD';
-  }
-
-  // diff baseline: everything the agent does is measured against this commit,
-  // so the diff view survives the agent committing its work
-  const base = spawnSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
-  const baseCommit = (base.stdout || '').trim() || 'HEAD';
+ipcMain.handle('agents:spawn', (_e, { spacePath }) => {
+  const cwd = canonPath(spacePath);
+  if (!cwd || !fs.existsSync(cwd)) return { error: 'That folder no longer exists: ' + spacePath };
+  // any folder will do; outside git there is just no branch and no diff
+  const info = gitInfo(cwd);
+  const branch = info.branch || '(no git)';
+  const snap = info.git ? snapshotBase(cwd, info.baseCommit) : { base: null, untracked: new Set() };
 
   // with auto-detect on, the session wrapper handles hooks + registration;
   // otherwise pre-register the agent and pass the settings file explicitly
   const autoDetect = (readTheme() || DEFAULT_THEME).autoDetectAgents !== false;
   if (autoDetect) {
-    return { agentId: null, cwd, branch, run: 'claude' };
+    return { agentId: null, cwd, branch, git: info.git, run: 'claude' };
   }
   const agentId = 'ag-' + ++agentCounter;
   const settingsFile = hookSettingsFile(agentId);
   agents.set(agentId, {
     ptyId: null,
     cwd,
-    baseCommit,
-    git: true,
+    baseCommit: snap.base,
+    untrackedAtStart: snap.untracked,
+    git: info.git,
     lastData: Date.now(),
     lastInput: 0,
     hook: null,
@@ -1899,18 +1948,210 @@ ipcMain.handle('agents:spawn', (_e, { spacePath, task, useWorktree }) => {
     agentId,
     cwd,
     branch,
+    git: info.git,
     run: `claude --settings "${settingsFile}"`
   };
 });
 
-ipcMain.handle('agents:getSessions', () => readSessions());
+// ---------- Claude Code sessions ----------
+// Claude Code keeps one transcript per session under
+// ~/.claude/projects/<mangled cwd>/<session id>.jsonl. Frost only reads them:
+// the newest few, and only their ends — a transcript runs to megabytes, but the
+// cwd sits near the top and the title near the bottom.
 
-ipcMain.handle('agents:removeSession', (_e, cwd) => {
-  const target = canonPath(cwd);
-  const sessions = readSessions().filter((s) => !samePath(s.cwd, target));
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-  return sessions;
-});
+const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude');
+const CLAUDE_PROJECTS = path.join(CLAUDE_DIR, 'projects');
+const SESSION_LIMIT = 15;
+const sessionCache = new Map(); // file -> { mtimeMs, info }
+const transcriptPaths = new Map(); // session id -> transcript file
+
+function readSlice(file, start, length) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const buf = Buffer.alloc(length);
+    const n = fs.readSync(fd, buf, 0, length, start);
+    return buf.toString('utf8', 0, n);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function jsonLines(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('{')) continue;
+    try {
+      out.push(JSON.parse(line));
+    } catch {} // the cut at either end of a slice
+  }
+  return out;
+}
+
+function readClaudeSession(file, size) {
+  const head = jsonLines(readSlice(file, 0, Math.min(size, 64 * 1024)));
+  const tailStart = Math.max(0, size - 256 * 1024);
+  const tail = tailStart ? jsonLines(readSlice(file, tailStart, size - tailStart)) : head;
+  const first = head.find((l) => l.cwd);
+  if (!first) return null; // nothing but bookkeeping, never really started
+  let custom = null;
+  let ai = null;
+  let prompt = null;
+  let branch = first.gitBranch || null;
+  for (const l of tail) {
+    if (l.type === 'custom-title' && l.customTitle) custom = l.customTitle;
+    else if (l.type === 'ai-title' && l.aiTitle) ai = l.aiTitle;
+    else if (l.type === 'last-prompt' && l.lastPrompt) prompt = l.lastPrompt;
+    if (l.gitBranch) branch = l.gitBranch;
+  }
+  // /rename also leaves the name beside the transcript, which outlasts the
+  // lines scrolling out of the tail on a long session
+  try {
+    const side = JSON.parse(fs.readFileSync(file.slice(0, -6) + path.sep + 'custom-title.json', 'utf8'));
+    if (side.customTitle) custom = side.customTitle;
+  } catch {}
+  // a name the user gave it beats the one Claude Code made up
+  const name = custom || ai || (prompt || '').split(/\r?\n|\r/)[0].trim() || null;
+  return { cwd: canonPath(first.cwd), title: name, branch };
+}
+
+// Cached by mtime, so asking again about a transcript that hasn't been written
+// to costs one stat.
+function sessionInfo(file, st) {
+  let cached = sessionCache.get(file);
+  if (!cached || cached.mtimeMs !== st.mtimeMs) {
+    let info = null;
+    try {
+      info = readClaudeSession(file, st.size);
+    } catch {}
+    cached = { mtimeMs: st.mtimeMs, info };
+    sessionCache.set(file, cached);
+  }
+  return cached.info;
+}
+
+function scanTranscripts() {
+  const files = [];
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(CLAUDE_PROJECTS, { withFileTypes: true });
+  } catch {
+    return files;
+  }
+  for (const d of dirs) {
+    if (!d.isDirectory()) continue;
+    const dir = path.join(CLAUDE_PROJECTS, d.name);
+    let names = [];
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const n of names) {
+      if (!n.endsWith('.jsonl')) continue;
+      const file = path.join(dir, n);
+      try {
+        const st = fs.statSync(file);
+        const id = n.slice(0, -6);
+        transcriptPaths.set(id, file);
+        files.push({ file, id, st });
+      } catch {}
+    }
+  }
+  return files;
+}
+
+// Claude Code registers every running process in ~/.claude/sessions/<pid>.json
+// — session id, cwd, and the name /rename gave it. It is not a documented
+// format, so anything unexpected just means "nothing known to be running".
+// A file whose process is gone is left over from a crash, and doesn't count.
+function runningClaudeSessions() {
+  const running = new Map(); // session id -> { pid, name, custom }
+  const dir = path.join(CLAUDE_DIR, 'sessions');
+  let names = [];
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return running;
+  }
+  for (const n of names) {
+    if (!/^\d+\.json$/.test(n)) continue;
+    try {
+      const s = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'));
+      if (!s.sessionId || !s.pid) continue;
+      try {
+        process.kill(s.pid, 0); // signal 0 only asks whether it exists
+      } catch (e) {
+        if (e.code === 'ESRCH') continue;
+      }
+      running.set(s.sessionId, { pid: s.pid, name: s.name || null, custom: s.nameSource === 'user' });
+    } catch {}
+  }
+  return running;
+}
+
+// `exclude` is what already shows as a live agent, left out before counting so
+// the list still holds SESSION_LIMIT rows however many are running.
+function listClaudeSessions(exclude = []) {
+  const skip = new Set(exclude);
+  const running = runningClaudeSessions();
+  const files = scanTranscripts().sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
+  const out = [];
+  for (const f of files) {
+    if (out.length >= SESSION_LIMIT) break;
+    if (skip.has(f.id)) continue;
+    const info = sessionInfo(f.file, f.st);
+    if (!info) continue;
+    const live = running.get(f.id);
+    out.push({
+      id: f.id,
+      ...info,
+      title: (live?.custom && live.name) || info.title || path.basename(info.cwd),
+      lastActive: f.st.mtimeMs,
+      exists: fs.existsSync(info.cwd),
+      // open in some other terminal, or another Frost: resuming it here too
+      // would put two processes on one transcript
+      runningElsewhere: Boolean(live)
+    });
+  }
+  return out;
+}
+
+ipcMain.handle('claude:sessions', (_e, exclude) => listClaudeSessions(exclude));
+
+// What a live agent should be called: the name you gave it with /rename, else
+// the title Claude Code made up. Checked on the status tick, so a rename shows
+// up within a couple of seconds wherever the agent is named.
+function sessionTitle(sessionId, running) {
+  const live = running.get(sessionId);
+  if (live?.custom && live.name) return live.name;
+  let file = transcriptPaths.get(sessionId);
+  if (!file) {
+    scanTranscripts();
+    file = transcriptPaths.get(sessionId);
+  }
+  if (!file) return null;
+  try {
+    return sessionInfo(file, fs.statSync(file))?.title || null;
+  } catch {
+    transcriptPaths.delete(sessionId);
+    return null;
+  }
+}
+
+let lastTitleScan = 0;
+function refreshAgentTitles() {
+  if (Date.now() - lastTitleScan < 2000) return;
+  lastTitleScan = Date.now();
+  const live = [...agents].filter(([, rec]) => rec.sessionId && !rec.exited);
+  if (!live.length) return;
+  const running = runningClaudeSessions();
+  for (const [agentId, rec] of live) {
+    const title = sessionTitle(rec.sessionId, running);
+    if (!title || title === rec.title) continue;
+    rec.title = title;
+    broadcast('agent:title', { agentId, title });
+  }
+}
 
 ipcMain.on('agents:track', (_e, { agentId, ptyId }) => {
   const rec = agents.get(agentId);
@@ -1935,9 +2176,8 @@ const NOISY_RE = new RegExp(
 const isNoisyPath = (p) => NOISY_RE.test(p);
 
 // One diff view at a time, keyed so the renderer can tell whose diff arrived.
-// `key` identifies the subject — an agent, or a worktree being reviewed after
-// its agent has gone.
-function watchDiff({ key, cwd, base, mode }) {
+// `key` identifies the agent whose diff it is.
+function watchDiff({ key, cwd, base, mode, hideUntracked }) {
   if (diffWatcher) {
     diffWatcher.close();
     diffWatcher = null;
@@ -1954,7 +2194,12 @@ function watchDiff({ key, cwd, base, mode }) {
       maxBuffer: 16 * 1024 * 1024
     });
     const s = spawnSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' });
-    broadcast('agent:diff', { key, patch: d.stdout || '', status: s.stdout || '' });
+    let status = s.stdout || '';
+    // untracked before the session began: not its work
+    if (mode !== 'uncommitted' && hideUntracked?.size) {
+      status = status.split(/\r?\n/).filter((l) => !hideUntracked.has(l)).join('\n');
+    }
+    broadcast('agent:diff', { key, patch: d.stdout || '', status });
   };
   runDiff();
   diffWatcher = chokidar
@@ -1980,47 +2225,14 @@ ipcMain.on('agents:selectDiff', (_e, payload) => {
     broadcast('agent:diff', { key: 'agent:' + agentId, patch: '', status: '', nogit: true });
     return;
   }
-  watchDiff({ key: 'agent:' + agentId, cwd: rec.cwd, base: rec.baseCommit, mode });
-});
-
-// ---------- worktrees ----------
-// Agents can be isolated in a worktree under <repo>/.frost, which Frost also
-// adds to .git/info/exclude — so those checkouts are invisible to git status and
-// pile up unnoticed. This is the read-only half: see them, open them, review
-// what they contain, and drop registrations whose directory is already gone.
-
-function parseWorktrees(spacePath) {
-  const r = spawnSync('git', ['-C', spacePath, 'worktree', 'list', '--porcelain'], {
-    encoding: 'utf8'
+  watchDiff({
+    key: 'agent:' + agentId,
+    cwd: rec.cwd,
+    base: rec.baseCommit,
+    mode,
+    hideUntracked: rec.untrackedAtStart
   });
-  if (r.status !== 0) return [];
-  const out = [];
-  let current = null;
-  for (const line of (r.stdout || '').split(/\r?\n/)) {
-    if (line.startsWith('worktree ')) {
-      current = { path: path.normalize(line.slice(9).trim()), branch: null, head: null };
-      out.push(current);
-    } else if (!current) {
-      continue;
-    } else if (line.startsWith('branch ')) {
-      current.branch = line.slice(7).trim().replace(/^refs\/heads\//, '');
-    } else if (line.startsWith('HEAD ')) {
-      current.head = line.slice(5).trim();
-    } else if (line === 'detached') {
-      current.branch = null;
-    } else if (line.startsWith('prunable')) {
-      current.prunable = true;
-    } else if (line === 'locked' || line.startsWith('locked ')) {
-      current.locked = true;
-    }
-  }
-  return out;
-}
-
-function countCommits(cwd, range) {
-  const r = spawnSync('git', ['-C', cwd, 'rev-list', '--count', range], { encoding: 'utf8' });
-  return r.status === 0 ? Number((r.stdout || '0').trim()) || 0 : 0;
-}
+});
 
 // Agent tabs are unique across the app, not per window. A window asking for one
 // either takes ownership or is told which window already has it.
@@ -2037,172 +2249,6 @@ ipcMain.handle('agents:claimTab', (event) => {
 
 ipcMain.on('agents:releaseTab', (event) => {
   if (agentWindow === windowOf(event)) agentWindow = null;
-});
-
-ipcMain.handle('worktrees:list', () => {
-  const rows = [];
-  for (const space of readAgentsCfg().spaces || []) {
-    if (!fs.existsSync(space.path)) continue;
-    const all = parseWorktrees(space.path);
-    // the first entry is the repo's own checkout, which isn't a worktree to manage
-    const [main, ...rest] = all;
-    const base = main?.branch || 'HEAD';
-    for (const wt of rest) {
-      const exists = fs.existsSync(wt.path);
-      const dirty = exists
-        ? Boolean((spawnSync('git', ['-C', wt.path, 'status', '--porcelain'], { encoding: 'utf8' }).stdout || '').trim())
-        : false;
-      rows.push({
-        ...wt,
-        exists,
-        dirty,
-        base,
-        space: space.name,
-        spacePath: space.path,
-        name: path.basename(wt.path),
-        // .frost/ is where Frost puts them; anything else is the user's own
-        mine: isFrostWorktree(space.path, wt.path),
-        ahead: exists && wt.branch ? countCommits(wt.path, `${base}..HEAD`) : 0
-      });
-    }
-  }
-  return rows;
-});
-
-function isFrostWorktree(spacePath, wtPath) {
-  const rel = path.relative(path.join(spacePath, '.frost'), wtPath);
-  return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel);
-}
-
-// Drops registrations for worktrees whose directory no longer exists. Nothing
-// recoverable is touched: git only forgets bookkeeping for checkouts already gone.
-ipcMain.handle('worktrees:prune', () => {
-  const pruned = [];
-  for (const space of readAgentsCfg().spaces || []) {
-    if (!fs.existsSync(space.path)) continue;
-    const before = parseWorktrees(space.path).filter((w) => !fs.existsSync(w.path)).length;
-    if (!before) continue;
-    const r = spawnSync('git', ['-C', space.path, 'worktree', 'prune'], { encoding: 'utf8' });
-    if (r.status === 0) pruned.push({ space: space.name, count: before });
-  }
-  return pruned;
-});
-
-// Finds the repo a worktree belongs to, so operations run against the right
-// checkout rather than whichever space happened to be listed first.
-function ownerOf(wtPath) {
-  for (const space of readAgentsCfg().spaces || []) {
-    if (!fs.existsSync(space.path)) continue;
-    const all = parseWorktrees(space.path);
-    const hit = all.find((w) => samePath(canonPath(w.path), canonPath(wtPath)));
-    if (hit) return { space, all, main: all[0], wt: hit };
-  }
-  return null;
-}
-
-const git = (cwd, args) => spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
-const isDirty = (cwd) => Boolean((git(cwd, ['status', '--porcelain']).stdout || '').trim());
-
-function confirm(event, { message, detail, action, danger }) {
-  const w = windowOf(event) || win;
-  const choice = dialog.showMessageBoxSync(w, {
-    type: danger ? 'warning' : 'question',
-    buttons: [action, 'Cancel'],
-    defaultId: danger ? 1 : 0,
-    cancelId: 1,
-    noLink: true,
-    message,
-    detail
-  });
-  return choice === 0;
-}
-
-// Merge a worktree's branch into the repo's base branch. Everything that could
-// leave the repo in a half-finished state is checked first and refused with an
-// explanation, rather than attempted and abandoned partway.
-ipcMain.handle('worktrees:merge', (event, wtPath) => {
-  const found = ownerOf(wtPath);
-  if (!found) return { error: 'That worktree no longer belongs to a known space.' };
-  const { space, main, wt } = found;
-  const base = main.branch;
-  if (!wt.branch) return { error: 'This worktree has a detached HEAD, so there is no branch to merge.' };
-  if (!base) return { error: 'The repository itself is on a detached HEAD; check out a branch first.' };
-  if (isDirty(wt.path)) {
-    return { error: `${path.basename(wt.path)} has uncommitted changes. Commit or discard them first.` };
-  }
-  const ahead = countCommits(wt.path, `${base}..${wt.branch}`);
-  if (!ahead) return { error: `${wt.branch} has nothing that ${base} doesn't already have.` };
-  if (isDirty(space.path)) {
-    return { error: `${space.name} has uncommitted changes on ${base}. Commit or stash them first.` };
-  }
-
-  if (!confirm(event, {
-    message: `Merge ${wt.branch} into ${base}?`,
-    detail: `${ahead} commit${ahead > 1 ? 's' : ''} from ${path.basename(wt.path)} will be merged into ${base} in ${space.name}.`,
-    action: 'Merge'
-  })) return { cancelled: true };
-
-  const r = git(space.path, ['merge', '--no-ff', wt.branch, '-m', `Merge ${wt.branch}`]);
-  if (r.status !== 0) {
-    // leave nothing half-applied behind
-    git(space.path, ['merge', '--abort']);
-    return { error: (r.stdout || r.stderr || 'merge failed').trim().split('\n').slice(0, 4).join(' ') };
-  }
-  return { merged: ahead, base, branch: wt.branch };
-});
-
-// Remove the checkout and delete the branch. Anything not merged is spelled out
-// before it goes, and git's own refusal is honoured unless the user insists.
-ipcMain.handle('worktrees:discard', (event, wtPath) => {
-  const found = ownerOf(wtPath);
-  if (!found) return { error: 'That worktree no longer belongs to a known space.' };
-  const { space, main, wt } = found;
-  const base = main.branch || 'HEAD';
-  const exists = fs.existsSync(wt.path);
-  const unmerged = exists && wt.branch ? countCommits(wt.path, `${base}..${wt.branch}`) : 0;
-  const dirty = exists && isDirty(wt.path);
-
-  const losses = [];
-  if (unmerged) losses.push(`${unmerged} commit${unmerged > 1 ? 's' : ''} not in ${base}`);
-  if (dirty) losses.push('uncommitted changes');
-
-  if (!confirm(event, {
-    message: `Discard ${path.basename(wt.path)}?`,
-    detail: losses.length
-      ? `This deletes the worktree and the branch ${wt.branch}.\n\nYou would lose ${losses.join(' and ')}. This cannot be undone.`
-      : `This deletes the worktree and the branch ${wt.branch}. Its work is already in ${base}.`,
-    action: 'Discard',
-    danger: losses.length > 0
-  })) return { cancelled: true };
-
-  const force = losses.length > 0;
-  let r = git(space.path, ['worktree', 'remove', ...(force ? ['--force'] : []), wt.path]);
-  if (r.status !== 0 && exists) {
-    return { error: (r.stderr || 'could not remove the worktree').trim() };
-  }
-  if (!exists) git(space.path, ['worktree', 'prune']);
-  if (wt.branch) {
-    const b = git(space.path, ['branch', force ? '-D' : '-d', wt.branch]);
-    if (b.status !== 0) {
-      return { removed: true, warning: `Worktree removed; branch ${wt.branch} kept: ${(b.stderr || '').trim()}` };
-    }
-  }
-  return { removed: true, branch: wt.branch };
-});
-
-ipcMain.on('worktrees:selectDiff', (_e, payload) => {
-  const { cwd, base, mode } = payload || {};
-  if (!cwd || !fs.existsSync(cwd)) {
-    watchDiff({});
-    return;
-  }
-  // Compare against where this branch left the base, so the view is the
-  // worktree's own work rather than everything that landed on base since.
-  const merge = spawnSync('git', ['-C', cwd, 'merge-base', base || 'HEAD', 'HEAD'], {
-    encoding: 'utf8'
-  });
-  const baseCommit = (merge.stdout || '').trim() || base || 'HEAD';
-  watchDiff({ key: 'wt:' + cwd, cwd, base: baseCommit, mode });
 });
 
 ipcMain.on('diag:report', (_e, data) => {

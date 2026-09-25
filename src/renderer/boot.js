@@ -64,7 +64,7 @@ api.onPtyExit(({ id }) => {
       if (tab.diffKey === 'agent:' + agent.id) tab.diffKey = null;
     }
     renderAgentLists();
-    refreshWorktrees();
+    refreshSessions();
   }
   const node = panesByPty.get(id);
   if (!node) return;

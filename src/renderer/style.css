@@ -740,114 +740,27 @@ body.frameless #win-controls {
   color: rgba(255, 255, 255, 0.92);
 }
 
-.rail-add {
-  border: none;
-  background: transparent;
-  color: color-mix(in srgb, var(--fg) 70%, transparent);
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.12s var(--ease);
-}
-
-.rail-add:hover {
-  background: var(--surface-2);
-  color: var(--fg);
-}
-
-.space-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 5px 7px;
-  border-radius: 6px;
-  font-size: 12px;
-}
-
-.space-row:hover {
+.rail-new {
+  border: 1px solid var(--hairline);
   background: var(--surface-1);
+  color: var(--fg);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 10px;
+  margin-bottom: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
 }
 
-.space-name {
-  /* grows so the buttons line up down the column instead of trailing whatever
-     length each name happens to be */
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.space-row button {
-  flex: none;
+.rail-new:hover {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .agents-layout .hint {
   color: rgba(255, 255, 255, 0.75);
-}
-
-.space-row button {
-  border: 1px solid var(--hairline);
-  background: transparent;
-  color: rgba(255, 255, 255, 0.85);
-  border-radius: 5px;
-  font-size: 10.5px;
-  padding: 2px 6px;
-  cursor: pointer;
-  flex: none;
-  transition: background 0.12s var(--ease), color 0.12s var(--ease);
-}
-
-.space-row button:hover {
-  background: var(--surface-2);
-  color: var(--fg);
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-}
-
-.spawn-form {
-  padding: 4px 7px 8px;
-}
-
-.space-remove {
-  border: none !important;
-  background: transparent !important;
-  color: rgba(255, 255, 255, 0.5) !important;
-  font-size: 13px;
-  width: 18px;
-  padding: 0 !important;
-}
-
-.space-remove:hover {
-  background: var(--surface-3) !important;
-  color: #fff !important;
-}
-
-.spawn-wt {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.8);
-  margin-top: 6px;
-  cursor: pointer;
-}
-
-.spawn-wt input {
-  accent-color: var(--accent);
-}
-
-.spawn-form input[type='text'] {
-  width: 100%;
-  background: var(--surface-1);
-  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
-  color: var(--fg);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 12px;
-  outline: none;
 }
 
 .agent-row {
@@ -871,65 +784,7 @@ body.frameless #win-controls {
   background: var(--surface-2);
 }
 
-/* ---------- worktree rows ---------- */
-
-.wt-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  column-gap: 7px;
-  align-items: center;
-  padding: 5px 7px;
-  border-radius: 6px;
-  cursor: default;
-  font-size: 12px;
-  transition: background 0.12s var(--ease);
-}
-
-.wt-row:hover {
-  background: var(--surface-1);
-}
-
-.wt-row.selected {
-  background: var(--surface-2);
-}
-
-.wt-row.gone {
-  opacity: 0.5;
-}
-
-.wt-name {
-  /* the whole first row, so a branch name isn't truncated to make room for
-     buttons that fit perfectly well beside the metadata below it */
-  grid-column: 1 / -1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wt-actions {
-  grid-column: 2;
-  grid-row: 2;
-}
-
-.wt-meta {
-  grid-column: 1;
-  grid-row: 2;
-  font-size: 10.5px;
-  opacity: 0.6;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wt-actions {
-  display: flex;
-  gap: 4px;
-  flex: none;
-  align-items: center;
-}
-
-.wt-act,
-.rail-prune {
+.rail-refresh {
   border: 1px solid var(--hairline);
   background: transparent;
   color: rgba(255, 255, 255, 0.85);
@@ -941,21 +796,9 @@ body.frameless #win-controls {
   flex: none;
 }
 
-.wt-act:hover,
-.rail-prune:hover {
+.rail-refresh:hover {
   background: var(--surface-2);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-}
-
-.wt-act:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-/* destructive, so it reads as such before it's clicked */
-.wt-act:last-child:hover {
-  border-color: color-mix(in srgb, #f85149 55%, transparent);
-  color: #ffb4ae;
 }
 
 .agent-dot,
@@ -970,9 +813,10 @@ body.frameless #win-controls {
   margin-right: 6px;
 }
 
+/* blue while it works, green once it's yours again: green reads as "ready" */
 .st-working {
-  background: #3fb950;
-  box-shadow: 0 0 6px rgba(63, 185, 80, 0.6);
+  background: #58a6ff;
+  box-shadow: 0 0 6px rgba(88, 166, 255, 0.6);
 }
 
 .st-blocked {
@@ -982,7 +826,7 @@ body.frameless #win-controls {
 }
 
 .st-done {
-  background: #58a6ff;
+  background: #3fb950;
 }
 
 .st-idle {
@@ -1014,28 +858,16 @@ body.frameless #win-controls {
 .agent-row.dormant {
   opacity: 0.66;
   cursor: pointer;
-  grid-template-columns: auto 1fr auto;
 }
 
 .agent-row.dormant:hover {
   opacity: 1;
 }
 
-.session-remove {
-  border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 13px;
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  cursor: pointer;
+.agent-row.gone {
+  opacity: 0.4;
 }
 
-.session-remove:hover {
-  background: var(--surface-3);
-  color: #fff;
-}
 
 .agent-meta {
   grid-column: 2;
@@ -1876,6 +1708,22 @@ body.ligatures .xterm-rows span {
 .palette-item.selected {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--fg);
+}
+
+.palette-item span {
+  flex: none;
+}
+
+/* a folder's full path, next to its name in the folder picker */
+.palette-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  opacity: 0.55;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
 }
 
 .palette-item em {

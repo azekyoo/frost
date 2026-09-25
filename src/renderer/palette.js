@@ -4,7 +4,10 @@
 // Doubles as the shortcut reference: every command shows the key it answers to,
 // which is why the defaults don't need to be duplicated into a config file.
 
-const palette = { items: [], index: 0, returnTo: null };
+// `source` swaps the commands for another list — the agent tab's folder picker
+// uses it — so every pick-one-of-these UI shares the same look and keys:
+// { placeholder, empty, items() -> [{label, detail?, always?}], choose(item) }
+const palette = { items: [], index: 0, returnTo: null, source: null };
 
 function paletteItems() {
   // tab.go / tab.newProfile take an index, so they're listed per tab / profile
@@ -36,7 +39,9 @@ function fuzzy(hay, needle) {
 
 function renderPalette() {
   const query = el.paletteInput.value.trim();
-  palette.items = paletteItems().filter((it) => fuzzy(it.label, query));
+  const all = palette.source ? palette.source.items() : paletteItems();
+  // `always` rows (Browse…) stay put whatever is typed
+  palette.items = all.filter((it) => it.always || fuzzy(it.label + ' ' + (it.detail || ''), query));
   palette.index = Math.min(palette.index, Math.max(0, palette.items.length - 1));
   el.paletteList.replaceChildren(
     ...palette.items.map((it, i) => {
@@ -45,7 +50,13 @@ function renderPalette() {
       const label = document.createElement('span');
       label.textContent = it.label;
       row.appendChild(label);
-      const keys = keysFor(it.command, it.args);
+      if (it.detail) {
+        const detail = document.createElement('small');
+        detail.className = 'palette-detail';
+        detail.textContent = it.detail;
+        row.appendChild(detail);
+      }
+      const keys = it.command && keysFor(it.command, it.args);
       if (keys) {
         const kbd = document.createElement('em');
         kbd.textContent = keys;
@@ -61,16 +72,18 @@ function renderPalette() {
   if (!palette.items.length) {
     const p = document.createElement('p');
     p.className = 'hint';
-    p.textContent = 'No matching command';
+    p.textContent = palette.source?.empty || 'No matching command';
     el.paletteList.appendChild(p);
   }
   el.paletteList.querySelector('.palette-item.selected')?.scrollIntoView({ block: 'nearest' });
 }
 
-function openPalette() {
+function openPalette(source = null) {
   palette.returnTo = activePane();
+  palette.source = source;
   palette.index = 0;
   el.paletteInput.value = '';
+  el.paletteInput.placeholder = source?.placeholder || 'Run a command…';
   el.palette.classList.add('open');
   renderPalette();
   el.paletteInput.focus();
@@ -78,14 +91,17 @@ function openPalette() {
 
 function closePalette() {
   el.palette.classList.remove('open');
+  palette.source = null;
   palette.returnTo?.term.focus();
 }
 
 function choosePalette(i) {
   const it = palette.items[i];
   if (!it) return;
+  const source = palette.source;
   closePalette();
-  runCommand(it.command, it.args);
+  if (source) source.choose(it);
+  else runCommand(it.command, it.args);
 }
 
 function movePalette(delta) {
