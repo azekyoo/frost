@@ -67,6 +67,26 @@ function connect(url) {
   fs.writeFileSync(path.join(claudeDir, 'sessions', process.pid + '.json'), JSON.stringify({
     pid: process.pid, sessionId: SID2, cwd: DEMO, name: 'Renamed elsewhere', nameSource: 'user'
   }));
+  // Enough newer sessions to fill the Sessions list, then one in another folder
+  // behind them: off the list, but New session still has to offer its folder.
+  for (let i = 0; i < 13; i++) {
+    const id = `00000000-0000-4000-8000-1000000000${String(i).padStart(2, '0')}`;
+    const f = path.join(project, id + '.jsonl');
+    fs.writeFileSync(f, JSON.stringify({ type: 'user', cwd: DEMO, sessionId: id, message: { role: 'user', content: 'filler ' + i } }) + '\n');
+    const t = new Date(Date.now() - (2 + i) * 60000);
+    fs.utimesSync(f, t, t);
+  }
+  const OLD = path.join(LAB, 'old-project');
+  const LIVE = path.join(LAB, 'live-project');
+  fs.mkdirSync(OLD, { recursive: true });
+  fs.mkdirSync(LIVE, { recursive: true });
+  const oldProject = path.join(claudeDir, 'projects', 'lab-old-project');
+  fs.mkdirSync(oldProject, { recursive: true });
+  const oldFile = path.join(oldProject, '00000000-0000-4000-8000-000000000003.jsonl');
+  fs.writeFileSync(oldFile, JSON.stringify({ type: 'user', cwd: OLD, sessionId: 'old', message: { role: 'user', content: 'long ago' } }) + '\n');
+  const dayAgo = new Date(Date.now() - 86400e3);
+  fs.utimesSync(oldFile, dayAgo, dayAgo);
+
   // and a leftover from a crashed claude, whose pid is long gone
   fs.writeFileSync(path.join(claudeDir, 'sessions', '999999.json'), JSON.stringify({
     pid: 999999, sessionId: SID, cwd: DEMO, name: 'ghost', nameSource: 'user'
@@ -132,12 +152,28 @@ function connect(url) {
     const after2 = await c.eval(`agentTabs()[0].centerLeaves.size`);
     check('a later click is still ignored', after2 === after, `${after2} total`);
 
-    // New session: the palette offers the folders sessions ran in, plus Browse
+    const listed = await c.eval(`claudeSessions.map((s) => s.cwd.split(/[\\\\/]/).pop())`);
+    check('the old folder is past the end of the Sessions list', listed.length === 15 && !listed.includes('old-project'), `${listed.length} rows`);
+
+    // New session, with a claude running in a folder no transcript mentions:
+    // the running one comes first, then history past the list's end
+    await c.eval(`(() => {
+      globalAgents.set('fake-live', { id: 'fake-live', name: 'live', cwd: ${JSON.stringify(LIVE)}, branch: 'main', status: 'working' });
+      agentTabs()[0].els.layout.querySelector('.rail-new').click();
+      return true;
+    })()`);
+    await sleep(800);
+    const withLive = await c.eval(`palette.items.map((it) => it.label)`);
+    check('new session offers the live folder first, then all of history',
+      JSON.stringify(withLive) === '["live-project","aurora-notes","old-project","Browse…"]', JSON.stringify(withLive));
+    await c.eval(`(() => { closePalette(); globalAgents.delete('fake-live'); renderAgentLists(); return true; })()`);
+
+    // and without it, the history alone
     await c.eval(`(() => { agentTabs()[0].els.layout.querySelector('.rail-new').click(); return true; })()`);
     await sleep(800);
     const offered = await c.eval(`palette.items.map((it) => it.label)`);
-    check('new session offers the recent folder and Browse',
-      offered.length === 2 && offered[0] === 'aurora-notes' && offered[1] === 'Browse…', JSON.stringify(offered));
+    check('new session offers the recent folders and Browse',
+      JSON.stringify(offered) === '["aurora-notes","old-project","Browse…"]', JSON.stringify(offered));
     await c.eval(`(() => { el.paletteInput.value = 'zzz'; el.paletteInput.dispatchEvent(new Event('input')); return true; })()`);
     const filtered = await c.eval(`palette.items.map((it) => it.label)`);
     check('typing filters folders but keeps Browse', JSON.stringify(filtered) === '["Browse…"]', JSON.stringify(filtered));

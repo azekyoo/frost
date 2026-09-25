@@ -2122,6 +2122,42 @@ function listClaudeSessions(exclude = []) {
 
 ipcMain.handle('claude:sessions', (_e, exclude) => listClaudeSessions(exclude));
 
+// Every folder claude has run in, newest first, for New session to offer. It
+// reaches past the sessions list's cut-off, but only reads the top of each
+// transcript — the cwd is on its first lines — and never again for the same
+// file, since where a session ran doesn't change.
+const FOLDER_LIMIT = 30;
+const transcriptCwds = new Map(); // file -> cwd, or null for one that never started
+
+function transcriptCwd(file, size) {
+  if (transcriptCwds.has(file)) return transcriptCwds.get(file);
+  let cwd = null;
+  try {
+    const first = jsonLines(readSlice(file, 0, Math.min(size, 64 * 1024))).find((l) => l.cwd);
+    if (first) cwd = canonPath(first.cwd);
+  } catch {}
+  // an empty one may simply not have been written to yet; ask again next time
+  if (cwd || size > 0) transcriptCwds.set(file, cwd);
+  return cwd;
+}
+
+function recentClaudeFolders() {
+  const files = scanTranscripts().sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
+  const seen = new Set();
+  const out = [];
+  for (const f of files) {
+    if (out.length >= FOLDER_LIMIT) break;
+    const cwd = transcriptCwd(f.file, f.st.size);
+    const key = String(cwd || '').toLowerCase();
+    if (!cwd || seen.has(key)) continue;
+    seen.add(key);
+    if (fs.existsSync(cwd)) out.push(cwd);
+  }
+  return out;
+}
+
+ipcMain.handle('claude:folders', () => recentClaudeFolders());
+
 // What a live agent should be called: the name you gave it with /rename, else
 // the title Claude Code made up. Checked on the status tick, so a rename shows
 // up within a couple of seconds wherever the agent is named.

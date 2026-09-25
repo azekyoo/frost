@@ -234,9 +234,7 @@ function buildAgentLayout(tab) {
 // the folders recent sessions ran in, plus Browse for anywhere else.
 
 async function pickSessionFolder(tab) {
-  if (!claudeSessions.length) await refreshSessions();
-  // spaces from before this picker existed still count as places you work
-  const cfg = await api.agentsGetConfig();
+  const [history, cfg] = await Promise.all([api.claudeFolders(), api.agentsGetConfig()]);
   const seen = new Set();
   const folders = [];
   const add = (cwd) => {
@@ -245,7 +243,11 @@ async function pickSessionFolder(tab) {
     seen.add(key);
     folders.push({ label: cwd.split(/[\\/]/).pop() || cwd, detail: cwd, cwd });
   };
-  for (const s of claudeSessions) if (s.exists) add(s.cwd);
+  // what is running now first, then everywhere claude has run, newest first —
+  // not just the sessions list, which stops at its last row and leaves out the
+  // live ones — then spaces saved before this picker existed
+  for (const a of globalAgents.values()) add(a.cwd);
+  for (const cwd of history || []) add(cwd);
   for (const sp of cfg?.spaces || []) add(sp.path);
   const browse = { label: 'Browse…', detail: 'pick any folder', always: true, browse: true };
   openPalette({
