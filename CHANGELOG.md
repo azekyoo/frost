@@ -3,6 +3,64 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 1.0.0 — 2026-09-25
+
+Frost 1.0. The agent tab is rebuilt around Claude Code sessions rather than
+git worktrees: it now works the way a terminal full of `claude` actually gets
+used — one tab each, started anywhere, picked up again later.
+
+### Changed
+
+- **The agent tab lists Claude Code sessions instead of worktrees.** The
+  Worktrees section is gone, and with it the "isolate in worktree" option: in
+  practice claude runs in an ordinary tab in the repo you're working in, and the
+  worktrees it could make were overhead nobody reached for. In their place,
+  **Sessions** lists your recent Claude Code sessions, read from Claude Code's
+  own history, each with its folder and when it was last used. One click
+  resumes *that* session — `claude --resume <id>`, not `--continue`, which picks
+  whatever ran last in the folder. A session running right now is listed under
+  **Agents** instead, with its status, so it is never offered twice.
+- **New session replaces spaces and the name box.** Starting claude only ever
+  needed a folder: **+ New session** opens the palette over the folders your
+  sessions have run in, plus **Browse…** for anywhere else, and starts `claude`
+  there. It no longer has to be a git repository — outside one there is simply
+  no diff. Spaces you had saved are still offered in the list.
+- **Agents are called what you called them.** A `/rename` shows up within a
+  couple of seconds on the agent's row, the diff panel's title and its
+  notifications; until you name it, it carries Claude Code's own title. Each row
+  also says which repo it runs in.
+- **Working is blue, done is green.** Green reads as "ready for you", which is
+  what done means; the dot that pulses for attention stays orange.
+
+### Added
+
+- **A session open somewhere else says so.** One running in another terminal or
+  another Frost reads "open elsewhere", and resuming it asks first, in Frost's
+  own dialog with Cancel focused: two Claude processes on one history can
+  overwrite each other's work.
+
+### Fixed
+
+- **The Session diff shows the session's work, not what was already there.** It
+  used to compare the working tree with the commit the session started from, so
+  edits sitting uncommitted beforehand were counted as the agent's — in a
+  worktree, which always started clean, that never showed. The baseline is now
+  a snapshot of the working tree taken when claude starts, built in a
+  throwaway index so the real one is never touched; files that were untracked
+  at that point stay out of the list too. Uncommitted still shows everything.
+- **A finished agent no longer turns blocked after a minute, then working.**
+  Claude Code's "waiting for your input" reminder arrives through the same hook
+  as a real question and was read as blocked; and clicking into the pane sends
+  the focus report Claude turns on, which counted as answering it — so an agent
+  that was done ended up marked working until its next turn. The reminder is
+  ignored, focus reports aren't input, and an answered block falls back to idle
+  once output stops, like working already did.
+- **A claude that has exited leaves the Agents list.** Its exit could go
+  unreported, leaving a live-looking agent over a bare prompt. The shell
+  drawing its prompt again now ends the agent whatever happened to the report,
+  the status files are read once their write has finished, and the PowerShell
+  wrapper reports the exit from a `finally`, so Ctrl+C can't skip it.
+
 ## 0.5.6 — 2026-09-10
 
 ### Fixed
