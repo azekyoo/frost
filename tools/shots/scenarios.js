@@ -104,6 +104,7 @@ module.exports = [
     photo: 'ocean-dusk',
     wallpaper: 'pine',
     spaces: true,
+    sessions: true, // staged demo-repo sessions for the Sessions list
     theme: { autoDetectAgents: true },
     setup: `(async () => {
       ${RUN}
@@ -154,7 +155,10 @@ module.exports = [
 
       await ask('Read README.md and src/search.js, then tell me in two lines what this project does.');
       await pause(1500);
-      await ask('Document the pin and unpin commands in README.md under a new "Commands" heading.');
+      // Something still to do in the demo repo: the Session diff only shows what
+      // changed after claude started, so a task already done there leaves it
+      // empty.
+      await ask('Add a "help" command to src/index.js that prints the available commands, and list it under Commands in README.md.');
       await pause(2500);
 
       // The banner sits in the scrollback until enough output pushes it off the

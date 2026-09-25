@@ -1959,7 +1959,11 @@ ipcMain.handle('agents:spawn', (_e, { spacePath }) => {
 // the newest few, and only their ends — a transcript runs to megabytes, but the
 // cwd sits near the top and the title near the bottom.
 
-const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude');
+// The screenshot tool points this at a sandbox, so the sessions list in a
+// README image can only ever show the demo repo. claude itself keeps the real
+// directory — its login lives there.
+const CLAUDE_DIR =
+  SHOT?.claudeDir || process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude');
 const CLAUDE_PROJECTS = path.join(CLAUDE_DIR, 'projects');
 const SESSION_LIMIT = 15;
 const sessionCache = new Map(); // file -> { mtimeMs, info }

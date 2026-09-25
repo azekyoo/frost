@@ -220,8 +220,41 @@ function ensureNotes() {
   return dir;
 }
 
+// Frost's Sessions list reads Claude Code's history, and the real one holds
+// every project on this machine — none of which belongs in a README image. Each
+// scenario gets a sandbox of its own instead, empty unless the scenario asks
+// for sessions, and those are demo-repo sessions only. Nothing in here runs:
+// it is what the list reads, a folder and a title per session, the title as
+// /rename would have left it.
+const STAGED_SESSIONS = [
+  { title: 'Add pin and unpin commands', ago: 14 * 60e3 },
+  { title: 'Rank pinned notes first', ago: 2 * 3600e3 },
+  { title: 'Speed up substring search', ago: 26 * 3600e3 },
+  { title: 'Tidy up the note store', ago: 3 * 86400e3 }
+];
+
+function scenarioClaudeDir(dir, scenario) {
+  fs.rmSync(dir, { recursive: true, force: true });
+  const project = path.join(dir, 'projects', DEMO.replace(/[^A-Za-z0-9]/g, '-'));
+  fs.mkdirSync(project, { recursive: true });
+  if (!scenario.sessions) return dir;
+  STAGED_SESSIONS.forEach(({ title, ago }, i) => {
+    const id = `5eed0000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`;
+    const file = path.join(project, id + '.jsonl');
+    const lines = [
+      { type: 'user', cwd: DEMO, sessionId: id, gitBranch: 'main', message: { role: 'user', content: title } },
+      { type: 'custom-title', customTitle: title, sessionId: id }
+    ];
+    fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    const when = new Date(Date.now() - ago);
+    fs.utimesSync(file, when, when);
+  });
+  return dir;
+}
+
 async function captureScenario(scenario, wallpaperFile, bounds, port) {
   const configDir = scenarioConfig(path.join(TMP, 'config-' + scenario.name), scenario);
+  const claudeDir = scenarioClaudeDir(path.join(TMP, 'claude-' + scenario.name), scenario);
   const userData = path.join(TMP, 'userdata-' + scenario.name);
   fs.rmSync(path.join(configDir, 'window.json'), { force: true });
 
@@ -235,6 +268,7 @@ async function captureScenario(scenario, wallpaperFile, bounds, port) {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: scenarioEnv({
         configDir,
+        claudeDir,
         wallpaper: wallpaperFile,
         bounds
       })
@@ -268,6 +302,21 @@ async function captureScenario(scenario, wallpaperFile, bounds, port) {
             'which would put the account name and organisation in the image'
         );
       }
+    }
+
+    // Every session and agent the rail could show has to be the demo repo's.
+    // The sandbox should already guarantee it; this is what proves it, and a
+    // stray one fails the scenario rather than reaching the image.
+    const foreign = await dbg.eval(`(() => {
+      const demo = ${JSON.stringify(DEMO.toLowerCase())};
+      const dirs = [
+        ...(typeof claudeSessions === 'undefined' ? [] : claudeSessions.map((s) => s.cwd)),
+        ...(typeof globalAgents === 'undefined' ? [] : [...globalAgents.values()].map((a) => a.cwd))
+      ];
+      return dirs.filter((d) => !String(d || '').toLowerCase().startsWith(demo));
+    })()`);
+    if (foreign.length) {
+      throw new Error(`refusing to capture: ${foreign.length} session(s) outside the demo repo would be on screen`);
     }
 
     const shot = await dbg.send('Page.captureScreenshot', { format: 'png' });
