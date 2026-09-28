@@ -3,6 +3,26 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 1.0.2 — 2026-09-28
+
+### Added
+
+- **The diff panel shows other repos an agent changes.** It only ever looked
+  at the agent's own folder, so an edit in a second repo never appeared. Each
+  repo the agent changes now gets a tab above the diff, its own repo first, and
+  Session / Uncommitted apply to the one you pick. It catches edits made with
+  file tools and from the shell (`cd`, `git -C` or an absolute path), and takes
+  that repo's "before" the moment the agent first reaches into it, so edits you
+  had lying around there stay out of Session. A repo the agent only read — an
+  `ls`, a `grep` — gets no tab. Changes a resumed session made before Frost was
+  watching are recovered from its history, shown against where the repo stood
+  when the session began and limited to the files it edited.
+- **A finished agent you haven't looked at stays bold.** Done used to be the
+  same green whether you had seen the result or not. An agent that finishes
+  while you are elsewhere keeps a bold name and a lit dot until its terminal is
+  on screen; after that the dot dims. One that finishes while you watch counts
+  as seen straight away.
+
 ## 1.0.1 — 2026-09-28
 
 ### Added

@@ -129,7 +129,8 @@ running and supervising Claude Code agents with live status and diff watching.
   heavily inspired by the excellent [herdr](https://herdr.dev/):
   - run `claude` in any Frost terminal → it auto-registers as an agent with
     live status: working / **blocked (needs you)** / done / idle, under the
-    session's name — the one you gave it with `/rename`, else Claude's own title
+    session's name — the one you gave it with `/rename`, else Claude's own title.
+    One that finished while you were elsewhere stays bold until you look at it
   - **New session** picks a folder — ones you've worked in recently, or any
     other — and starts `claude` there. Nothing to name, nothing to set up
   - **Sessions** lists your recent Claude Code sessions, read from Claude Code's
@@ -138,7 +139,9 @@ running and supervising Claude Code agents with live status and diff watching.
     starts writing to the same history
   - diff watch panel: live green/red diff of the agent's repo — **Session**
     (only what changed since the agent started, commits included, so edits you
-    had lying around beforehand stay out of it) or **Uncommitted**
+    had lying around beforehand stay out of it) or **Uncommitted**. Other repos
+    the agent changes — by editing files or from the shell — get a tab of their
+    own beside its repo
   - **it tells you when it needs you** — a Windows notification and a taskbar
     flash when an agent goes blocked or finishes, raised only while Frost is in
     the background; clicking the notification jumps to that agent
