@@ -855,6 +855,24 @@ body.frameless #win-controls {
   white-space: nowrap;
 }
 
+/* finished while you were elsewhere: bold like unread mail, the dot lit */
+.agent-row.unseen .agent-name {
+  font-weight: 700;
+}
+
+.agent-row.unseen .agent-dot {
+  box-shadow: 0 0 7px rgba(63, 185, 80, 0.8);
+}
+
+/* finished and looked at: still green, but it no longer asks for you */
+.agent-row.seen .agent-dot {
+  opacity: 0.7;
+}
+
+.agent-row.seen .agent-name {
+  opacity: 0.75;
+}
+
 .agent-row.dormant {
   opacity: 0.66;
   cursor: pointer;

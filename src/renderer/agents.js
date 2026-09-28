@@ -21,6 +21,31 @@ function worstAgentStatus() {
   return worst;
 }
 
+// "Done" says the agent finished, not that you have looked. An agent that
+// finishes out of sight stays unseen — bold in the rail — until its terminal is on screen in a focused window.
+function agentOnScreen(agent) {
+  if (!document.hasFocus() || document.hidden) return false;
+  const t = state.activeTab;
+  if (!t || !agent.leaf) return false;
+  if (t.kind === 'agents') return t.centerLeaves.has(agent.leaf) && agent.leaf.el.style.display !== 'none';
+  return tabOfPane(agent.leaf) === t;
+}
+
+// Called wherever what's on screen can change: a tab, an agent, the window
+// getting focus back.
+function markAgentsSeen() {
+  let changed = false;
+  for (const a of globalAgents.values()) {
+    if (a.unseen && agentOnScreen(a)) {
+      a.unseen = false;
+      changed = true;
+    }
+  }
+  if (changed) renderAgentLists();
+}
+
+window.addEventListener('focus', () => markAgentsSeen());
+
 function renderAgentLists() {
   for (const t of agentTabs()) renderAgentList(t);
   renderTabs();
@@ -75,6 +100,7 @@ function addCenterLeaf(tab, leaf, show) {
 
 function setCenterVisible(tab, leaf) {
   for (const l of tab.centerLeaves) l.el.style.display = l === leaf ? '' : 'none';
+  markAgentsSeen();
   if (leaf.ptyId) api.ptyMute(leaf.ptyId);
   requestAnimationFrame(() => {
     leaf.fit.fit();
@@ -339,6 +365,7 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
     tab.diffCwd = agent.cwd || null; // lets a line number in the diff open the file
     api.agentsSelectDiff({ agentId, mode: tab.diffMode });
     renderAgentList(tab);
+    markAgentsSeen();
     return;
   }
   // pane lives elsewhere (normal tab or another agent tab) — jump to it
@@ -422,8 +449,9 @@ function renderAgentList(tab) {
   const rows = [];
   for (const agent of globalAgents.values()) {
     const row = document.createElement('div');
-    row.className = 'agent-row' + (tab.selected === agent.id ? ' selected' : '');
-    row.title = [agent.cwd, agent.sessionId].filter(Boolean).join('\n');
+    const look = agent.status === 'done' ? (agent.unseen ? ' unseen' : ' seen') : '';
+    row.className = 'agent-row' + (tab.selected === agent.id ? ' selected' : '') + look;
+    row.title = [agent.cwd, agent.sessionId, agent.unseen && 'Finished — not looked at yet'].filter(Boolean).join('\n');
     row.innerHTML = `
       <span class="agent-dot st-${agent.status}"></span>
       <span class="agent-name"></span>

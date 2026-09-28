@@ -27,6 +27,7 @@ function activateTab(tab) {
   el.content.replaceChildren(tab.contentEl);
   renderTabs();
   saveSession();
+  markAgentsSeen();
   if (tab.kind === 'agents') {
     const visible = [...tab.centerLeaves].find((l) => l.el.style.display !== 'none');
     if (visible) {

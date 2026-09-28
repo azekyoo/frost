@@ -397,6 +397,12 @@ function renderUntracked(tab, untracked, cwd = tab.diffCwd, id = '\0untracked') 
 api.onAgentStatus(({ agentId, status }) => {
   const agent = globalAgents.get(agentId);
   if (!agent) return;
+  // finishing while you watch is seen already; any other state clears it
+  if (status === 'done') {
+    if (agent.status !== 'done') agent.unseen = !agentOnScreen(agent);
+  } else {
+    agent.unseen = false;
+  }
   agent.status = status;
   renderAgentLists();
 });
