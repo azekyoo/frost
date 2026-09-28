@@ -22,13 +22,17 @@ function parsePatch(patch) {
         binary: false,
         adds: 0,
         dels: 0,
-        hunks: []
+        hunks: [],
+        raw: [] // the file's own slice of the patch, which says whether it changed
       };
       files.push(file);
       hunk = null;
-      continue;
     }
     if (!file) continue;
+    // the patch's closing newline, which would otherwise make the last file
+    // look changed whenever another is listed after it
+    if (line) file.raw.push(line);
+    if (line.startsWith('diff --git')) continue;
     if (line.startsWith('new file')) {
       file.status = 'added';
       continue;
@@ -300,59 +304,78 @@ function renderDiff(tab, patch, statusText) {
   }
 
   if (!files.length && !untracked.length) {
+    tab.diffFileEls = new Map();
     tab.els.diffBody.replaceChildren(Object.assign(document.createElement('p'), { className: 'hint', textContent: 'No changes yet' }));
     return;
   }
 
-  const out = files.map((f) => renderDiffFile(tab, f));
+  // An agent editing one file changes one file's part of the patch. The others
+  // keep the elements already on screen, with whatever was done to them — a
+  // "show more" opened — instead of being rebuilt line by line on each save.
+  const prev = tab.diffFileEls || new Map();
+  const next = new Map();
+  const reuse = (key, build) => {
+    const el = prev.get(key) || build();
+    next.set(key, el);
+    return el;
+  };
+  const out = files.map((f) => reuse(f.raw.join('\n'), () => renderDiffFile(tab, f)));
+  tab.diffFileEls = next;
 
-  if (untracked.length) {
-    const el = document.createElement('div');
-    el.className = 'diff-file';
-    el.dataset.path = ' untracked';
-    if (tab.diffCollapsed.has(' untracked')) el.classList.add('collapsed');
-    const head = document.createElement('div');
-    head.className = 'diff-file-head';
-    const chev = document.createElement('span');
-    chev.className = 'df-chev';
-    chev.textContent = '▾';
-    const badge = document.createElement('span');
-    badge.className = 'df-badge untracked';
-    badge.textContent = '?';
-    badge.title = 'untracked';
-    const name = document.createElement('span');
-    name.className = 'df-name';
-    name.textContent = `untracked (${untracked.length})`;
-    head.append(chev, badge, name);
-    head.addEventListener('click', () => {
-      el.classList.toggle('collapsed');
-      if (el.classList.contains('collapsed')) tab.diffCollapsed.add(' untracked');
-      else tab.diffCollapsed.delete(' untracked');
-    });
-    const body = document.createElement('div');
-    body.className = 'diff-file-body';
-    for (const f of untracked) {
-      const row = document.createElement('div');
-      row.className = 'diff-line add untracked-row';
-      const text = document.createElement('span');
-      text.className = 'dl-text';
-      text.textContent = f;
-      row.appendChild(text);
-      if (tab.diffCwd) {
-        row.title = `Open ${f}`;
-        row.addEventListener('click', () => api.openPath({ cwd: tab.diffCwd, target: f }));
-      }
-      body.appendChild(row);
-    }
-    el.append(head, body);
-    out.push(el);
-  }
+  if (untracked.length) out.push(reuse(' untracked\n' + untracked.join('\n'), () => renderUntracked(tab, untracked)));
 
   // Written to every 400ms while an agent works: replacing the contents would
-  // otherwise throw the reader back to the top of the panel mid-sentence.
-  const keep = tab.els.diffBody.scrollTop;
-  tab.els.diffBody.replaceChildren(...out);
-  tab.els.diffBody.scrollTop = keep;
+  // otherwise throw the reader back to the top of the panel mid-sentence. Only
+  // what moved is touched, so unchanged files aren't taken out and put back.
+  const body = tab.els.diffBody;
+  const keep = body.scrollTop;
+  out.forEach((el, i) => {
+    if (body.children[i] !== el) body.insertBefore(el, body.children[i] || null);
+  });
+  while (body.children.length > out.length) body.lastElementChild.remove();
+  body.scrollTop = keep;
+}
+
+function renderUntracked(tab, untracked) {
+  const el = document.createElement('div');
+  el.className = 'diff-file';
+  el.dataset.path = ' untracked';
+  if (tab.diffCollapsed.has(' untracked')) el.classList.add('collapsed');
+  const head = document.createElement('div');
+  head.className = 'diff-file-head';
+  const chev = document.createElement('span');
+  chev.className = 'df-chev';
+  chev.textContent = '▾';
+  const badge = document.createElement('span');
+  badge.className = 'df-badge untracked';
+  badge.textContent = '?';
+  badge.title = 'untracked';
+  const name = document.createElement('span');
+  name.className = 'df-name';
+  name.textContent = `untracked (${untracked.length})`;
+  head.append(chev, badge, name);
+  head.addEventListener('click', () => {
+    el.classList.toggle('collapsed');
+    if (el.classList.contains('collapsed')) tab.diffCollapsed.add(' untracked');
+    else tab.diffCollapsed.delete(' untracked');
+  });
+  const body = document.createElement('div');
+  body.className = 'diff-file-body';
+  for (const f of untracked) {
+    const row = document.createElement('div');
+    row.className = 'diff-line add untracked-row';
+    const text = document.createElement('span');
+    text.className = 'dl-text';
+    text.textContent = f;
+    row.appendChild(text);
+    if (tab.diffCwd) {
+      row.title = `Open ${f}`;
+      row.addEventListener('click', () => api.openPath({ cwd: tab.diffCwd, target: f }));
+    }
+    body.appendChild(row);
+  }
+  el.append(head, body);
+  return el;
 }
 
 api.onAgentStatus(({ agentId, status }) => {
@@ -365,6 +388,13 @@ api.onAgentStatus(({ agentId, status }) => {
 api.onAgentDiff(({ key, patch, status, nogit }) => {
   for (const tab of agentTabs()) {
     if (tab.diffKey !== key) continue;
+    // most file events leave the diff as it was: a save of identical content,
+    // an ignored file git doesn't report
+    const shown = nogit ? key + '\0nogit' : key + '\0' + patch + '\0' + status;
+    if (tab.diffShown === shown) continue;
+    // another agent's files are never this one's, even at the same path
+    if (!tab.diffShown?.startsWith(key + '\0')) tab.diffFileEls = null;
+    tab.diffShown = shown;
     if (nogit) {
       tab.els.diffBody.innerHTML = '<p class="hint">Not a git repository — no diff available</p>';
     } else {
