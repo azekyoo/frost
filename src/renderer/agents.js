@@ -174,6 +174,7 @@ function buildAgentLayout(tab) {
           <button data-mode="uncommitted" title="Working tree vs HEAD only">Uncommitted</button>
         </div>
       </div>
+      <div class="diff-repos" hidden></div>
       <div class="diff-sub">
         <span class="diff-summary"></span>
         <div class="diff-tools">
@@ -198,6 +199,7 @@ function buildAgentLayout(tab) {
     diffTitle: layout.querySelector('.diff-title'),
     diffBody: layout.querySelector('.diff-body'),
     diffSummary: layout.querySelector('.diff-summary'),
+    diffRepos: layout.querySelector('.diff-repos'),
     diffFoldBtn: layout.querySelector('.diff-fold')
   };
   tab.els.diffFoldBtn.addEventListener('click', () => {
@@ -325,6 +327,12 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
     else {
       for (const l of tab.centerLeaves) l.el.style.display = l === agent.leaf ? '' : 'none';
       agent.leaf.fit.fit();
+    }
+    if (tab.diffKey !== 'agent:' + agentId) {
+      // another agent's repos: back to its own, until its diff says what else
+      tab.diffRepo = null;
+      tab.diffMsg = null;
+      tab.els.diffRepos.hidden = true;
     }
     tab.diffKey = 'agent:' + agentId;
     tab.els.diffTitle.textContent = `${agent.name} · ${agent.branch}`;

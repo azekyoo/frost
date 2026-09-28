@@ -1027,6 +1027,60 @@ body.frameless #win-controls {
   color: #fff;
 }
 
+/* one chip per repo the agent has edited in, its own first: which repo's diff
+   the panel is showing. Only there once a second repo is involved. */
+.diff-repos {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.diff-repos[hidden] {
+  display: none;
+}
+
+.diff-repo {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.diff-repo:hover {
+  background: var(--surface-2);
+}
+
+.diff-repo.active {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.dr-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dr-count {
+  flex: none;
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+
 /* No overflow clipping: it would make this box the scrollport its own header
    sticks to, and the header has to stick to the panel instead. The corners are
    rounded on the head and the body separately in exchange. */

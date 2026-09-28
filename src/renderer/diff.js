@@ -169,12 +169,13 @@ function diffLineRow(tab, file, entry, span) {
   row.append(oldNo, newNo, sign);
   lineText(row, entry.text, span, entry.kind);
   // the number is the one place in the row where "take me there" is unambiguous
-  if (entry.newNo && tab.diffCwd && file.status !== 'deleted') {
+  const cwd = file.cwd || tab.diffCwd;
+  if (entry.newNo && cwd && file.status !== 'deleted') {
     newNo.classList.add('linkable');
     newNo.title = `Open ${file.path}:${entry.newNo}`;
     newNo.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      api.openPath({ cwd: tab.diffCwd, target: file.path, line: entry.newNo });
+      api.openPath({ cwd, target: file.path, line: entry.newNo });
     });
   }
   return row;
@@ -183,8 +184,10 @@ function diffLineRow(tab, file, entry, span) {
 function renderDiffFile(tab, file) {
   const el = document.createElement('div');
   el.className = 'diff-file';
-  el.dataset.path = file.path;
-  if (tab.diffCollapsed.has(file.path)) el.classList.add('collapsed');
+  // the same path can be changed in two repos; which one is part of the key
+  const id = file.id || file.path;
+  el.dataset.path = id; // what the fold button folds it under
+  if (tab.diffCollapsed.has(id)) el.classList.add('collapsed');
 
   const head = document.createElement('div');
   head.className = 'diff-file-head';
@@ -224,8 +227,8 @@ function renderDiffFile(tab, file) {
   head.append(chev, badge, name, dir, stat);
   head.addEventListener('click', () => {
     el.classList.toggle('collapsed');
-    if (el.classList.contains('collapsed')) tab.diffCollapsed.add(file.path);
-    else tab.diffCollapsed.delete(file.path);
+    if (el.classList.contains('collapsed')) tab.diffCollapsed.add(id);
+    else tab.diffCollapsed.delete(id);
   });
 
   const body = document.createElement('div');
@@ -278,13 +281,24 @@ function renderDiffFile(tab, file) {
   return el;
 }
 
-function renderDiff(tab, patch, statusText) {
-  const files = parsePatch(patch);
-  const untracked = (statusText || '')
+function untrackedOf(statusText) {
+  return (statusText || '')
     .split('\n')
     .filter((l) => l.startsWith('??'))
     .map((l) => l.slice(3).trim())
     .filter(Boolean);
+}
+
+// `cwd` is the repo the patch is from: the agent's own unless another repo it
+// edited is picked above the diff. Keys for another repo's files carry its
+// path (`prefix`), so nothing is shared with the agent's own files by accident.
+function renderDiff(tab, patch, statusText, cwd = tab.diffCwd, prefix = '') {
+  const files = parsePatch(patch);
+  const untracked = untrackedOf(statusText);
+  for (const f of files) {
+    f.cwd = cwd;
+    f.id = prefix + f.path;
+  }
 
   const adds = files.reduce((n, f) => n + f.adds, 0);
   const dels = files.reduce((n, f) => n + f.dels, 0);
@@ -303,7 +317,7 @@ function renderDiff(tab, patch, statusText) {
     tab.els.diffSummary.replaceChildren(`${count} file${count > 1 ? 's' : ''} · `, plus, ' ', minus);
   }
 
-  if (!files.length && !untracked.length) {
+  if (!count) {
     tab.diffFileEls = new Map();
     tab.els.diffBody.replaceChildren(Object.assign(document.createElement('p'), { className: 'hint', textContent: 'No changes yet' }));
     return;
@@ -319,10 +333,12 @@ function renderDiff(tab, patch, statusText) {
     next.set(key, el);
     return el;
   };
-  const out = files.map((f) => reuse(f.raw.join('\n'), () => renderDiffFile(tab, f)));
+  const out = files.map((f) => reuse(prefix + f.raw.join('\n'), () => renderDiffFile(tab, f)));
+  if (untracked.length) {
+    const id = prefix + '\0untracked';
+    out.push(reuse(id + '\n' + untracked.join('\n'), () => renderUntracked(tab, untracked, cwd, id)));
+  }
   tab.diffFileEls = next;
-
-  if (untracked.length) out.push(reuse(' untracked\n' + untracked.join('\n'), () => renderUntracked(tab, untracked)));
 
   // Written to every 400ms while an agent works: replacing the contents would
   // otherwise throw the reader back to the top of the panel mid-sentence. Only
@@ -336,11 +352,11 @@ function renderDiff(tab, patch, statusText) {
   body.scrollTop = keep;
 }
 
-function renderUntracked(tab, untracked) {
+function renderUntracked(tab, untracked, cwd = tab.diffCwd, id = '\0untracked') {
   const el = document.createElement('div');
   el.className = 'diff-file';
-  el.dataset.path = ' untracked';
-  if (tab.diffCollapsed.has(' untracked')) el.classList.add('collapsed');
+  el.dataset.path = id;
+  if (tab.diffCollapsed.has(id)) el.classList.add('collapsed');
   const head = document.createElement('div');
   head.className = 'diff-file-head';
   const chev = document.createElement('span');
@@ -356,8 +372,8 @@ function renderUntracked(tab, untracked) {
   head.append(chev, badge, name);
   head.addEventListener('click', () => {
     el.classList.toggle('collapsed');
-    if (el.classList.contains('collapsed')) tab.diffCollapsed.add(' untracked');
-    else tab.diffCollapsed.delete(' untracked');
+    if (el.classList.contains('collapsed')) tab.diffCollapsed.add(id);
+    else tab.diffCollapsed.delete(id);
   });
   const body = document.createElement('div');
   body.className = 'diff-file-body';
@@ -368,9 +384,9 @@ function renderUntracked(tab, untracked) {
     text.className = 'dl-text';
     text.textContent = f;
     row.appendChild(text);
-    if (tab.diffCwd) {
+    if (cwd) {
       row.title = `Open ${f}`;
-      row.addEventListener('click', () => api.openPath({ cwd: tab.diffCwd, target: f }));
+      row.addEventListener('click', () => api.openPath({ cwd, target: f }));
     }
     body.appendChild(row);
   }
@@ -385,21 +401,89 @@ api.onAgentStatus(({ agentId, status }) => {
   renderAgentLists();
 });
 
-api.onAgentDiff(({ key, patch, status, nogit }) => {
+// How many files a repo's diff lists, for its chip: changed plus untracked.
+function diffCount(patch, status) {
+  const changed = (String(patch || '').match(/^diff --git /gm) || []).length;
+  return changed + untrackedOf(status).length;
+}
+
+// Another repo the agent has edited gets a chip beside its own, and the panel
+// shows one repo at a time: the agent's own unless another is picked. Session
+// and Uncommitted then mean that repo's session or working tree.
+function renderDiffRepos(tab) {
+  const m = tab.diffMsg;
+  const row = tab.els.diffRepos;
+  const extra = m?.extra || [];
+  if (!extra.length) {
+    tab.diffRepo = null;
+    row.hidden = true;
+    row.replaceChildren();
+    return;
+  }
+  if (tab.diffRepo && !extra.some((x) => x.cwd === tab.diffRepo)) tab.diffRepo = null;
+  const own = tab.diffCwd || '';
+  const chips = [
+    { cwd: null, name: own.split(/[\\/]/).pop() || 'this folder', title: own, n: m.nogit ? null : diffCount(m.patch, m.status) },
+    ...extra.map((x) => ({ cwd: x.cwd, name: x.name, title: `${x.cwd} · ${x.branch}`, n: diffCount(x.patch, x.status) }))
+  ];
+  row.hidden = false;
+  row.replaceChildren(
+    ...chips.map((c) => {
+      const b = document.createElement('button');
+      b.className = 'diff-repo' + (c.cwd === tab.diffRepo ? ' active' : '');
+      b.title = c.title;
+      const name = document.createElement('span');
+      name.className = 'dr-name';
+      name.textContent = c.name;
+      b.appendChild(name);
+      if (c.n !== null) {
+        const n = document.createElement('span');
+        n.className = 'dr-count';
+        n.textContent = c.n;
+        b.appendChild(n);
+      }
+      b.addEventListener('click', () => {
+        if (tab.diffRepo === c.cwd) return;
+        tab.diffRepo = c.cwd;
+        renderDiffRepos(tab);
+        renderDiffView(tab);
+      });
+      return b;
+    })
+  );
+}
+
+// The picked repo's part of the last diff main sent.
+function renderDiffView(tab) {
+  const m = tab.diffMsg;
+  if (!m) return;
+  const x = tab.diffRepo && (m.extra || []).find((r) => r.cwd === tab.diffRepo);
+  if (x) {
+    renderDiff(tab, x.patch, x.status, x.cwd, x.cwd + '\n');
+  } else if (m.nogit) {
+    tab.diffFileEls = null;
+    tab.els.diffSummary.textContent = '';
+    tab.els.diffBody.innerHTML = '<p class="hint">Not a git repository — no diff available</p>';
+  } else {
+    renderDiff(tab, m.patch, m.status);
+  }
+}
+
+api.onAgentDiff((msg) => {
+  const { key, patch, status, nogit, extra = [] } = msg;
   for (const tab of agentTabs()) {
     if (tab.diffKey !== key) continue;
     // most file events leave the diff as it was: a save of identical content,
     // an ignored file git doesn't report
-    const shown = nogit ? key + '\0nogit' : key + '\0' + patch + '\0' + status;
+    const more = extra.length ? '\0' + JSON.stringify(extra) : '';
+    const shown = (nogit ? key + '\0nogit' : key + '\0' + patch + '\0' + status) + more;
     if (tab.diffShown === shown) continue;
     // another agent's files are never this one's, even at the same path
     if (!tab.diffShown?.startsWith(key + '\0')) tab.diffFileEls = null;
     tab.diffShown = shown;
-    if (nogit) {
-      tab.els.diffBody.innerHTML = '<p class="hint">Not a git repository — no diff available</p>';
-    } else {
-      renderDiff(tab, patch, status);
-    }
+    tab.diffMsg = { patch, status, nogit, extra };
+    renderDiffRepos(tab);
+    renderDiffView(tab);
   }
 });
 

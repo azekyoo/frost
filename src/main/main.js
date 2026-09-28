@@ -1612,7 +1612,6 @@ const agents = new Map(); // agentId -> { ptyId, cwd, sessionId, title, lastData
 const agentByPty = new Map(); // ptyId -> same record
 let agentCounter = 0;
 let STATUS_DIR = null;
-let diffWatcher = null;
 let diffTimer = null;
 
 function readAgentsCfg() {
@@ -1679,6 +1678,41 @@ function snapshotBase(cwd, head) {
     return tree.status === 0 && hash ? { base: hash, untracked } : { base: head, untracked };
   } finally {
     try { fs.unlinkSync(tmp); } catch {}
+  }
+}
+
+// snapshotBase without holding up the process: taken for a repo an agent
+// reaches into mid-session, while every terminal's output passes through here.
+function gitRun(cwd, args, env) {
+  return new Promise((resolve) => {
+    execFile('git', ['-C', cwd, ...args], { encoding: 'utf8', env, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) =>
+      resolve({ ok: !err, stdout: stdout || '' })
+    );
+  });
+}
+
+async function snapshotBaseAsync(cwd, head) {
+  const untracked = new Set();
+  const st = await gitRun(cwd, ['status', '--porcelain']);
+  for (const line of st.stdout.split(/\r?\n/)) {
+    if (line.startsWith('??')) untracked.add(line);
+  }
+  if (!st.ok || !st.stdout.trim()) return { base: head, untracked };
+  const tmp = path.join(STATUS_DIR, `idx-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  try {
+    const real = await gitRun(cwd, ['rev-parse', '--path-format=absolute', '--git-path', 'index']);
+    try {
+      await fs.promises.copyFile(real.stdout.trim(), tmp);
+    } catch {
+      return { base: head, untracked };
+    }
+    const env = { ...process.env, GIT_INDEX_FILE: tmp };
+    if (!(await gitRun(cwd, ['add', '-u'], env)).ok) return { base: head, untracked };
+    const tree = await gitRun(cwd, ['write-tree'], env);
+    const hash = tree.stdout.trim();
+    return tree.ok && hash ? { base: hash, untracked } : { base: head, untracked };
+  } finally {
+    fs.promises.unlink(tmp).catch(() => {});
   }
 }
 
@@ -1791,6 +1825,324 @@ function blockedHook(statusFile) {
   );
 }
 
+// The folders a shell command reaches into: where it cd's or points git -C,
+// and any absolute path it names. A guess — a command can build a path at run
+// time — but agents spell theirs out. MSYS paths (/c/dev) become C:\dev. Also
+// runs inside the hook script, pasted there as source, so it requires its own
+// modules.
+function bashPaths(cmd, cwd) {
+  const path = require('path');
+  const out = [];
+  const add = (p) => {
+    p = p.replace(/^["']|["']$/g, '');
+    const m = /^\/([a-zA-Z])(\/.*)?$/.exec(p);
+    if (m) p = m[1].toUpperCase() + ':' + (m[2] || '/');
+    if (/^~([\\/]|$)/.test(p)) p = require('os').homedir() + p.slice(1);
+    out.push(path.resolve(cwd, p));
+  };
+  const arg = `("[^"]+"|'[^']+'|[^\\s;&|)]+)`;
+  for (const m of cmd.matchAll(new RegExp(`(?:^|[\\s;&|(])(?:cd|pushd)\\s+${arg}`, 'g'))) add(m[1]);
+  for (const m of cmd.matchAll(new RegExp(`\\bgit\\s+-C\\s+${arg}`, 'g'))) add(m[1]);
+  for (const m of cmd.matchAll(/"([A-Za-z]:[\\/][^"]*)"/g)) add(m[1]);
+  for (const m of cmd.matchAll(/(?:^|[\s'=(])((?:[A-Za-z]:[\\/]|\/[a-zA-Z]\/)[^\s"'`;|&<>()]*)/g)) add(m[1]);
+  return out;
+}
+
+// Runs before every file edit and shell command, so the common case — nothing
+// outside the agent's own folder — returns without a word. Anything else is
+// appended to tp-<agent>, and the hook waits (capped) for main to write the
+// matching acks, which it does once each path's repo has a base snapshot. A
+// file, not the inline node -e the other hooks use: the wait loop has no
+// business inside shell quoting.
+const TOUCH_HOOK_SRC = `
+const fs = require('fs');
+const path = require('path');
+${bashPaths.toString()}
+const [dir, agentId] = process.argv.slice(2);
+let d = '';
+process.stdin.on('data', (c) => (d += c)).on('end', () => {
+  let j = {};
+  try { j = JSON.parse(d); } catch {}
+  const input = j.tool_input || {};
+  if (!j.cwd) return;
+  const bash = j.tool_name === 'Bash';
+  const targets = bash
+    ? bashPaths(String(input.command || ''), j.cwd)
+    : [input.file_path || input.notebook_path].filter(Boolean).map((t) => path.resolve(j.cwd, t));
+  const outside = [...new Set(targets)].filter((p) => {
+    const rel = path.relative(j.cwd, p);
+    return rel.startsWith('..') || path.isAbsolute(rel);
+  });
+  if (!outside.length) return;
+  const acks = [];
+  let lines = '';
+  for (const p of outside) {
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    acks.push(path.join(dir, 'ta-' + agentId + '-' + id));
+    lines += id + '|' + p + (bash ? '|bash' : '') + '\\n';
+  }
+  try { fs.appendFileSync(path.join(dir, 'tp-' + agentId), lines); } catch { return; }
+  const nap = new Int32Array(new SharedArrayBuffer(4));
+  const until = Date.now() + 10000;
+  let left = acks;
+  while (left.length && Date.now() < until) {
+    left = left.filter((a) => {
+      if (!fs.existsSync(a)) return true;
+      try { fs.unlinkSync(a); } catch {}
+      return false;
+    });
+    if (left.length) Atomics.wait(nap, 0, 0, 25);
+  }
+});
+`;
+
+function touchHook(agentId) {
+  const script = path.join(STATUS_DIR, 'frost-touch-hook.js');
+  if (!fs.existsSync(script)) fs.writeFileSync(script, TOUCH_HOOK_SRC);
+  const fwd = (s) => s.replace(/\\/g, '/');
+  return `node "${fwd(script)}" "${fwd(STATUS_DIR)}" ${agentId}`;
+}
+
+// The folder a path is in, or is: it may not exist yet — a Write creating a
+// file in a new folder — so the nearest one that does.
+function nearestDir(p) {
+  let dir = p;
+  while (!fs.existsSync(dir)) {
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+  try {
+    return fs.statSync(dir).isFile() ? path.dirname(dir) : dir;
+  } catch {
+    return null;
+  }
+}
+
+// The repo a path lives in, file or folder.
+function repoRootOf(p) {
+  const dir = nearestDir(p);
+  if (!dir) return null;
+  const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', windowsHide: true });
+  return r.status === 0 && r.stdout.trim() ? canonPath(r.stdout.trim()) : null;
+}
+
+const within = (dir, p) => {
+  const rel = path.relative(dir, p);
+  return !rel.startsWith('..') && !path.isAbsolute(rel);
+};
+
+// Where HEAD pointed at a moment in the past: the newest reflog entry from
+// before it, else the last commit made before it.
+function commitAt(root, ms) {
+  const opts = { encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 * 1024 };
+  const log = spawnSync('git', ['-C', root, 'reflog', 'show', '-n', '5000', '--date=unix', '--format=%H %gd', 'HEAD'], opts);
+  for (const line of (log.stdout || '').split(/\r?\n/)) {
+    const m = /^([0-9a-f]{40,64}) HEAD@\{(\d+)\}$/.exec(line.trim());
+    if (m && +m[2] * 1000 <= ms) return m[1]; // newest first
+  }
+  const before = spawnSync('git', ['-C', root, 'rev-list', '-1', `--before=${Math.floor(ms / 1000)}`, 'HEAD'], opts);
+  return (before.stdout || '').trim() || null;
+}
+
+// A repo other than the agent's own, first seen being edited, joins the
+// agent's diff. Reported by the hook, it is snapshotted now, before the edit
+// the hook is holding back. Found in the transcript (`since`), the edit has
+// long happened: the base is where HEAD was when the session began, and only
+// the files the session touched are shown, since whatever else was
+// uncommitted there then can't be told apart from its work.
+// A repo only a shell command pointed at (`bash`) may just have been read —
+// an ls, a grep — so it stays out of sight (`quiet`) until its diff has
+// something in it; a shell command names no files either, so all of the repo
+// is shown.
+// True when the diff has something new to show.
+function addExtraRepo(rec, p, { since = null, bash = false } = {}) {
+  rec.extraRepos ||= new Map(); // root (lowercased) -> { cwd, name, branch, base, untrackedAtStart, touched?, quiet? }
+  for (const x of rec.extraRepos.values()) {
+    if (!within(x.cwd, p)) continue;
+    if (bash) return false;
+    let news = false;
+    if (x.quiet) {
+      x.quiet = false; // edited by name: its work, whatever the diff says yet
+      news = true;
+    }
+    if (!x.touched) return news;
+    const rel = path.relative(x.cwd, p).replace(/\\/g, '/');
+    if (x.touched.has(rel)) return news;
+    x.touched.add(rel);
+    return true;
+  }
+  if (rec.root === undefined) rec.root = rec.git ? repoRootOf(rec.cwd) : null;
+  if (rec.root && within(rec.root, p)) return false;
+  // a folder's repo is asked once: the same files come up again and again
+  rec.rootOf ||= new Map();
+  const dir = nearestDir(p);
+  if (!dir) return false;
+  if (!rec.rootOf.has(dir.toLowerCase())) rec.rootOf.set(dir.toLowerCase(), repoRootOf(dir));
+  const root = rec.rootOf.get(dir.toLowerCase());
+  if (!root) return false; // outside any repo: nothing git could diff
+  const info = gitInfo(root);
+  if (!info.git) return false;
+  const entry = { cwd: root, name: path.basename(root), branch: info.branch, quiet: bash };
+  if (since) {
+    entry.base = commitAt(root, since) || info.baseCommit;
+    entry.untrackedAtStart = null;
+    if (!bash) entry.touched = new Set([path.relative(root, p).replace(/\\/g, '/')]);
+  } else {
+    // out of the diff until the snapshot lands; the hook waits on `ready`
+    entry.base = info.baseCommit;
+    entry.untrackedAtStart = null;
+    entry.ready = snapshotBaseAsync(root, info.baseCommit).then((snap) => {
+      entry.base = snap.base;
+      entry.untrackedAtStart = snap.untracked;
+      entry.ready = null;
+    });
+  }
+  rec.extraRepos.set(root.toLowerCase(), entry);
+  return true;
+}
+
+function extraRepoFor(rec, p) {
+  for (const x of rec.extraRepos?.values() || []) if (within(x.cwd, p)) return x;
+  return null;
+}
+
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+
+// Edits the hook never saw — made before this pane's claude started, as in a
+// resumed session — are still in the transcript. Read from where the last
+// read stopped, a chunk at a time and off the main thread's back, and only
+// for the agent whose diff is on screen; a line is parsed only if it could
+// be a file edit.
+async function scanTranscriptEdits(agentId) {
+  const rec = agents.get(agentId);
+  if (!rec?.sessionId || rec.scanning) return;
+  let s = rec.editScan;
+  if (!s || s.sessionId !== rec.sessionId) {
+    let file = transcriptPaths.get(rec.sessionId);
+    if (!file && Date.now() - (rec.scanMissT || 0) > 10000) {
+      rec.scanMissT = Date.now(); // a session that hasn't written one yet
+      scanTranscripts();
+      file = transcriptPaths.get(rec.sessionId);
+    }
+    if (!file) return;
+    s = rec.editScan = { sessionId: rec.sessionId, file, offset: 0, since: null };
+  }
+  rec.scanning = true;
+  let changed = false;
+  try {
+    const fh = await fs.promises.open(s.file, 'r');
+    try {
+      const size = (await fh.stat()).size;
+      let buf = Buffer.alloc(1024 * 1024);
+      while (s.offset < size) {
+        const { bytesRead } = await fh.read(buf, 0, Math.min(buf.length, size - s.offset), s.offset);
+        if (!bytesRead) break;
+        const end = buf.lastIndexOf(0x0a, bytesRead - 1) + 1; // whole lines only
+        if (!end) {
+          // one line longer than the buffer — a Write of a big file does it
+          if (bytesRead < buf.length || buf.length >= 64 * 1024 * 1024) break;
+          buf = Buffer.alloc(buf.length * 2);
+          continue;
+        }
+        // A tool call from the last few seconds is left for the next read: the
+        // hook, when it is there, is still snapshotting that repo properly, and
+        // getting there first would settle for the worse base below.
+        let pos = 0;
+        let held = false;
+        while (pos < end) {
+          const nl = buf.indexOf(0x0a, pos);
+          const line = buf.toString('utf8', pos, nl);
+          if (!s.since && line.includes('"timestamp"')) {
+            try {
+              const t = Date.parse(JSON.parse(line).timestamp);
+              if (t) s.since = t;
+            } catch {}
+          }
+          let j = null;
+          if (line.includes('"tool_use"') && /"(file|notebook)_path"|"name":"Bash"/.test(line)) {
+            try {
+              j = JSON.parse(line);
+            } catch {}
+          }
+          if (j && Date.now() - (Date.parse(j.timestamp) || 0) < 5000) {
+            held = true;
+            break;
+          }
+          pos = nl + 1;
+          const content = j?.message?.content;
+          if (!Array.isArray(content)) continue;
+          const since = s.since || Date.now();
+          const at = j.cwd || rec.cwd;
+          for (const c of content) {
+            if (c?.type !== 'tool_use') continue;
+            if (c.name === 'Bash') {
+              for (const p of bashPaths(String(c.input?.command || ''), at)) {
+                if (addExtraRepo(rec, canonPath(p), { since, bash: true })) changed = true;
+              }
+              continue;
+            }
+            if (!EDIT_TOOLS.has(c.name)) continue;
+            const target = c.input?.file_path || c.input?.notebook_path;
+            if (!target) continue;
+            if (addExtraRepo(rec, canonPath(path.resolve(at, target)), { since })) changed = true;
+          }
+        }
+        s.offset += pos;
+        if (held) break;
+      }
+    } finally {
+      await fh.close();
+    }
+  } catch {
+  } finally {
+    rec.scanning = false;
+  }
+  if (changed && diffSel?.agentId === agentId) selectDiff(agentId, diffSel.mode);
+}
+
+// tp-<agent> only grows; how far each has been read is kept by file, since a
+// claude relaunched in the same pane is a new record but the same file.
+const touchRead = new Map(); // file -> bytes read
+
+function touchedPaths(agentId, file) {
+  let buf;
+  try {
+    buf = fs.readFileSync(file);
+  } catch {
+    return;
+  }
+  const from = touchRead.get(file) || 0;
+  const end = buf.lastIndexOf(0x0a) + 1; // whole lines only
+  if (end <= from) return;
+  touchRead.set(file, end);
+  const rec = agents.get(agentId);
+  for (const line of buf.toString('utf8', from, end).split('\n')) {
+    const [id, p, kind] = line.split('|');
+    if (!id || !p) continue;
+    const ack = () => {
+      try { fs.writeFileSync(path.join(STATUS_DIR, 'ta-' + agentId + '-' + id), ''); } catch {}
+    };
+    let added = false;
+    let ready = null;
+    try {
+      const file = canonPath(p);
+      added = Boolean(rec) && addExtraRepo(rec, file, { bash: kind === 'bash' });
+      ready = rec && extraRepoFor(rec, file)?.ready;
+    } catch {}
+    // the hook holds the edit back until the repo's snapshot is taken
+    Promise.resolve(ready)
+      .catch(() => {})
+      .then(() => {
+        ack();
+        if (added && diffSel?.agentId === agentId) selectDiff(agentId, diffSel.mode);
+      });
+  }
+  // the one before this has run by now, and may have changed a repo no
+  // watcher covers
+  diffSoon(agentId);
+}
+
 function readSessionId(agentId) {
   try {
     return fs.readFileSync(path.join(STATUS_DIR, 'sid-' + agentId), 'utf8').trim() || null;
@@ -1810,7 +2162,17 @@ function hookSettingsFile(agentId) {
       // Which Claude Code session this pane is running, so the sessions list can
       // show it as live instead of offering to resume it a second time. Fires
       // again on /clear and on resume, which is when the id changes.
-      SessionStart: [{ hooks: [{ type: 'command', command: sessionIdHook(agentId) }] }]
+      SessionStart: [{ hooks: [{ type: 'command', command: sessionIdHook(agentId) }] }],
+      // A file edit or shell command reaching outside the agent's folder, so
+      // another repo's changes can join its diff. Before rather than after:
+      // the hook waits for that repo to be snapshotted, and the first change is
+      // part of the diff.
+      PreToolUse: [
+        {
+          matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash',
+          hooks: [{ type: 'command', command: touchHook(agentId) }]
+        }
+      ]
     }
   };
   const file = path.join(STATUS_DIR, 'cfg-' + agentId + '.json');
@@ -1846,6 +2208,11 @@ function initAgentInfra() {
           rec.hookT = Date.now();
         } catch {}
         broadcastStatuses();
+        diffSoon(agentId);
+        return;
+      }
+      if (base.startsWith('tp-')) {
+        touchedPaths(base.slice(3), file);
         return;
       }
       if (base.startsWith('sid-')) {
@@ -1881,6 +2248,7 @@ function initAgentInfra() {
   setInterval(() => {
     broadcastStatuses();
     refreshAgentTitles();
+    if (diffSel) scanTranscriptEdits(diffSel.agentId);
   }, 1500);
 }
 
@@ -2237,9 +2605,11 @@ function gitOut(cwd, args, maxBuffer = 1024 * 1024) {
 }
 
 // One diff view at a time, keyed so the renderer can tell whose diff arrived.
-// `key` identifies the agent whose diff it is.
-let diffView = null; // { key, cwd, base, mode, hideUntracked }
-let diffWatchCwd = null;
+// `key` identifies the agent whose diff it is; `repos` are its own folder
+// (main) and any other repo it has edited files in.
+let diffView = null; // { key, mode, repos: [{ main?, cwd, name?, branch?, base, hideUntracked }] }
+let diffSel = null; // { agentId, mode } — what the panel last asked for
+const diffWatchers = new Map(); // cwd -> watcher, or null while one is being started
 let diffRunning = false;
 let diffAgain = false;
 
@@ -2254,19 +2624,42 @@ async function runDiff() {
   if (!view) return;
   diffRunning = true;
   try {
-    const { key, cwd, base, mode, hideUntracked } = view;
-    // session = everything since the base commit (survives the agent
-    // committing); uncommitted = working tree vs HEAD only
-    const target = mode === 'uncommitted' ? 'HEAD' : base;
-    const patch = await gitOut(cwd, ['diff', target], 16 * 1024 * 1024);
-    let status = await gitOut(cwd, ['status', '--porcelain']);
+    const { key, mode, repos } = view;
+    let surfaced = false;
+    const results = await Promise.all(
+      repos.map(async (r) => {
+        // session = everything since the base commit (survives the agent
+        // committing); uncommitted = working tree vs HEAD only
+        const target = mode === 'uncommitted' ? 'HEAD' : r.base;
+        // a repo found in the transcript shows only the files the session
+        // touched; past a few hundred the command line would run out first
+        const only = r.only?.size && r.only.size <= 300 ? ['--', ...[...r.only].map((p) => ':(literal)' + p)] : [];
+        const patch = await gitOut(r.cwd, ['diff', target, ...only], 16 * 1024 * 1024);
+        const raw = await gitOut(r.cwd, ['status', '--porcelain', ...(only.length ? ['-uall'] : []), ...only]);
+        // untracked before the session began: not its work
+        const sinceStart = r.hideUntracked?.size
+          ? raw.split(/\r?\n/).filter((l) => !r.hideUntracked.has(l)).join('\n')
+          : raw;
+        const status = mode === 'uncommitted' ? raw : sinceStart;
+        // a repo a shell command only pointed at shows once the session has
+        // changed something in it, and stays from then on
+        const src = r.src;
+        if (src?.quiet) {
+          const sessionPatch = mode === 'uncommitted' ? await gitOut(r.cwd, ['diff', '--name-only', r.base]) : patch;
+          if (sessionPatch.trim() || sinceStart.trim()) {
+            src.quiet = false;
+            surfaced = true;
+          }
+        }
+        return { main: r.main, cwd: r.cwd, name: r.name, branch: r.branch, patch, status, quiet: src?.quiet };
+      })
+    );
     // switched agent or mode while git ran: this answer is for a view that's gone
     if (view !== diffView) return;
-    // untracked before the session began: not its work
-    if (mode !== 'uncommitted' && hideUntracked?.size) {
-      status = status.split(/\r?\n/).filter((l) => !hideUntracked.has(l)).join('\n');
-    }
-    broadcast('agent:diff', { key, patch, status });
+    const main = results.find((r) => r.main);
+    const extra = results.filter((r) => !r.main && !r.quiet).map(({ main: _m, quiet: _q, ...r }) => r);
+    broadcast('agent:diff', { key, patch: main?.patch || '', status: main?.status || '', nogit: !main, extra });
+    if (surfaced) watchDiff(view); // now worth a watcher of its own
   } finally {
     diffRunning = false;
     if (diffAgain) {
@@ -2276,23 +2669,36 @@ async function runDiff() {
   }
 }
 
-function watchDiff({ key, cwd, base, mode, hideUntracked }) {
+// The selected agent did something — a turn began or ended, a tool is about to
+// run — that may have changed a repo no watcher covers.
+function diffSoon(agentId) {
+  if (diffSel?.agentId !== agentId) return;
   clearTimeout(diffTimer);
-  const next = key && cwd ? cwd : null;
-  // Watching a repo means walking it first, so the watcher is kept for as long
-  // as the folder stays the same; clicking between agents, or between Session
-  // and Uncommitted, only changes what the next diff asks git.
-  if (diffWatchCwd !== next) {
-    diffWatcher?.close();
-    diffWatcher = null;
-    diffWatchCwd = null; // also calls off a watcher still being started
+  diffTimer = setTimeout(runDiff, 400);
+}
+
+function watchDiff(view) {
+  clearTimeout(diffTimer);
+  diffView = view?.repos.length ? view : null;
+  // Watching a repo means walking it first, so a watcher is kept for as long
+  // as its folder stays in the view; clicking between agents, or between
+  // Session and Uncommitted, only changes what the next diff asks git.
+  // A repo still quiet goes unwatched: a grep into a big one would otherwise
+  // walk all of it for nothing. The agent's turns ask for a diff instead
+  // (diffSoon), which is when a shell command there would have changed it.
+  const want = new Set((diffView?.repos || []).filter((r) => !r.src?.quiet).map((r) => r.cwd));
+  for (const [cwd, w] of diffWatchers) {
+    if (want.has(cwd)) continue;
+    w?.close();
+    diffWatchers.delete(cwd); // also calls off a watcher still being started
   }
-  diffView = next ? { key, cwd, base, mode, hideUntracked } : null;
   if (!diffView) return;
   runDiff();
-  if (diffWatchCwd === cwd) return; // watching it, or about to
-  diffWatchCwd = cwd;
-  startDiffWatcher(cwd);
+  for (const cwd of want) {
+    if (diffWatchers.has(cwd)) continue; // watching it, or about to
+    diffWatchers.set(cwd, null);
+    startDiffWatcher(cwd);
+  }
 }
 
 // Whatever the repo gitignores can't appear in its diff, and it is where the
@@ -2301,7 +2707,7 @@ function watchDiff({ key, cwd, base, mode, hideUntracked }) {
 // build folder made after the watch began.
 async function startDiffWatcher(cwd) {
   const listed = await gitOut(cwd, ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory'], 16 * 1024 * 1024);
-  if (diffWatchCwd !== cwd || diffWatcher) return; // moved on while git ran
+  if (!diffWatchers.has(cwd) || diffWatchers.get(cwd)) return; // moved on while git ran
   const gitIgnored = new Set(
     listed
       .split(/\r?\n/)
@@ -2319,7 +2725,7 @@ async function startDiffWatcher(cwd) {
     }
     return false;
   };
-  diffWatcher = chokidar
+  const watcher = chokidar
     .watch(cwd, {
       ignored: (p) => isNoisyPath(p) || ignoredByGit(p),
       ignoreInitial: true,
@@ -2329,26 +2735,42 @@ async function startDiffWatcher(cwd) {
       clearTimeout(diffTimer);
       diffTimer = setTimeout(runDiff, 400);
     });
+  diffWatchers.set(cwd, watcher);
+}
+
+function selectDiff(agentId, mode) {
+  const rec = agentId && agents.get(agentId);
+  diffSel = rec ? { agentId, mode } : null;
+  if (!rec) {
+    watchDiff(null);
+    return;
+  }
+  const repos = [];
+  if (rec.git) repos.push({ main: true, cwd: rec.cwd, base: rec.baseCommit, hideUntracked: rec.untrackedAtStart });
+  for (const x of rec.extraRepos?.values() || []) {
+    if (x.ready) continue; // its snapshot is still being taken
+    repos.push({
+      cwd: x.cwd,
+      name: x.name,
+      branch: x.branch,
+      base: x.base,
+      hideUntracked: x.untrackedAtStart,
+      only: x.touched,
+      src: x
+    });
+  }
+  scanTranscriptEdits(agentId); // calls back here if it finds another repo
+  if (!repos.length) {
+    watchDiff(null);
+    broadcast('agent:diff', { key: 'agent:' + agentId, patch: '', status: '', nogit: true, extra: [] });
+    return;
+  }
+  watchDiff({ key: 'agent:' + agentId, mode, repos });
 }
 
 ipcMain.on('agents:selectDiff', (_e, payload) => {
   const { agentId, mode } = payload || {};
-  const rec = agentId && agents.get(agentId);
-  if (!rec) {
-    watchDiff({});
-    return;
-  }
-  if (!rec.git) {
-    broadcast('agent:diff', { key: 'agent:' + agentId, patch: '', status: '', nogit: true });
-    return;
-  }
-  watchDiff({
-    key: 'agent:' + agentId,
-    cwd: rec.cwd,
-    base: rec.baseCommit,
-    mode,
-    hideUntracked: rec.untrackedAtStart
-  });
+  selectDiff(agentId, mode);
 });
 
 // Agent tabs are unique across the app, not per window. A window asking for one
