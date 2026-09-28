@@ -408,6 +408,7 @@ function renderAgentList(tab) {
   for (const agent of globalAgents.values()) {
     const row = document.createElement('div');
     row.className = 'agent-row' + (tab.selected === agent.id ? ' selected' : '');
+    row.title = [agent.cwd, agent.sessionId].filter(Boolean).join('\n');
     row.innerHTML = `
       <span class="agent-dot st-${agent.status}"></span>
       <span class="agent-name"></span>
