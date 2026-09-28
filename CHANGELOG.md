@@ -3,6 +3,34 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 1.0.1 — 2026-09-28
+
+### Added
+
+- **A `shell` button in the diff panel** opens a terminal tab in the selected
+  agent's folder, for running something beside it without typing a `cd`.
+
+### Changed
+
+- **New session offers every folder claude has run in.** The picker used to
+  take its folders from the Sessions list, which stops at fifteen rows and
+  leaves out the sessions running right now. Running agents' folders now come
+  first, then everywhere in Claude Code's history, newest first.
+
+### Fixed
+
+- **The agent tab no longer makes Frost lag on big repos.** The diff watch ran
+  `git` in the process every terminal's output and keystrokes pass through, so
+  a slow `git` held them all until it finished, and it watched everything the
+  repo gitignores — a C++ build tree alone can be tens of thousands of files.
+  `git` now runs in the background one at a time, gitignored paths are skipped,
+  and the watcher is kept while you click between agents in the same folder.
+- **The diff panel redraws only the files that changed.** It used to rebuild
+  every line on each save; unchanged files now keep what's on screen, so a
+  folded file or an opened "show more" stays that way while the agent works.
+- **Running agents show the hand cursor and the same folder and session
+  tooltip** as the sessions below them, instead of an arrow and no tooltip.
+
 ## 1.0.0 — 2026-09-25
 
 Frost 1.0. The agent tab is rebuilt around Claude Code sessions rather than
