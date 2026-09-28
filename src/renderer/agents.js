@@ -177,6 +177,7 @@ function buildAgentLayout(tab) {
       <div class="diff-sub">
         <span class="diff-summary"></span>
         <div class="diff-tools">
+          <button class="diff-open-tab" title="Open a terminal tab in this session's folder">shell</button>
           <button class="diff-fold" title="Collapse or expand every file">fold</button>
         </div>
       </div>
@@ -210,6 +211,12 @@ function buildAgentLayout(tab) {
       if (expand) tab.diffCollapsed.delete(p);
       else tab.diffCollapsed.add(p);
     }
+  });
+  layout.querySelector('.diff-open-tab').addEventListener('click', () => {
+    // the selected agent, not diffCwd: that one outlives an agent that has gone
+    const cwd = globalAgents.get(tab.selected)?.cwd;
+    if (cwd) newTab({ cwd });
+    else toast('Select an agent first', { error: true });
   });
   layout.querySelectorAll('.diff-toggle button').forEach((btn) => {
     btn.addEventListener('click', () => {
