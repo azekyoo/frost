@@ -771,7 +771,7 @@ body.frameless #win-controls {
   align-items: center;
   padding: 5px 7px;
   border-radius: 6px;
-  cursor: default;
+  cursor: pointer;
   font-size: 12px;
   transition: background 0.12s var(--ease);
 }
