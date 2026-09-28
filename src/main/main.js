@@ -14,7 +14,7 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn, spawnSync } = require('child_process');
+const { spawn, spawnSync, execFile } = require('child_process');
 const chokidar = require('chokidar');
 const pty = require('@lydell/node-pty');
 
@@ -2019,15 +2019,18 @@ function readClaudeSession(file, size) {
 }
 
 // Cached by mtime, so asking again about a transcript that hasn't been written
-// to costs one stat.
-function sessionInfo(file, st) {
+// to costs one stat. `maxAge` lets a caller take a parse that recent even if
+// the file has moved on since: a working session's transcript changes on every
+// line claude writes, and re-reading it on each status tick buys nothing.
+function sessionInfo(file, st, maxAge = 0) {
   let cached = sessionCache.get(file);
-  if (!cached || cached.mtimeMs !== st.mtimeMs) {
+  const fresh = cached && (cached.mtimeMs === st.mtimeMs || Date.now() - cached.readAt < maxAge);
+  if (!fresh) {
     let info = null;
     try {
       info = readClaudeSession(file, st.size);
     } catch {}
-    cached = { mtimeMs: st.mtimeMs, info };
+    cached = { mtimeMs: st.mtimeMs, readAt: Date.now(), info };
     sessionCache.set(file, cached);
   }
   return cached.info;
@@ -2171,7 +2174,9 @@ function sessionTitle(sessionId, running) {
   }
   if (!file) return null;
   try {
-    return sessionInfo(file, fs.statSync(file))?.title || null;
+    // a /rename arrives through `running` above; only Claude Code's own title
+    // waits on this, and it is written once per session
+    return sessionInfo(file, fs.statSync(file), 10000)?.title || null;
   } catch {
     transcriptPaths.delete(sessionId);
     return null;
@@ -2213,38 +2218,110 @@ const NOISY_RE = new RegExp(
   `(^|[\\\\/])(${NOISY_DIRS.map((d) => d.replace(/\./g, '\\.')).join('|')})([\\\\/]|$)`,
   'i'
 );
-const isNoisyPath = (p) => NOISY_RE.test(p);
+// Run from source, Frost keeps its config in the repo it is being worked on,
+// and every save there would recompute the diff of the agent working on it.
+const inConfigDir = (p) => {
+  const rel = path.relative(CONFIG_DIR, p);
+  return !rel.startsWith('..') && !path.isAbsolute(rel);
+};
+const isNoisyPath = (p) => NOISY_RE.test(p) || inConfigDir(p);
+
+// Async, because the pty streams pass through this process: a git that blocks
+// it on a big repo holds every terminal's output and keystrokes until it ends.
+function gitOut(cwd, args, maxBuffer = 1024 * 1024) {
+  return new Promise((resolve) => {
+    execFile('git', ['-C', cwd, ...args], { encoding: 'utf8', maxBuffer, windowsHide: true }, (_err, stdout) =>
+      resolve(stdout || '')
+    );
+  });
+}
 
 // One diff view at a time, keyed so the renderer can tell whose diff arrived.
 // `key` identifies the agent whose diff it is.
-function watchDiff({ key, cwd, base, mode, hideUntracked }) {
-  if (diffWatcher) {
-    diffWatcher.close();
-    diffWatcher = null;
-  }
-  clearTimeout(diffTimer);
-  if (!key || !cwd) return;
+let diffView = null; // { key, cwd, base, mode, hideUntracked }
+let diffWatchCwd = null;
+let diffRunning = false;
+let diffAgain = false;
 
-  const runDiff = () => {
+// One git at a time: changes landing mid-run ask for a single rerun after it,
+// rather than stacking a git per burst.
+async function runDiff() {
+  if (diffRunning) {
+    diffAgain = true;
+    return;
+  }
+  const view = diffView;
+  if (!view) return;
+  diffRunning = true;
+  try {
+    const { key, cwd, base, mode, hideUntracked } = view;
     // session = everything since the base commit (survives the agent
     // committing); uncommitted = working tree vs HEAD only
     const target = mode === 'uncommitted' ? 'HEAD' : base;
-    const d = spawnSync('git', ['-C', cwd, 'diff', target], {
-      encoding: 'utf8',
-      maxBuffer: 16 * 1024 * 1024
-    });
-    const s = spawnSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' });
-    let status = s.stdout || '';
+    const patch = await gitOut(cwd, ['diff', target], 16 * 1024 * 1024);
+    let status = await gitOut(cwd, ['status', '--porcelain']);
+    // switched agent or mode while git ran: this answer is for a view that's gone
+    if (view !== diffView) return;
     // untracked before the session began: not its work
     if (mode !== 'uncommitted' && hideUntracked?.size) {
       status = status.split(/\r?\n/).filter((l) => !hideUntracked.has(l)).join('\n');
     }
-    broadcast('agent:diff', { key, patch: d.stdout || '', status });
-  };
+    broadcast('agent:diff', { key, patch, status });
+  } finally {
+    diffRunning = false;
+    if (diffAgain) {
+      diffAgain = false;
+      runDiff();
+    }
+  }
+}
+
+function watchDiff({ key, cwd, base, mode, hideUntracked }) {
+  clearTimeout(diffTimer);
+  const next = key && cwd ? cwd : null;
+  // Watching a repo means walking it first, so the watcher is kept for as long
+  // as the folder stays the same; clicking between agents, or between Session
+  // and Uncommitted, only changes what the next diff asks git.
+  if (diffWatchCwd !== next) {
+    diffWatcher?.close();
+    diffWatcher = null;
+    diffWatchCwd = null; // also calls off a watcher still being started
+  }
+  diffView = next ? { key, cwd, base, mode, hideUntracked } : null;
+  if (!diffView) return;
   runDiff();
+  if (diffWatchCwd === cwd) return; // watching it, or about to
+  diffWatchCwd = cwd;
+  startDiffWatcher(cwd);
+}
+
+// Whatever the repo gitignores can't appear in its diff, and it is where the
+// bulk usually is: a CMake build tree alone can be tens of thousands of files,
+// each one walked and watched for nothing. The fixed list above still covers a
+// build folder made after the watch began.
+async function startDiffWatcher(cwd) {
+  const listed = await gitOut(cwd, ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory'], 16 * 1024 * 1024);
+  if (diffWatchCwd !== cwd || diffWatcher) return; // moved on while git ran
+  const gitIgnored = new Set(
+    listed
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((l) => path.join(cwd, l.replace(/\/$/, '')).toLowerCase())
+  );
+  // a path is ignored if it, or a folder above it, is listed
+  const ignoredByGit = (p) => {
+    const rel = path.relative(cwd, p);
+    if (!rel || rel.startsWith('..')) return false;
+    let at = cwd;
+    for (const part of rel.split(path.sep)) {
+      at = path.join(at, part);
+      if (gitIgnored.has(at.toLowerCase())) return true;
+    }
+    return false;
+  };
   diffWatcher = chokidar
     .watch(cwd, {
-      ignored: isNoisyPath,
+      ignored: (p) => isNoisyPath(p) || ignoredByGit(p),
       ignoreInitial: true,
       depth: 8
     })
