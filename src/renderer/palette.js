@@ -62,6 +62,7 @@ function renderPalette() {
         kbd.textContent = keys;
         row.appendChild(kbd);
       }
+      row.addEventListener('mousemove', (ev) => hoverPalette(i, ev));
       row.addEventListener('mousedown', (ev) => {
         ev.preventDefault();
         choosePalette(i);
@@ -102,6 +103,21 @@ function choosePalette(i) {
   closePalette();
   if (source) source.choose(it);
   else runCommand(it.command, it.args);
+}
+
+// the row under the pointer becomes the selection, as the arrow keys would make
+// it. Only a real move counts: the list scrolling under a still pointer (arrow
+// keys past the fold) fires mousemove too, and must not pull the selection back.
+let lastPointer = null;
+function hoverPalette(i, ev) {
+  const at = ev.screenX + ',' + ev.screenY;
+  if (at === lastPointer) return;
+  lastPointer = at;
+  if (i === palette.index) return;
+  palette.index = i;
+  el.paletteList.querySelectorAll('.palette-item').forEach((row, j) =>
+    row.classList.toggle('selected', j === i)
+  );
 }
 
 function movePalette(delta) {
