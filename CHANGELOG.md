@@ -3,6 +3,38 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 1.0.3 — 2026-09-29
+
+### Added
+
+- **The diff panel shows files an agent creates before they are committed.**
+  A new file was listed by name only, and a new folder as a single line. Each
+  file the session made — anywhere inside a new folder too, or written into a
+  folder that was already untracked — is now drawn as an added file with its
+  contents, foldable like any other. Untracked files that were there before
+  the session stay out of Session and folded under Uncommitted.
+- **Right-click an agent** to mark a finished one unread again, copy its
+  resume command or folder path, open the folder in Explorer, or end the
+  session. Ending quits claude the way Ctrl+C does and closes its pane; the
+  session stays in the list to resume.
+
+### Fixed
+
+- **A resumed session's diff shows what it did before the resume.** Session
+  used to start from the moment the pane resumed, so the work that brought
+  you back was missing. Files it edited earlier — by tool or named in a shell
+  command — are now compared with where the repo stood when it began.
+- **The repo picked above the diff is kept** when you switch to another agent
+  and back, instead of falling back to the agent's own.
+- **Clicking a folder in the untracked list opens it in Explorer.** It said
+  "Open" and did nothing.
+- **File names with non-ASCII characters or spaces** show as themselves in the
+  diff rather than as escape codes, and open when clicked.
+- **Clicks in the diff open the right file** for an agent started in a
+  subfolder of its repo.
+- A diff's last line is no longer followed by a blank row, and a hunk without
+  a function name is labelled with its first line rather than its last.
+
 ## 1.0.2 — 2026-09-28
 
 ### Added

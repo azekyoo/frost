@@ -139,9 +139,12 @@ running and supervising Claude Code agents with live status and diff watching.
     starts writing to the same history
   - diff watch panel: live green/red diff of the agent's repo — **Session**
     (only what changed since the agent started, commits included, so edits you
-    had lying around beforehand stay out of it) or **Uncommitted**. Other repos
+    had lying around beforehand stay out of it) or **Uncommitted**. Files it
+    creates show with their contents before anything is committed. Other repos
     the agent changes — by editing files or from the shell — get a tab of their
     own beside its repo
+  - right-click an agent to mark it unread, copy its resume command or folder,
+    open the folder, or end the session
   - **it tells you when it needs you** — a Windows notification and a taskbar
     flash when an agent goes blocked or finishes, raised only while Frost is in
     the background; clicking the notification jumps to that agent
@@ -279,6 +282,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | Drag a tab | Sideways reorders; onto another window hands it over; anywhere else opens it in a new window |
 | Double-click a tab | Rename it (empty restores `directory · branch`) |
 | Right-click a tab | Rename, duplicate, move to a new window, close |
+| Right-click an agent | Mark unread, copy resume command or folder, open folder, end session |
 
 Every one of them is remappable in `config/keybindings.json`:
 
