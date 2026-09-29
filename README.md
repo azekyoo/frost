@@ -96,7 +96,7 @@ running and supervising Claude Code agents with live status and diff watching.
 - **Several windows** — `Ctrl+Shift+N`. Each window owns its own tabs and
   shells; the agent view stays unique across the app, so asking for it from a
   second window brings the one that has it to the front instead of splitting
-  your agents in two
+  your agents in two. It moves between windows like any tab, agents and all
 - **Opens where you're working** — `frost .` opens a tab in that directory, and
   the installer adds **Open Frost here** to the folder right-click menu. If Frost
   is already running you get a new tab, not a second window
@@ -139,8 +139,9 @@ running and supervising Claude Code agents with live status and diff watching.
     starts writing to the same history
   - diff watch panel: live green/red diff of the agent's repo — **Session**
     (only what changed since the agent started, commits included, so edits you
-    had lying around beforehand stay out of it) or **Uncommitted**. Files it
-    creates show with their contents before anything is committed. Other repos
+    had lying around beforehand stay out of it, and so does the work of another
+    agent in the same repo) or **Uncommitted**. Files it creates show with
+    their contents before anything is committed. Other repos
     the agent changes — by editing files or from the shell — get a tab of their
     own beside its repo
   - right-click an agent to mark it unread, copy its resume command or folder,

@@ -3,6 +3,28 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 1.0.4 — 2026-09-29
+
+### Added
+
+- **The agent tab moves between windows like any other tab.** Drag it off the
+  strip or onto another Frost window, or use Move to a new window. Its
+  terminals are handed over rather than restarted, and the agents come along
+  with their status, unread mark, the selected one, the diff mode and the
+  repo picked above the diff.
+
+### Fixed
+
+- **Two agents in the same repo no longer see each other's work in Session.**
+  While another agent is working in the repo, each one's Session keeps to the
+  files it touched itself — by edit or named in a shell command. Alone in a
+  repo it shows everything since it started, as before. Uncommitted still
+  shows the whole working tree.
+- **A resumed session no longer claims other sessions' new files.** 1.0.3
+  counted every untracked file modified since the session first began as its
+  own, so in a busy repo files another session made showed up in it. Before
+  the resume only the files it named count now.
+
 ## 1.0.3 — 2026-09-29
 
 ### Added
