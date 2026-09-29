@@ -276,7 +276,6 @@ function showDragGhost(ev) {
 // reordering here and opening a window of its own.
 function dragModeFor(y) {
   const d = tabDrag;
-  if (d.tab?.kind === 'agents') return 'reorder'; // one per app, nowhere to go
   if (d.target) return 'merge';
   const strip = el.tabstrip.getBoundingClientRect();
   return y > strip.bottom + DETACH_DISTANCE ? 'detach' : 'reorder';
@@ -387,13 +386,13 @@ async function endTabDrag(ev) {
   // those are throttled, so the final position — the only one that decides
   // anything — may never have been asked about. Asked even when the pointer is
   // at strip height, because another window's strip is at strip height too.
-  const hit = tab.kind === 'agents' ? null : await api.tabDropTarget({ x: ev.clientX, y: ev.clientY });
+  const hit = await api.tabDropTarget({ x: ev.clientX, y: ev.clientY });
   if (hit) {
     moveTabToWindow(tab, hit);
     return;
   }
   const strip = el.tabstrip.getBoundingClientRect();
-  const offStrip = tab.kind !== 'agents' && ev.clientY > strip.bottom + DETACH_DISTANCE;
+  const offStrip = ev.clientY > strip.bottom + DETACH_DISTANCE;
   if (offStrip) detachTab(tab);
   else settle();
 }
@@ -532,6 +531,7 @@ function serializeNodeForMove(node) {
 // pane the shell to claim plus the text that was on screen. Taking it hands the
 // shells over and closes the tab here — the caller decides where they go next.
 function takeTab(tab) {
+  if (tab.kind === 'agents') return takeAgentTab(tab);
   unzoom(tab);
   const payload = {
     title: tab.title,
@@ -543,13 +543,10 @@ function takeTab(tab) {
   return payload;
 }
 
+// The agent view is one per app, but that is about how many there are, not
+// where: it moves like any tab, and the window it lands in owns it.
 function movableTab(tab) {
-  if (!tab || !tab.root) return false;
-  if (tab.kind === 'agents') {
-    toast('The agent view is one per app — it stays in this window');
-    return false;
-  }
-  return true;
+  return Boolean(tab && (tab.root || tab.kind === 'agents'));
 }
 
 function detachTab(tab) {
@@ -592,6 +589,7 @@ async function buildAdoptedNode(saved, depth = 0) {
 // Runs in the window main opened to receive the tab, before anything else is
 // created — this window exists for this tab and nothing else.
 async function adoptTab(payload) {
+  if (payload.kind === 'agents') return adoptAgentTab(payload);
   const tab = {
     id: 'tab-' + ++tabCounter,
     title: '',
@@ -636,7 +634,7 @@ function openTabMenu(tab, x, y) {
     { label: 'Move to a new window', run: () => detachTab(tab) },
     { label: 'Close', run: () => closeTab(tab) }
   ];
-  if (tab.kind === 'agents') items.splice(1, 2); // neither applies to the agent view
+  if (tab.kind === 'agents') items.splice(1, 1); // one per app: no duplicate
   openMenu(items, x, y);
 }
 
