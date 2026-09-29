@@ -2045,11 +2045,15 @@ function earlyEdit(rec, j) {
   return Boolean(rec.earlyBase && rec.root) && (Date.parse(j?.timestamp) || 0) < rec.snapAt;
 }
 
-function addEarly(rec, abs) {
-  rec.earlyTouched ||= new Set();
+// rec[key]: a set of paths in the agent's own repo, from its top.
+// touchedMain is every file the session's transcript names, which is what
+// its Session diff keeps to while another agent works in the same repo;
+// earlyTouched the ones from before a resume.
+function addRel(rec, key, abs) {
+  rec[key] ||= new Set();
   const rel = path.relative(rec.root, abs).replace(/\\/g, '/');
-  if (rec.earlyTouched.has(rel)) return false;
-  rec.earlyTouched.add(rel);
+  if (rec[key].has(rel)) return false;
+  rec[key].add(rel);
   return true;
 }
 
@@ -2089,6 +2093,7 @@ async function scanTranscriptEdits(agentId) {
     s = rec.editScan = { sessionId: rec.sessionId, file, offset: 0, since: null };
   }
   rec.scanning = true;
+  if (rec.root === undefined) rec.root = rec.git ? repoRootOf(rec.cwd) : null;
   let changed = false;
   try {
     const fh = await fs.promises.open(s.file, 'r');
@@ -2149,9 +2154,11 @@ async function scanTranscriptEdits(agentId) {
           for (const c of content) {
             if (c?.type !== 'tool_use') continue;
             if (c.name === 'Bash') {
-              if (earlyEdit(rec, j)) {
+              if (rec.root) {
+                const early = earlyEdit(rec, j);
                 for (const p of namedFiles(String(c.input?.command || ''), at, rec.root)) {
-                  if (addEarly(rec, p)) changed = true;
+                  if (addRel(rec, 'touchedMain', p)) changed = true;
+                  if (early && addRel(rec, 'earlyTouched', p)) changed = true;
                 }
               }
               for (const p of bashPaths(String(c.input?.command || ''), at)) {
@@ -2168,8 +2175,9 @@ async function scanTranscriptEdits(agentId) {
             // it would never show. Named here, it is diffed from the
             // session's real start instead. Changes made by shell commands
             // then name no file and stay out of reach.
-            if (earlyEdit(rec, j) && within(rec.root, abs)) {
-              if (addEarly(rec, abs)) changed = true;
+            if (rec.root && within(rec.root, abs)) {
+              if (addRel(rec, 'touchedMain', abs)) changed = true;
+              if (earlyEdit(rec, j) && addRel(rec, 'earlyTouched', abs)) changed = true;
               continue;
             }
             if (addExtraRepo(rec, abs, { since })) changed = true;
@@ -2721,12 +2729,24 @@ const diffRoots = new Map(); // cwd -> its repo's top folder, which status paths
 async function splitUntracked(r, raw, mode) {
   const lines = raw.split(/\r?\n/).filter((l) => l.startsWith('??'));
   const hide = r.hideUntracked;
+  // The snapshot folds an untracked folder into one line, while a status
+  // limited to some files lists them one by one: a file is as old as the
+  // folder it sits in.
+  const hidden = hide && new Set([...hide].map((l) => unquotePath(l.slice(3).trim())));
+  const inSnapshot = (l) => {
+    const p = unquotePath(l.slice(3).trim());
+    if (hidden.has(p)) return true;
+    for (let i = p.indexOf('/'); i > -1 && i < p.length - 1; i = p.indexOf('/', i + 1)) {
+      if (hidden.has(p.slice(0, i + 1))) return true;
+    }
+    return false;
+  };
   const fresh = [];
   const old = [];
   for (const l of lines) {
     // no snapshot: files the transcript named are the session's; otherwise
     // nothing can be told apart but by mtime
-    const isOld = hide ? hide.has(l) : !r.only?.size;
+    const isOld = hide ? inSnapshot(l) : !r.only?.size;
     (isOld ? old : fresh).push(l);
   }
   if (!diffRoots.has(r.cwd)) diffRoots.set(r.cwd, repoRootOf(r.cwd) || r.cwd);
@@ -2822,6 +2842,25 @@ async function newFilePatch(cwd, f, st) {
   return text;
 }
 
+function recRoot(rec) {
+  if (rec.root === undefined) rec.root = rec.git ? repoRootOf(rec.cwd) : null;
+  return rec.root;
+}
+
+// The files this agent's Session should keep to, when another live agent is
+// in the same repo; null when it has the repo to itself (or has named more
+// files than a command line holds), and the whole diff is its own.
+function sharedFiles(rec) {
+  const root = rec && recRoot(rec);
+  if (!root) return null;
+  const other = [...agents.values()].some(
+    (o) => o !== rec && !o.exited && o.git && recRoot(o)?.toLowerCase() === root.toLowerCase()
+  );
+  if (!other) return null;
+  const list = [...(rec.touchedMain || [])];
+  return list.length <= 300 ? list : null;
+}
+
 // One git at a time: changes landing mid-run ask for a single rerun after it,
 // rather than stacking a git per burst.
 async function runDiff() {
@@ -2843,9 +2882,25 @@ async function runDiff() {
         // a repo found in the transcript shows only the files the session
         // touched; past a few hundred the command line would run out first
         const only = r.only?.size && r.only.size <= 300 ? ['--', ...[...r.only].map((p) => ':(literal)' + p)] : [];
+        // another live agent works in the same repo: this one's Session keeps
+        // to the files its own transcript names, or it would show the other's
+        // work as well. Uncommitted is the working tree, whoever changed it.
+        const mine = r.main && mode !== 'uncommitted' ? sharedFiles(r.agent) : null;
         let patch;
+        let raw;
         const early = mode !== 'uncommitted' && r.earlyBase && r.early?.size && r.early.size <= 300 ? [...r.early] : null;
-        if (early) {
+        if (mine) {
+          const spec = (list) => ['--', ...list.map((p) => ':(top,literal)' + p)];
+          const before = mine.filter((p) => early?.includes(p));
+          const after = mine.filter((p) => !early?.includes(p));
+          const [a, b, st] = await Promise.all([
+            before.length ? gitOut(r.cwd, ['diff', r.earlyBase, ...spec(before)], 16 * 1024 * 1024) : '',
+            after.length ? gitOut(r.cwd, ['diff', target, ...spec(after)], 16 * 1024 * 1024) : '',
+            mine.length ? gitOut(r.cwd, ['status', '--porcelain', '-uall', ...spec(mine)]) : ''
+          ]);
+          patch = a + b;
+          raw = st;
+        } else if (early) {
           // resumed: what it edited before this pane started, from its real
           // start; everything else from the snapshot, as usual
           const [before, rest] = await Promise.all([
@@ -2856,7 +2911,7 @@ async function runDiff() {
         } else {
           patch = await gitOut(r.cwd, ['diff', target, ...only], 16 * 1024 * 1024);
         }
-        const raw = await gitOut(r.cwd, ['status', '--porcelain', ...(only.length ? ['-uall'] : []), ...only]);
+        raw ??= await gitOut(r.cwd, ['status', '--porcelain', ...(only.length ? ['-uall'] : []), ...only]);
         // untracked before the session began: not its work
         const sinceStart = r.hideUntracked?.size
           ? raw.split(/\r?\n/).filter((l) => !r.hideUntracked.has(l)).join('\n')
@@ -2977,7 +3032,8 @@ function selectDiff(agentId, mode) {
       startedAt: rec.startedAt,
       early: rec.earlyTouched,
       earlyBase: rec.earlyBase,
-      realStart: rec.realStart
+      realStart: rec.realStart,
+      agent: rec
     });
   }
   for (const x of rec.extraRepos?.values() || []) {
