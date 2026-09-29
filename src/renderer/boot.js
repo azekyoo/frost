@@ -68,6 +68,13 @@ api.onPtyExit(({ id }) => {
   }
   const node = panesByPty.get(id);
   if (!node) return;
+  // a docked shell that exits closes, like a pane in an ordinary tab
+  const dockTab = dockHostOf(node);
+  if (dockTab) {
+    panesByPty.delete(id);
+    closeDockLeaf(dockTab, node, { kill: false });
+    return;
+  }
   // panes hosted in an agent-tab center stay as frozen output; others close
   const inAgentCenter = agentTabs().some((t) => t.centerLeaves.has(node));
   if (inAgentCenter) return;

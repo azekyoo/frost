@@ -107,7 +107,13 @@ function cycleTab(dir) {
 function activePane() {
   const tab = state.activeTab;
   if (!tab) return null;
-  if (tab.kind === 'agents') return [...tab.centerLeaves].find((l) => l.el.style.display !== 'none') || null;
+  if (tab.kind === 'agents') {
+    // the docked shell, while it has the keyboard: Ctrl+F, paste and the rest
+    // act on the terminal being typed into
+    const dock = tab.dockShown;
+    if (dock && !tab.els.dock.hidden && tab.dockTyping) return dock;
+    return [...tab.centerLeaves].find((l) => l.el.style.display !== 'none') || null;
+  }
   return tab.activePane;
 }
 
