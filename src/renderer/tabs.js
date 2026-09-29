@@ -637,10 +637,19 @@ function openTabMenu(tab, x, y) {
     { label: 'Close', run: () => closeTab(tab) }
   ];
   if (tab.kind === 'agents') items.splice(1, 2); // neither applies to the agent view
+  openMenu(items, x, y);
+}
+
+// The one floating menu: a tab's, or an agent's in the rail. `sep` draws a
+// divider before an item; `disabled` shows it greyed out with its `title`
+// saying why.
+function openMenu(items, x, y) {
   el.tabMenu.replaceChildren(
-    ...items.map(({ label, run }) => {
+    ...items.flatMap(({ label, run, sep, disabled, title }) => {
       const item = document.createElement('button');
       item.className = 'menu-item';
+      item.disabled = Boolean(disabled);
+      if (title) item.title = title;
       const name = document.createElement('span');
       name.textContent = label;
       item.appendChild(name);
@@ -648,7 +657,10 @@ function openTabMenu(tab, x, y) {
         closeTabMenu();
         run();
       });
-      return item;
+      if (!sep) return [item];
+      const line = document.createElement('div');
+      line.className = 'menu-sep';
+      return [line, item];
     })
   );
   el.tabMenu.classList.add('open');

@@ -464,6 +464,10 @@ function renderAgentList(tab) {
       .filter(Boolean)
       .join(' · ');
     row.addEventListener('click', () => selectAgent(tab, agent.id));
+    row.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      openAgentMenu(tab, agent, ev.clientX, ev.clientY);
+    });
     rows.push(row);
   }
   tab.els.agentsList.replaceChildren(...rows);
@@ -474,6 +478,115 @@ function renderAgentList(tab) {
     tab.els.agentsList.appendChild(p);
   }
   renderSessionList(tab);
+}
+
+function copyText(text, what) {
+  navigator.clipboard.writeText(text).then(
+    () => toast(`Copied ${what}`),
+    () => toast(`Couldn't copy ${what}`, { error: true })
+  );
+}
+
+function openAgentMenu(tab, agent, x, y) {
+  const done = agent.status === 'done';
+  openMenu(
+    [
+      {
+        label: 'Mark as unread',
+        // bold is how a finished agent says it hasn't been looked at; one still
+        // working has nothing to be unread yet
+        disabled: !done || agent.unseen,
+        title: done ? '' : 'Only a finished agent can be unread',
+        run: () => {
+          agent.unseen = true;
+          renderAgentLists();
+        }
+      },
+      {
+        label: 'Copy resume command',
+        disabled: !agent.sessionId,
+        run: () => copyText(`claude --resume ${agent.sessionId}`, 'resume command')
+      },
+      {
+        label: 'Copy folder path',
+        sep: true,
+        disabled: !agent.cwd,
+        run: () => copyText(agent.cwd, 'folder path')
+      },
+      {
+        label: 'Open folder in Explorer',
+        disabled: !agent.cwd,
+        run: () =>
+          api.openPath({ cwd: agent.cwd, target: '.' }).then((res) => {
+            if (res?.error && !res.opened) toast(res.error, { error: true });
+          })
+      },
+      { label: 'End session', sep: true, run: () => endAgentSession(tab, agent) }
+    ],
+    x,
+    y
+  );
+}
+
+// Quits claude the way you would by hand, so it ends cleanly and its session
+// stays resumable from the list below, then closes the pane it ran in. Ctrl+C
+// is sent three times: mid-turn the first only interrupts, and the next two
+// are the double press that quits. What lands after claude has gone reaches
+// the shell, which is closed anyway. A claude that doesn't quit is killed with
+// the pane — the transcript is on disk already.
+async function endAgentSession(tab, agent) {
+  if (agent.status === 'working') {
+    const ok = await confirmModal({
+      title: `End "${agent.name}"?`,
+      detail: 'It is in the middle of a turn, which will be interrupted. The session can be resumed from the list afterwards.',
+      confirmLabel: 'End session',
+      cancelLabel: 'Cancel',
+      focusCancel: true
+    });
+    if (!ok) return;
+  }
+  const leaf = agent.leaf;
+  const ptyId = agent.ptyId;
+  if (ptyId) {
+    for (let i = 0; i < 3; i++) {
+      if (!globalAgents.has(agent.id)) break;
+      api.ptyInput(ptyId, '\x03');
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    // up to a few seconds for it to say goodbye
+    for (let t = 0; t < 20 && globalAgents.has(agent.id); t++) await new Promise((r) => setTimeout(r, 150));
+  }
+  if (leaf) closeAgentPane(leaf);
+  refreshSessions();
+}
+
+// A pane in the agent view's center goes, and another is shown in its place;
+// one in an ordinary tab closes like any pane.
+function closeAgentPane(leaf) {
+  const host = agentTabs().find((t) => t.centerLeaves.has(leaf));
+  if (!host) {
+    if (tabOfPane(leaf)) removePane(leaf);
+    return;
+  }
+  const wasShown = leaf.el.style.display !== 'none';
+  host.centerLeaves.delete(leaf);
+  destroyLeaf(leaf);
+  const agent = [...globalAgents.values()].find((a) => a.leaf === leaf);
+  if (agent) {
+    globalAgents.delete(agent.id);
+    agentsByPty.delete(agent.ptyId);
+  }
+  if (agent && host.selected === agent.id) host.selected = null;
+  const next = [...host.centerLeaves].pop();
+  if (!next) {
+    host.els.empty.style.display = '';
+    host.selected = null;
+  } else if (wasShown) {
+    const shown = [...globalAgents.values()].find((a) => a.leaf === next);
+    if (shown) selectAgent(host, shown.id);
+    else setCenterVisible(host, next);
+  }
+  renderAgentLists();
 }
 
 // ---------- sessions ----------

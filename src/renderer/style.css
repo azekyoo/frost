@@ -356,6 +356,18 @@ body.glass #glass-tint {
   color: var(--fg);
 }
 
+.menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--hairline);
+}
+
 .menu-item em {
   font-style: normal;
   font-size: 10px;
