@@ -2117,18 +2117,17 @@ async function scanTranscriptEdits(agentId) {
             try {
               const t = Date.parse(JSON.parse(line).timestamp);
               if (t) s.since = t;
-              // resumed: the snapshot is from when this pane started, so what
-              // the session made before then reads as lying around already.
-              // Untracked files modified since its real start are its own.
-              if (t && rec.startedAt && t < rec.startedAt) {
-                rec.startedAt = t;
-                changed = true;
-              }
-              // and its own edits to tracked files from then are compared
-              // with where HEAD was at its real start (see earlyTouched)
+              // Resumed: the snapshot is from when this pane started, so what
+              // the session did before then reads as lying around already.
+              // Files the transcript names from then are compared with where
+              // HEAD was at its real start (see earlyTouched), and untracked
+              // ones count if modified since it. Only named ones: mtime says
+              // when a file changed, not which session changed it.
               if (t && rec.git && rec.snapAt && t < rec.snapAt) {
                 if (rec.root === undefined) rec.root = repoRootOf(rec.cwd);
                 if (rec.root) rec.earlyBase = commitAt(rec.root, t) || null;
+                rec.realStart = t;
+                changed = true;
               }
             } catch {}
           }
@@ -2758,10 +2757,13 @@ async function splitUntracked(r, raw, mode) {
   const mine = [];
   await Promise.all(
     candidates.map(async ([f, known]) => {
-      if (!known && (since === Infinity || ++statted > UNTRACKED_STAT_MAX)) return;
+      // named by the transcript from before a resume: its own if changed
+      // since the session really began, not just since the pane did
+      const from = r.realStart && r.early?.has(f) ? r.realStart : since;
+      if (!known && (from === Infinity || ++statted > UNTRACKED_STAT_MAX)) return;
       try {
         const st = await fs.promises.stat(path.join(root, f));
-        if (!st.isFile() || (!known && st.mtimeMs < since)) return;
+        if (!st.isFile() || (!known && st.mtimeMs < from)) return;
         mine.push({ f, st });
       } catch {}
     })
@@ -2974,7 +2976,8 @@ function selectDiff(agentId, mode) {
       hideUntracked: rec.untrackedAtStart,
       startedAt: rec.startedAt,
       early: rec.earlyTouched,
-      earlyBase: rec.earlyBase
+      earlyBase: rec.earlyBase,
+      realStart: rec.realStart
     });
   }
   for (const x of rec.extraRepos?.values() || []) {
