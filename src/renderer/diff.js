@@ -32,6 +32,9 @@ function parsePatch(patch) {
     // the patch's closing newline, which would otherwise make the last file
     // look changed whenever another is listed after it
     if (line) file.raw.push(line);
+    // a line inside a hunk always has its +, - or space, so an empty one is
+    // only that closing newline — read as context, it drew a blank last row
+    if (!line) continue;
     if (line.startsWith('diff --git')) continue;
     if (line.startsWith('new file')) {
       file.status = 'added';
@@ -57,7 +60,9 @@ function parsePatch(patch) {
     }
     if (line.startsWith('@@')) {
       const m = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)$/.exec(line);
-      hunk = { context: m ? m[3].trim() : '', oldNo: m ? +m[1] : 0, newNo: m ? +m[2] : 0, lines: [] };
+      const newNo = m ? +m[2] : 0;
+      // start: newNo counts on through the lines, and the label wants where it began
+      hunk = { context: m ? m[3].trim() : '', oldNo: m ? +m[1] : 0, newNo, start: newNo, lines: [] };
       file.hunks.push(hunk);
       continue;
     }
@@ -245,7 +250,7 @@ function renderDiffFile(tab, file) {
   for (const hunk of file.hunks) {
     const hd = document.createElement('div');
     hd.className = 'diff-line hunk';
-    hd.textContent = hunk.context || `line ${hunk.newNo}`;
+    hd.textContent = hunk.context || `line ${hunk.start}`;
     (drawn < DIFF_LINE_CAP ? body : overflow).appendChild(hd);
     const pairs = pairRuns(hunk.lines);
     const partner = new Map();
@@ -356,6 +361,13 @@ function renderUntracked(tab, untracked, cwd = tab.diffCwd, id = '\0untracked') 
   const el = document.createElement('div');
   el.className = 'diff-file';
   el.dataset.path = id;
+  // what the session made is drawn as new files above; this is what was lying
+  // around already, so it starts folded — opened once, it stays open
+  tab.diffUntrackedSeen ||= new Set();
+  if (!tab.diffUntrackedSeen.has(id)) {
+    tab.diffUntrackedSeen.add(id);
+    tab.diffCollapsed.add(id);
+  }
   if (tab.diffCollapsed.has(id)) el.classList.add('collapsed');
   const head = document.createElement('div');
   head.className = 'diff-file-head';
@@ -386,7 +398,11 @@ function renderUntracked(tab, untracked, cwd = tab.diffCwd, id = '\0untracked') 
     row.appendChild(text);
     if (cwd) {
       row.title = `Open ${f}`;
-      row.addEventListener('click', () => api.openPath({ cwd, target: f }));
+      row.addEventListener('click', () =>
+        api.openPath({ cwd, target: f }).then((res) => {
+          if (res?.error && !res.opened) toast(res.error, { error: true });
+        })
+      );
     }
     body.appendChild(row);
   }
@@ -420,13 +436,16 @@ function renderDiffRepos(tab) {
   const m = tab.diffMsg;
   const row = tab.els.diffRepos;
   const extra = m?.extra || [];
+  // the repo last picked for this agent, kept across switching to another
+  // agent and back; shown whenever that repo is in the diff, which it may not
+  // be yet right after switching back
+  const want = tab.diffRepoPick?.get(tab.diffKey) ?? null;
+  tab.diffRepo = want && extra.some((x) => x.cwd === want) ? want : null;
   if (!extra.length) {
-    tab.diffRepo = null;
     row.hidden = true;
     row.replaceChildren();
     return;
   }
-  if (tab.diffRepo && !extra.some((x) => x.cwd === tab.diffRepo)) tab.diffRepo = null;
   const own = tab.diffCwd || '';
   const chips = [
     { cwd: null, name: own.split(/[\\/]/).pop() || 'this folder', title: own, n: m.nogit ? null : diffCount(m.patch, m.status) },
@@ -450,7 +469,7 @@ function renderDiffRepos(tab) {
       }
       b.addEventListener('click', () => {
         if (tab.diffRepo === c.cwd) return;
-        tab.diffRepo = c.cwd;
+        (tab.diffRepoPick ||= new Map()).set(tab.diffKey, c.cwd);
         renderDiffRepos(tab);
         renderDiffView(tab);
       });
@@ -465,18 +484,20 @@ function renderDiffView(tab) {
   if (!m) return;
   const x = tab.diffRepo && (m.extra || []).find((r) => r.cwd === tab.diffRepo);
   if (x) {
-    renderDiff(tab, x.patch, x.status, x.cwd, x.cwd + '\n');
+    renderDiff(tab, x.patch, x.status, x.root || x.cwd, x.cwd + '\n');
   } else if (m.nogit) {
     tab.diffFileEls = null;
     tab.els.diffSummary.textContent = '';
     tab.els.diffBody.innerHTML = '<p class="hint">Not a git repository — no diff available</p>';
   } else {
-    renderDiff(tab, m.patch, m.status);
+    // paths in a patch are from the repo's top, which the agent's folder
+    // need not be
+    renderDiff(tab, m.patch, m.status, m.root || tab.diffCwd);
   }
 }
 
 api.onAgentDiff((msg) => {
-  const { key, patch, status, nogit, extra = [] } = msg;
+  const { key, patch, status, root, nogit, extra = [] } = msg;
   for (const tab of agentTabs()) {
     if (tab.diffKey !== key) continue;
     // most file events leave the diff as it was: a save of identical content,
@@ -487,7 +508,7 @@ api.onAgentDiff((msg) => {
     // another agent's files are never this one's, even at the same path
     if (!tab.diffShown?.startsWith(key + '\0')) tab.diffFileEls = null;
     tab.diffShown = shown;
-    tab.diffMsg = { patch, status, nogit, extra };
+    tab.diffMsg = { patch, status, root, nogit, extra };
     renderDiffRepos(tab);
     renderDiffView(tab);
   }

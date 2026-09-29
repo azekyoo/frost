@@ -1649,9 +1649,37 @@ function gitInfo(cwd) {
 // and are remembered by name instead, to be left out of the list. The
 // tree is built in a throwaway index, so the real index and files are never
 // touched; it hangs off no ref, and git's gc collects it in time.
+// git spells a path with non-ASCII in it — 音.txt — as octal escapes in
+// quotes unless told not to. Names with spaces or quotes stay quoted either
+// way; unquotePath reads those. The same setting has to be used everywhere
+// status lines are compared, or the snapshot and the diff disagree.
+const UTF8_PATHS = ['-c', 'core.quotePath=false'];
+
+function unquotePath(p) {
+  if (!p.startsWith('"') || !p.endsWith('"')) return p;
+  const esc = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+  const body = Buffer.from(p.slice(1, -1), 'utf8');
+  const bytes = [];
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] !== 92) {
+      bytes.push(body[i]);
+      continue;
+    }
+    const c = String.fromCharCode(body[i + 1]);
+    if (/[0-7]/.test(c)) {
+      bytes.push(parseInt(body.toString('latin1', i + 1, i + 4), 8));
+      i += 3;
+    } else {
+      bytes.push(esc[c] ?? body[i + 1]);
+      i += 1;
+    }
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
 function snapshotBase(cwd, head) {
   const untracked = new Set();
-  const st = spawnSync('git', ['-C', cwd, 'status', '--porcelain'], { encoding: 'utf8' });
+  const st = spawnSync('git', ['-C', cwd, ...UTF8_PATHS, 'status', '--porcelain'], { encoding: 'utf8' });
   for (const line of (st.stdout || '').split(/\r?\n/)) {
     if (line.startsWith('??')) untracked.add(line);
   }
@@ -1693,7 +1721,7 @@ function gitRun(cwd, args, env) {
 
 async function snapshotBaseAsync(cwd, head) {
   const untracked = new Set();
-  const st = await gitRun(cwd, ['status', '--porcelain']);
+  const st = await gitRun(cwd, [...UTF8_PATHS, 'status', '--porcelain']);
   for (const line of st.stdout.split(/\r?\n/)) {
     if (line.startsWith('??')) untracked.add(line);
   }
@@ -1726,6 +1754,8 @@ function registerDetected(agentId, rawCwd) {
     cwd,
     baseCommit: snap.base,
     untrackedAtStart: snap.untracked,
+    startedAt: Date.now(),
+    snapAt: Date.now(),
     git: info.git,
     lastData: Date.now(),
     lastInput: 0,
@@ -1983,7 +2013,7 @@ function addExtraRepo(rec, p, { since = null, bash = false } = {}) {
   if (!root) return false; // outside any repo: nothing git could diff
   const info = gitInfo(root);
   if (!info.git) return false;
-  const entry = { cwd: root, name: path.basename(root), branch: info.branch, quiet: bash };
+  const entry = { cwd: root, name: path.basename(root), branch: info.branch, quiet: bash, startedAt: since || Date.now() };
   if (since) {
     entry.base = commitAt(root, since) || info.baseCommit;
     entry.untrackedAtStart = null;
@@ -2008,6 +2038,36 @@ function extraRepoFor(rec, p) {
 }
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+
+// A transcript line from before this pane started, in a session whose own
+// repo is to be diffed from its real start (a resume).
+function earlyEdit(rec, j) {
+  return Boolean(rec.earlyBase && rec.root) && (Date.parse(j?.timestamp) || 0) < rec.snapAt;
+}
+
+function addEarly(rec, abs) {
+  rec.earlyTouched ||= new Set();
+  const rel = path.relative(rec.root, abs).replace(/\\/g, '/');
+  if (rec.earlyTouched.has(rel)) return false;
+  rec.earlyTouched.add(rel);
+  return true;
+}
+
+// Files in the repo a shell command names — a script that rewrites
+// src/app.js names it as a plain word, and no tool call says so. Reads are
+// caught too, which costs nothing: a file read and left alone has no diff.
+function namedFiles(cmd, cwd, root) {
+  const out = new Set();
+  for (const m of cmd.matchAll(/[\w.~:\\/-]*[\w-]\.[A-Za-z0-9]{1,8}\b/g)) {
+    const word = m[0].replace(/^\/([a-zA-Z])\//, '$1:/');
+    const abs = canonPath(path.resolve(cwd, word));
+    if (!within(root, abs) || out.has(abs)) continue;
+    try {
+      if (fs.statSync(abs).isFile()) out.add(abs);
+    } catch {}
+  }
+  return out;
+}
 
 // Edits the hook never saw — made before this pane's claude started, as in a
 // resumed session — are still in the transcript. Read from where the last
@@ -2057,6 +2117,19 @@ async function scanTranscriptEdits(agentId) {
             try {
               const t = Date.parse(JSON.parse(line).timestamp);
               if (t) s.since = t;
+              // resumed: the snapshot is from when this pane started, so what
+              // the session made before then reads as lying around already.
+              // Untracked files modified since its real start are its own.
+              if (t && rec.startedAt && t < rec.startedAt) {
+                rec.startedAt = t;
+                changed = true;
+              }
+              // and its own edits to tracked files from then are compared
+              // with where HEAD was at its real start (see earlyTouched)
+              if (t && rec.git && rec.snapAt && t < rec.snapAt) {
+                if (rec.root === undefined) rec.root = repoRootOf(rec.cwd);
+                if (rec.root) rec.earlyBase = commitAt(rec.root, t) || null;
+              }
             } catch {}
           }
           let j = null;
@@ -2077,6 +2150,11 @@ async function scanTranscriptEdits(agentId) {
           for (const c of content) {
             if (c?.type !== 'tool_use') continue;
             if (c.name === 'Bash') {
+              if (earlyEdit(rec, j)) {
+                for (const p of namedFiles(String(c.input?.command || ''), at, rec.root)) {
+                  if (addEarly(rec, p)) changed = true;
+                }
+              }
               for (const p of bashPaths(String(c.input?.command || ''), at)) {
                 if (addExtraRepo(rec, canonPath(p), { since, bash: true })) changed = true;
               }
@@ -2085,7 +2163,17 @@ async function scanTranscriptEdits(agentId) {
             if (!EDIT_TOOLS.has(c.name)) continue;
             const target = c.input?.file_path || c.input?.notebook_path;
             if (!target) continue;
-            if (addExtraRepo(rec, canonPath(path.resolve(at, target)), { since })) changed = true;
+            const abs = canonPath(path.resolve(at, target));
+            // An edit in its own repo from before this pane started, as in a
+            // resumed session: the snapshot taken then already holds it, so
+            // it would never show. Named here, it is diffed from the
+            // session's real start instead. Changes made by shell commands
+            // then name no file and stay out of reach.
+            if (earlyEdit(rec, j) && within(rec.root, abs)) {
+              if (addEarly(rec, abs)) changed = true;
+              continue;
+            }
+            if (addExtraRepo(rec, abs, { since })) changed = true;
           }
         }
         s.offset += pos;
@@ -2304,6 +2392,8 @@ ipcMain.handle('agents:spawn', (_e, { spacePath }) => {
     cwd,
     baseCommit: snap.base,
     untrackedAtStart: snap.untracked,
+    startedAt: Date.now(),
+    snapAt: Date.now(),
     git: info.git,
     lastData: Date.now(),
     lastInput: 0,
@@ -2598,7 +2688,7 @@ const isNoisyPath = (p) => NOISY_RE.test(p) || inConfigDir(p);
 // it on a big repo holds every terminal's output and keystrokes until it ends.
 function gitOut(cwd, args, maxBuffer = 1024 * 1024) {
   return new Promise((resolve) => {
-    execFile('git', ['-C', cwd, ...args], { encoding: 'utf8', maxBuffer, windowsHide: true }, (_err, stdout) =>
+    execFile('git', ['-C', cwd, ...UTF8_PATHS, ...args], { encoding: 'utf8', maxBuffer, windowsHide: true }, (_err, stdout) =>
       resolve(stdout || '')
     );
   });
@@ -2612,6 +2702,123 @@ let diffSel = null; // { agentId, mode } — what the panel last asked for
 const diffWatchers = new Map(); // cwd -> watcher, or null while one is being started
 let diffRunning = false;
 let diffAgain = false;
+
+const UNTRACKED_CARDS = 200; // shown as new files; past it, listed by name
+const UNTRACKED_FILE_MAX = 512 * 1024; // bigger than this is listed by name
+const UNTRACKED_STAT_MAX = 5000; // pre-session untracked files checked for edits
+const untrackedText = new Map(); // abs path -> { mtimeMs, size, text }
+const diffRoots = new Map(); // cwd -> its repo's top folder, which status paths are relative to
+
+// A new file the session made is its work even before anyone runs git add, but
+// git diff can't see it. So untracked files are split: the session's own are
+// turned into "new file" patches, drawn like any added file, and the rest stay
+// the folded list they were. The session's own are the ones not there at the
+// start, whatever lies inside a folder that wasn't, and any older untracked
+// file modified since the session began — git folds a whole untracked folder
+// into one line, and a file written into a folder that was already untracked
+// hides behind that line otherwise. mtime rather than a watcher: the watcher
+// only runs while the panel shows this agent, and would miss the rest.
+// Returns the patch to append and the status lines left for the folded list.
+async function splitUntracked(r, raw, mode) {
+  const lines = raw.split(/\r?\n/).filter((l) => l.startsWith('??'));
+  const hide = r.hideUntracked;
+  const fresh = [];
+  const old = [];
+  for (const l of lines) {
+    // no snapshot: files the transcript named are the session's; otherwise
+    // nothing can be told apart but by mtime
+    const isOld = hide ? hide.has(l) : !r.only?.size;
+    (isOld ? old : fresh).push(l);
+  }
+  if (!diffRoots.has(r.cwd)) diffRoots.set(r.cwd, repoRootOf(r.cwd) || r.cwd);
+  const root = diffRoots.get(r.cwd);
+  const rel = (l) => unquotePath(l.slice(3).trim());
+  const dirs = [...fresh, ...old].filter((l) => rel(l).endsWith('/'));
+  const freshDirs = new Set(fresh.filter((l) => dirs.includes(l)).map(rel));
+  let inDirs = [];
+  if (dirs.length && dirs.length <= 300) {
+    const out = await gitOut(
+      root,
+      ['ls-files', '--others', '--exclude-standard', '--', ...dirs.map((l) => ':(literal)' + rel(l))],
+      16 * 1024 * 1024
+    );
+    inDirs = out.split(/\r?\n/).filter(Boolean).map(unquotePath);
+  }
+  const underFresh = (f) => {
+    for (const d of freshDirs) if (f.startsWith(d)) return true;
+    return false;
+  };
+  const candidates = []; // [rel, known to be the session's]
+  for (const l of fresh) if (!rel(l).endsWith('/')) candidates.push([rel(l), true]);
+  for (const f of inDirs) candidates.push([f, underFresh(f)]);
+  for (const l of old) if (!rel(l).endsWith('/')) candidates.push([rel(l), false]);
+
+  const since = r.startedAt || Infinity;
+  let statted = 0;
+  const mine = [];
+  await Promise.all(
+    candidates.map(async ([f, known]) => {
+      if (!known && (since === Infinity || ++statted > UNTRACKED_STAT_MAX)) return;
+      try {
+        const st = await fs.promises.stat(path.join(root, f));
+        if (!st.isFile() || (!known && st.mtimeMs < since)) return;
+        mine.push({ f, st });
+      } catch {}
+    })
+  );
+  mine.sort((a, b) => (a.f < b.f ? -1 : 1));
+
+  const cards = [];
+  const byName = [];
+  for (const m of mine) {
+    if (cards.length < UNTRACKED_CARDS && m.st.size <= UNTRACKED_FILE_MAX) cards.push(m);
+    else byName.push('?? ' + m.f);
+  }
+  const patches = await Promise.all(cards.map((m) => newFilePatch(root, m.f, m.st)));
+
+  // the session view never listed what was untracked before it; the working
+  // tree view does, folded, less what was drawn above
+  const drawn = new Set(cards.map((m) => m.f));
+  const keep = (l) => !drawn.has(rel(l));
+  const rest = [...(mode === 'uncommitted' || !hide ? old.filter(keep) : []), ...fresh.filter((l) => keep(l) && !freshDirs.has(rel(l)))];
+  // a new folder whose files didn't all fit is still worth pointing at
+  for (const d of freshDirs) {
+    if (!cards.some((m) => m.f.startsWith(d))) rest.push('?? ' + d);
+  }
+  // unquoted for the list, whose rows open the file by this name
+  const listed = [...rest.map((l) => '?? ' + rel(l)), ...byName];
+  return { patch: patches.join(''), status: [...new Set(listed)].join('\n'), root };
+}
+
+// What git diff --no-index /dev/null <file> prints, without a git per file:
+// a session can make a few hundred, and this runs on every save.
+async function newFilePatch(cwd, f, st) {
+  const abs = path.join(cwd, f);
+  const hit = untrackedText.get(abs);
+  let text;
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+    text = hit.text;
+  } else {
+    let buf;
+    try {
+      buf = await fs.promises.readFile(abs);
+    } catch {
+      return '';
+    }
+    const head = `diff --git a/${f} b/${f}\nnew file mode 100644\n--- /dev/null\n+++ b/${f}\n`;
+    // git's own test for binary: a NUL in the first 8000 bytes
+    if (buf.subarray(0, 8000).includes(0)) {
+      text = head + `Binary files /dev/null and b/${f} differ\n`;
+    } else {
+      const body = buf.toString('utf8').split(/\r?\n/);
+      if (body[body.length - 1] === '') body.pop();
+      text = head + (body.length ? `@@ -0,0 +1,${body.length} @@\n` + body.map((l) => '+' + l).join('\n') + '\n' : '');
+    }
+    if (untrackedText.size > 2000) untrackedText.clear();
+    untrackedText.set(abs, { mtimeMs: st.mtimeMs, size: st.size, text });
+  }
+  return text;
+}
 
 // One git at a time: changes landing mid-run ask for a single rerun after it,
 // rather than stacking a git per burst.
@@ -2634,31 +2841,44 @@ async function runDiff() {
         // a repo found in the transcript shows only the files the session
         // touched; past a few hundred the command line would run out first
         const only = r.only?.size && r.only.size <= 300 ? ['--', ...[...r.only].map((p) => ':(literal)' + p)] : [];
-        const patch = await gitOut(r.cwd, ['diff', target, ...only], 16 * 1024 * 1024);
+        let patch;
+        const early = mode !== 'uncommitted' && r.earlyBase && r.early?.size && r.early.size <= 300 ? [...r.early] : null;
+        if (early) {
+          // resumed: what it edited before this pane started, from its real
+          // start; everything else from the snapshot, as usual
+          const [before, rest] = await Promise.all([
+            gitOut(r.cwd, ['diff', r.earlyBase, '--', ...early.map((p) => ':(top,literal)' + p)], 16 * 1024 * 1024),
+            gitOut(r.cwd, ['diff', target, '--', ...early.map((p) => ':(top,exclude,literal)' + p)], 16 * 1024 * 1024)
+          ]);
+          patch = before + rest;
+        } else {
+          patch = await gitOut(r.cwd, ['diff', target, ...only], 16 * 1024 * 1024);
+        }
         const raw = await gitOut(r.cwd, ['status', '--porcelain', ...(only.length ? ['-uall'] : []), ...only]);
         // untracked before the session began: not its work
         const sinceStart = r.hideUntracked?.size
           ? raw.split(/\r?\n/).filter((l) => !r.hideUntracked.has(l)).join('\n')
           : raw;
-        const status = mode === 'uncommitted' ? raw : sinceStart;
+        const split = await splitUntracked(r, raw, mode);
+        const status = [...raw.split(/\r?\n/).filter((l) => l && !l.startsWith('??')), split.status].filter(Boolean).join('\n');
         // a repo a shell command only pointed at shows once the session has
         // changed something in it, and stays from then on
         const src = r.src;
         if (src?.quiet) {
           const sessionPatch = mode === 'uncommitted' ? await gitOut(r.cwd, ['diff', '--name-only', r.base]) : patch;
-          if (sessionPatch.trim() || sinceStart.trim()) {
+          if (sessionPatch.trim() || sinceStart.trim() || split.patch) {
             src.quiet = false;
             surfaced = true;
           }
         }
-        return { main: r.main, cwd: r.cwd, name: r.name, branch: r.branch, patch, status, quiet: src?.quiet };
+        return { main: r.main, cwd: r.cwd, name: r.name, branch: r.branch, patch: patch + split.patch, status, root: split.root, quiet: src?.quiet };
       })
     );
     // switched agent or mode while git ran: this answer is for a view that's gone
     if (view !== diffView) return;
     const main = results.find((r) => r.main);
     const extra = results.filter((r) => !r.main && !r.quiet).map(({ main: _m, quiet: _q, ...r }) => r);
-    broadcast('agent:diff', { key, patch: main?.patch || '', status: main?.status || '', nogit: !main, extra });
+    broadcast('agent:diff', { key, patch: main?.patch || '', status: main?.status || '', root: main?.root, nogit: !main, extra });
     if (surfaced) watchDiff(view); // now worth a watcher of its own
   } finally {
     diffRunning = false;
@@ -2746,7 +2966,17 @@ function selectDiff(agentId, mode) {
     return;
   }
   const repos = [];
-  if (rec.git) repos.push({ main: true, cwd: rec.cwd, base: rec.baseCommit, hideUntracked: rec.untrackedAtStart });
+  if (rec.git) {
+    repos.push({
+      main: true,
+      cwd: rec.cwd,
+      base: rec.baseCommit,
+      hideUntracked: rec.untrackedAtStart,
+      startedAt: rec.startedAt,
+      early: rec.earlyTouched,
+      earlyBase: rec.earlyBase
+    });
+  }
   for (const x of rec.extraRepos?.values() || []) {
     if (x.ready) continue; // its snapshot is still being taken
     repos.push({
@@ -2755,6 +2985,7 @@ function selectDiff(agentId, mode) {
       branch: x.branch,
       base: x.base,
       hideUntracked: x.untrackedAtStart,
+      startedAt: x.startedAt,
       only: x.touched,
       src: x
     });
@@ -3075,9 +3306,21 @@ ipcMain.handle('paths:resolve', (_e, { cwd, candidates }) => {
   return out;
 });
 
-ipcMain.handle('paths:open', (_e, { cwd, target, line, column }) => {
+ipcMain.handle('paths:open', async (_e, { cwd, target, line, column }) => {
   const abs = resolveTarget(cwd, target);
-  if (!abs) return { error: 'not found: ' + target };
+  if (!abs) {
+    // a folder git lists as one untracked entry: no editor opens that, Explorer
+    // does. resolveTarget stays files-only, since it also decides which words
+    // in terminal output become links.
+    const dir = typeof target === 'string' && !/[\0<>|"*?&^%`$]/.test(target) && cwd ? path.resolve(cwd, target) : null;
+    try {
+      if (dir && fs.statSync(dir).isDirectory()) {
+        const err = await shell.openPath(dir);
+        return err ? { error: err } : { opened: 'explorer' };
+      }
+    } catch {}
+    return { error: 'not found: ' + target };
+  }
   const editor = resolveEditor();
   if (!editor) {
     // no editor on PATH: let Windows decide what opens it
