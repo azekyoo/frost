@@ -1940,6 +1940,141 @@ body.frameless #win-controls {
   background: rgba(32, 224, 112, 0.2);
 }
 
+/* Review comments. The + sits over the sign column and shows on hover, so the
+   diff reads as before until you reach for it. */
+.diff-line {
+  position: relative;
+}
+
+.dl-comment {
+  position: absolute;
+  left: 68px;
+  top: 1px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #0b0f1a;
+  font: 600 12px/16px var(--font);
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.1s var(--ease), transform 0.12s var(--ease);
+}
+
+.diff-line:hover .dl-comment,
+.dl-comment:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.diff-line.hunk .dl-comment {
+  display: none;
+}
+
+.diff-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 3px 8px 5px 50px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.diff-note.editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.diff-note textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 40px;
+  padding: 5px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--fg);
+  font: 11px/1.5 var(--font);
+  outline: none;
+}
+
+.diff-note textarea:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.dn-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dn-hint {
+  flex: 1;
+  font-size: 10px;
+  color: color-mix(in srgb, var(--fg) 45%, transparent);
+}
+
+.dn-bar button {
+  border: none;
+  border-radius: 5px;
+  padding: 3px 9px;
+  background: var(--surface-2);
+  color: var(--fg);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.dn-bar button.primary {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.dn-bar button:hover {
+  filter: brightness(1.2);
+}
+
+.dn-body {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.dn-del {
+  flex: none;
+  border: none;
+  background: none;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.dn-del:hover {
+  color: #ff7b86;
+}
+
+/* comments waiting to go out: the one key in the row that wants pressing */
+.diff-tools .diff-send {
+  color: var(--fg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 34%, transparent), color-mix(in srgb, var(--accent) 16%, transparent));
+}
+
+.diff-tools .diff-send[hidden] {
+  display: none;
+}
+
 .diff-more {
   display: block;
   width: 100%;
