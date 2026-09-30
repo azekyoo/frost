@@ -43,8 +43,8 @@ const waitFor = async (fn, timeout = 30000, step = 250) => {
 module.exports = [
   {
     name: 'screenshot-hero',
-    photo: 'peaks-sunrise',
-    wallpaper: 'alpine',
+    photo: 'ocean-dusk',
+    wallpaper: 'pine',
     // two shells side by side, real git and real program output
     setup: `(async () => {
       ${RUN}
@@ -101,8 +101,8 @@ module.exports = [
     // status and producing a real diff. So this runs `claude` for real and asks
     // it for a small edit in the demo repo.
     name: 'screenshot-agent',
-    photo: 'ocean-dusk',
-    wallpaper: 'pine',
+    photo: 'peaks-sunrise',
+    wallpaper: 'alpine',
     spaces: true,
     sessions: true, // staged demo-repo sessions for the Sessions list
     theme: { autoDetectAgents: true },

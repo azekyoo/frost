@@ -18,7 +18,7 @@
 
 ---
 
-![Split panes over a glass backdrop, tabs showing directory and branch](assets/screenshot-hero.png)
+![Agent mode — live status, terminal, diff watch, and the session's docked shell](assets/screenshot-agent.png)
 
 ## Why Frost
 
@@ -46,7 +46,7 @@ doing while it does it.
   keys, and `theme.json` / `theme.css` that apply the moment you save
 - **Updates itself** quietly, and only installs when you quit
 
-![The shell profile menu, listing detected shells](assets/screenshot-profiles.png)
+![Split panes over a glass backdrop, tabs showing directory and branch](assets/screenshot-hero.png)
 
 ## Agent mode
 
@@ -57,8 +57,6 @@ Run `claude` in any tab and it becomes an agent with live status — working,
 - **A shell per session**, docked under the diff, that stays running while you
   switch between agents
 - **Resume any past session** in one click, or start a new one in any folder
-
-![Agent mode — live status, terminal, diff watch, and the session's docked shell](assets/screenshot-agent.png)
 
 ## Install
 
