@@ -239,6 +239,13 @@ cmd('command.copyOutput', "Copy the last command's output", () => {
   const lines = text ? text.split('\n').length : 0;
   toast(`Copied ${lines} line${lines === 1 ? '' : 's'}`);
 });
+cmd('command.sendOutput', "Send the last command's output to the agent", () => {
+  const tab = state.activeTab;
+  let node = activePane();
+  // typed into the agent itself, it means the shell docked under it
+  if (tab?.kind === 'agents' && agentsByPty.has(node?.ptyId) && tab.dockShown) node = tab.dockShown;
+  sendOutputToAgent(node);
+});
 cmd('command.selectOutput', "Select the last command's output", () => {
   const node = activePane();
   if (node) selectCommandOutput(node);
@@ -299,6 +306,7 @@ const DEFAULT_BINDINGS = [
   { keys: 'ctrl+shift+up', command: 'command.previous' },
   { keys: 'ctrl+shift+down', command: 'command.next' },
   { keys: 'ctrl+shift+o', command: 'command.copyOutput' },
+  { keys: 'ctrl+shift+s', command: 'command.sendOutput' },
   { keys: 'ctrl+shift+p', command: 'app.palette' },
   { keys: 'ctrl+shift+i', command: 'view.devtools' },
   // Ctrl+1..8 pick a tab, Ctrl+Shift+1..9 open the Nth shell profile

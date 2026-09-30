@@ -179,6 +179,72 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     );
     await w.eval('(() => { activePane().term.scrollToBottom(); return true })()');
 
+    // --- what goes to an agent ---------------------------------------------
+    // The command as typed, without the prompt in front of it, how it ended,
+    // and what it printed — and the clipboard left alone while reading it
+    await runCommand(w, 'cmd /c "echo boom & exit 3"');
+    await sleep(600);
+    // At the bottom, as after running it — the scroll lands a moment later —
+    // and with the earlier checks' selection gone, so what is left selected
+    // afterwards is this read's doing
+    await w.eval('(() => { const t = activePane().term; t.scrollToBottom(); t.clearSelection(); return true })()');
+    await sleep(200);
+    const sent = await w.eval(`(() => {
+      const node = activePane();
+      const out = commandOutput(node);
+      return out && { ...out, message: outputPrompt(out, 'C:\\\\dev\\\\demo') };
+    })()`);
+    check('the command is what was typed', sent?.command === 'cmd /c "echo boom & exit 3"', JSON.stringify(sent?.command));
+    check('a failure is reported as one', sent?.exit === 3, JSON.stringify(sent?.exit));
+    check('the output comes with it', JSON.stringify(sent?.output) === '["boom"]', JSON.stringify(sent?.output));
+    check(
+      'the message says what failed, where',
+      /^`cmd \/c "echo boom & exit 3"` failed \(exit 3\) in demo:\n\n```\nboom\n```$/.test(sent?.message || ''),
+      JSON.stringify(sent?.message)
+    );
+    const selection = await w.eval('activePane().term.hasSelection()');
+    check('reading it selects nothing', selection === false, String(selection));
+
+    // --- a line the program broke at the edge itself ---------------------------
+    // A real newline right at the last column, as a remote shell redrawing a
+    // long command sends: read back as the one line it is
+    const cols = await w.eval('activePane().term.cols');
+    await runCommand(w, `[Console]::Write(('z' * ${cols}) + "\`r\`n" + "tail\`r\`n")`);
+    await sleep(400);
+    const edge = await w.eval('(() => { const o = commandOutput(activePane()); return o && o.output; })()');
+    check('a row cut at the edge is joined to the next', JSON.stringify(edge) === JSON.stringify(['z'.repeat(cols) + 'tail']), JSON.stringify(edge));
+
+    // --- inside another shell ---------------------------------------------------
+    // ssh to a machine without Frost's hooks: the local command never finishes,
+    // and the command worth sending is the last one run at the far end's prompt
+    const before = await w.eval('(activePane().marks || []).length');
+    await w.eval(`(() => { api.ptyInput(activePane().ptyId, 'pwsh -NoLogo -NoProfile\\r'); return true })()`);
+    await sleep(4000);
+    const nested = (await w.eval('(activePane().marks || []).length')) === before;
+    await w.eval(`(() => { api.ptyInput(activePane().ptyId, 'echo inner-one; echo inner-two\\r'); return true })()`);
+    await sleep(1500);
+    const inner = await w.eval('(() => { const o = commandOutput(activePane()); return o && { command: o.command, output: o.output, exit: o.exit }; })()');
+    if (nested) {
+      check('inside another shell, it takes the last command there', inner?.command === 'echo inner-one; echo inner-two', JSON.stringify(inner?.command));
+      check('and what it printed, up to the next prompt', JSON.stringify(inner?.output) === '["inner-one","inner-two"]', JSON.stringify(inner?.output));
+    } else {
+      console.log('  SKIP  the nested shell reported its own marks — nothing foreign to read');
+    }
+
+    // --- a selection -------------------------------------------------------------
+    // what is selected goes as it stands, whatever is running
+    const picked = await w.eval(`(() => {
+      const node = activePane();
+      const marks = liveMarks(node);
+      node.term.selectLines(marks[marks.length - 1].marker.line + 2, marks[marks.length - 1].marker.line + 2);
+      const o = commandOutput(node);
+      node.term.clearSelection();
+      return o && { selection: o.selection, output: o.output };
+    })()`);
+    check('a selection is sent as it stands', picked?.selection === true && picked.output.length === 1, JSON.stringify(picked));
+    await w.eval(`(() => { api.ptyInput(activePane().ptyId, 'exit\\r'); return true })()`);
+    await sleep(1500);
+
     // --- select all --------------------------------------------------------
     await w.eval(`(() => { runCommand('view.selectAll'); return true })()`);
     await sleep(300);

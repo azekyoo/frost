@@ -759,18 +759,7 @@ api.onAgentSession(({ agentId, sessionId }) => {
 // Clicking a notification should land you on the agent it was about.
 api.onAgentReveal((agentId) => {
   const agent = globalAgents.get(agentId);
-  if (!agent) return;
-  const host = agentTabs().find((t) => t.centerLeaves.has(agent.leaf));
-  if (host) {
-    activateTab(host);
-    selectAgent(host, agentId);
-    return;
-  }
-  const tab = tabOfPane(agent.leaf);
-  if (tab) {
-    activateTab(tab);
-    focusPane(agent.leaf);
-  }
+  if (agent) revealAgent(agent);
 });
 
 api.onAgentEnded(({ agentId }) => {

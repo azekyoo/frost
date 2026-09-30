@@ -155,6 +155,16 @@ running and supervising Claude Code agents with live status and diff watching.
     running the tests while the agent works. Each session keeps its own: switch
     sessions and the dock follows, and the shell you left comes back as it was —
     still running, at the height you dragged it to
+  - **send output to the agent**: the dock's **Send output** button (or
+    `Ctrl+Shift+S`, from the dock or the agent) pastes the last command into the
+    agent's prompt — what was typed, how it ended, what it printed — without
+    submitting it. When a command fails the button turns red and reads **Send
+    failure**; with text selected it reads **Send selection** and sends just
+    that. It works inside ssh too: the last command run at the remote prompt
+    (`user@host:~# …`) is the one sent. Long output keeps its first 40 and last
+    300 lines, and lines a program broke at the window's edge are joined back.
+    From a shell in a normal tab, it goes to the agent working in that folder.
+    What the command printed is sent as it is, so mind secrets in it
   - right-click an agent to mark it unread, copy its resume command or folder,
     open the folder, or end the session
   - **it tells you when it needs you** — a Windows notification and a taskbar
@@ -287,6 +297,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Ctrl+Shift+K` | Clear buffer |
 | `Ctrl+Shift+↑` / `↓` | Jump to previous / next command |
 | `Ctrl+Shift+O` | Copy that command's output, without selecting it |
+| `Ctrl+Shift+S` | Send that command's output — or the selection — to the agent |
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
 | `Ctrl+click` | Open a file path in your editor, or a URL in your browser |
