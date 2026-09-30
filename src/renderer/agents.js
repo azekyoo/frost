@@ -328,6 +328,9 @@ function buildAgentLayout(tab) {
       <div class="diff-sub">
         <span class="diff-summary"></span>
         <div class="diff-tools">
+          <button class="diff-send" hidden title="Send comments to the agent">
+            <svg viewBox="0 0 16 16"><path d="M2.75 8h9.5M8.75 4.5 12.25 8l-3.5 3.5" /></svg><span>Send</span>
+          </button>
           <button class="diff-open-tab" title="Open a shell in this session's folder, under the diff">
             <svg viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" /><path d="m4.75 6.25 2 1.75-2 1.75M8.5 10h2.75" /></svg><span>Shell</span>
           </button>
@@ -371,6 +374,7 @@ function buildAgentLayout(tab) {
     diffSummary: layout.querySelector('.diff-summary'),
     diffRepos: layout.querySelector('.diff-repos'),
     diffFoldBtn: layout.querySelector('.diff-fold'),
+    diffSendBtn: layout.querySelector('.diff-send'),
     side: layout.querySelector('.agents-side'),
     dock: layout.querySelector('.agents-dock'),
     dockGutter: layout.querySelector('.agents-dock-gutter'),
@@ -389,6 +393,7 @@ function buildAgentLayout(tab) {
       else tab.diffCollapsed.add(p);
     }
   });
+  tab.els.diffSendBtn.addEventListener('click', () => sendNotes(tab));
   layout.querySelector('.diff-open-tab').addEventListener('click', () => {
     // the selected agent, not diffCwd: that one outlives an agent that has gone
     const agent = globalAgents.get(tab.selected);
@@ -664,6 +669,7 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
     tab.diffKey = 'agent:' + agentId;
     tab.els.diffTitle.textContent = `${agent.name} · ${agent.branch}`;
     tab.diffCwd = agent.cwd || null; // lets a line number in the diff open the file
+    renderNoteButton(tab);
     api.agentsSelectDiff({ agentId, mode: tab.diffMode });
     renderAgentList(tab);
     markAgentsSeen();

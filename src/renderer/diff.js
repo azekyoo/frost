@@ -183,7 +183,174 @@ function diffLineRow(tab, file, entry, span) {
       api.openPath({ cwd, target: file.path, line: entry.newNo });
     });
   }
+  const add = document.createElement('button');
+  add.className = 'dl-comment';
+  add.textContent = '+';
+  add.title = 'Comment on this line for the agent';
+  add.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    openNoteEditor(tab, file, entry, row);
+  });
+  row.appendChild(add);
   return row;
+}
+
+// ---------- review comments ----------
+
+// Notes left on diff lines, gathered into one message for the agent. Kept per
+// agent (diffKey), so switching agents and back finds them where they were, and
+// keyed by file and line so a re-render of the diff can put each one back under
+// its line.
+function notesOf(tab) {
+  tab.diffNotes ||= new Map();
+  if (!tab.diffKey) return null;
+  if (!tab.diffNotes.has(tab.diffKey)) tab.diffNotes.set(tab.diffKey, new Map());
+  return tab.diffNotes.get(tab.diffKey);
+}
+
+// A removed line has no number in the file as it is now, so it is anchored by
+// its old one; the side keeps the two from colliding.
+function noteKey(file, entry) {
+  const side = entry.kind === 'del' ? 'old' : 'new';
+  return `${file.id || file.path}\0${side}${entry.kind === 'del' ? entry.oldNo : entry.newNo}`;
+}
+
+function openNoteEditor(tab, file, entry, row) {
+  const notes = notesOf(tab);
+  if (!notes) return;
+  const key = noteKey(file, entry);
+  // a line already commented on edits that note rather than stacking a second
+  const shown = row.nextElementSibling?.classList.contains('diff-note') ? row.nextElementSibling : null;
+  if (shown?.classList.contains('editing')) {
+    shown.querySelector('textarea').focus();
+    return;
+  }
+  const box = document.createElement('div');
+  box.className = 'diff-note editing';
+  box.dataset.key = tab.diffKey; // an editor left open on another agent holds nothing up
+  const input = document.createElement('textarea');
+  input.rows = 2;
+  input.placeholder = 'What should the agent change here?';
+  input.value = notes.get(key)?.body || '';
+  const bar = document.createElement('div');
+  bar.className = 'dn-bar';
+  const hint = document.createElement('span');
+  hint.className = 'dn-hint';
+  hint.textContent = 'Ctrl+Enter to save · Esc to cancel';
+  const cancel = document.createElement('button');
+  cancel.textContent = 'Cancel';
+  const save = document.createElement('button');
+  save.className = 'primary';
+  save.textContent = 'Save';
+  bar.append(hint, cancel, save);
+  box.append(input, bar);
+
+  const close = () => {
+    const note = notes.get(key);
+    box.replaceWith(...(note ? [noteView(tab, file, entry, row, note)] : []));
+    resumeDiff(tab);
+  };
+  const commit = () => {
+    const body = input.value.trim();
+    if (body) {
+      notes.set(key, {
+        path: file.path,
+        cwd: file.cwd || tab.diffCwd,
+        other: (file.id || file.path) !== file.path, // from another repo than the agent's
+        side: entry.kind === 'del' ? 'old' : 'new',
+        line: entry.kind === 'del' ? entry.oldNo : entry.newNo,
+        code: entry.text,
+        body
+      });
+    } else {
+      notes.delete(key);
+    }
+    close();
+    renderNoteButton(tab);
+  };
+  cancel.addEventListener('click', close);
+  save.addEventListener('click', commit);
+  // the terminal's keys stay out of it while typing here
+  input.addEventListener('keydown', (ev) => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter' && ev.ctrlKey) {
+      ev.preventDefault();
+      commit();
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      close();
+    }
+  });
+  if (shown) shown.replaceWith(box);
+  else row.after(box);
+  input.focus();
+}
+
+function noteView(tab, file, entry, row, note) {
+  const box = document.createElement('div');
+  box.className = 'diff-note';
+  const body = document.createElement('span');
+  body.className = 'dn-body';
+  body.textContent = note.body;
+  body.title = 'Click to edit';
+  body.addEventListener('click', () => openNoteEditor(tab, file, entry, row));
+  const del = document.createElement('button');
+  del.className = 'dn-del';
+  del.title = 'Remove this comment';
+  del.textContent = '×';
+  del.addEventListener('click', () => {
+    notesOf(tab)?.delete(noteKey(file, entry));
+    box.remove();
+    renderNoteButton(tab);
+  });
+  box.append(body, del);
+  return box;
+}
+
+// The rows a note belongs under, when the file is drawn: the note first,
+// if there is one, so it follows its line into "show more" too.
+function noteRowsFor(tab, file, entry, row) {
+  const note = notesOf(tab)?.get(noteKey(file, entry));
+  return note ? [row, noteView(tab, file, entry, row, note)] : [row];
+}
+
+function renderNoteButton(tab) {
+  const btn = tab.els?.diffSendBtn;
+  if (!btn) return;
+  const n = tab.diffKey ? tab.diffNotes?.get(tab.diffKey)?.size || 0 : 0;
+  btn.hidden = !n;
+  btn.querySelector('span').textContent = `Send ${n}`;
+  btn.title = `Send ${n} comment${n === 1 ? '' : 's'} to the agent`;
+}
+
+// One message, file by file in the order they were written, each comment
+// quoting its line so the agent need not go and look it up.
+function notesPrompt(notes) {
+  const out = ['Review comments on your changes:'];
+  for (const n of notes) {
+    const where = n.other ? `${n.cwd.replace(/\\/g, '/')}/${n.path}` : n.path;
+    const at = n.side === 'old' ? `${where} (removed line, was ${n.line})` : `${where}:${n.line}`;
+    out.push('', at, `> ${n.code.trim()}`, n.body);
+  }
+  return out.join('\n');
+}
+
+// Pasted into the agent's prompt, not submitted: what goes to it can still be
+// read over and added to, and Enter stays the person's to press.
+function sendNotes(tab) {
+  const notes = tab.diffKey && tab.diffNotes?.get(tab.diffKey);
+  const agent = tab.diffKey?.startsWith('agent:') && globalAgents.get(tab.diffKey.slice(6));
+  if (!notes?.size) return;
+  if (!agent?.leaf?.term || !tab.centerLeaves.has(agent.leaf)) {
+    toast('This agent has no terminal to send to', { error: true });
+    return;
+  }
+  agent.leaf.term.paste(notesPrompt([...notes.values()]));
+  notes.clear();
+  tab.els.diffBody.querySelectorAll('.diff-note').forEach((n) => n.remove());
+  renderNoteButton(tab);
+  setCenterVisible(tab, agent.leaf);
+  agent.leaf.term.focus();
 }
 
 function renderDiffFile(tab, file) {
@@ -266,16 +433,16 @@ function renderDiffFile(tab, file) {
         const b = entry.kind === 'del' ? hunk.lines[other].text : entry.text;
         span = inlineSpan(a, b);
       }
-      const row = diffLineRow(tab, file, entry, span);
-      if (drawn < DIFF_LINE_CAP) body.appendChild(row);
-      else overflow.push(row);
+      const rows = noteRowsFor(tab, file, entry, diffLineRow(tab, file, entry, span));
+      if (drawn < DIFF_LINE_CAP) body.append(...rows);
+      else overflow.push(...rows);
       drawn++;
     });
   }
   if (overflow.length) {
     const more = document.createElement('button');
     more.className = 'diff-more';
-    more.textContent = `Show ${overflow.length} more lines`;
+    more.textContent = `Show ${overflow.filter((r) => r.classList.contains('diff-line')).length} more lines`;
     more.addEventListener('click', () => {
       more.replaceWith(...overflow);
     });
@@ -512,25 +679,47 @@ function releaseDiff(tab) {
   tab.els.diffBody.classList.remove('holding');
 }
 
-api.onAgentDiff((msg) => {
+function applyDiff(tab, msg) {
   const { key, patch, status, root, nogit, extra = [] } = msg;
+  // most file events leave the diff as it was: a save of identical content,
+  // an ignored file git doesn't report
+  const more = extra.length ? '\0' + JSON.stringify(extra) : '';
+  const shown = (nogit ? key + '\0nogit' : key + '\0' + patch + '\0' + status) + more;
+  if (tab.diffShown === shown) {
+    releaseDiff(tab); // back to an agent whose diff is already on screen
+    return;
+  }
+  // another agent's files are never this one's, even at the same path
+  if (!tab.diffShown?.startsWith(key + '\0')) tab.diffFileEls = null;
+  tab.diffShown = shown;
+  tab.diffMsg = { patch, status, root, nogit, extra };
+  renderDiffRepos(tab);
+  renderDiffView(tab);
+  releaseDiff(tab);
+}
+
+// A comment half written would go with its file's element when the agent saves
+// that file again, so the new diff waits until the comment is saved or dropped.
+function diffPaused(tab) {
+  const open = tab.els.diffBody.querySelector('.diff-note.editing');
+  return !!open && open.dataset.key === tab.diffKey;
+}
+
+function resumeDiff(tab) {
+  const msg = tab.diffPending;
+  if (!msg || diffPaused(tab)) return;
+  tab.diffPending = null;
+  if (msg.key === tab.diffKey) applyDiff(tab, msg);
+}
+
+api.onAgentDiff((msg) => {
   for (const tab of agentTabs()) {
-    if (tab.diffKey !== key) continue;
-    // most file events leave the diff as it was: a save of identical content,
-    // an ignored file git doesn't report
-    const more = extra.length ? '\0' + JSON.stringify(extra) : '';
-    const shown = (nogit ? key + '\0nogit' : key + '\0' + patch + '\0' + status) + more;
-    if (tab.diffShown === shown) {
-      releaseDiff(tab); // back to an agent whose diff is already on screen
+    if (tab.diffKey !== msg.key) continue;
+    if (diffPaused(tab)) {
+      tab.diffPending = msg;
       continue;
     }
-    // another agent's files are never this one's, even at the same path
-    if (!tab.diffShown?.startsWith(key + '\0')) tab.diffFileEls = null;
-    tab.diffShown = shown;
-    tab.diffMsg = { patch, status, root, nogit, extra };
-    renderDiffRepos(tab);
-    renderDiffView(tab);
-    releaseDiff(tab);
+    applyDiff(tab, msg);
   }
 });
 
@@ -592,6 +781,8 @@ api.onAgentEnded(({ agentId }) => {
     for (const tab of agentTabs()) {
       if (tab.selected === agentId) tab.selected = null;
       if (tab.diffKey === 'agent:' + agentId) tab.diffKey = null;
+      tab.diffNotes?.delete('agent:' + agentId);
+      renderNoteButton(tab);
     }
   }
   renderAgentLists();

@@ -187,6 +187,21 @@ module.exports = [
 
       leaf.term.scrollToBottom();
       await pause(600);
+
+      // A review comment half written under the agent's own edit, opened the
+      // way a click on the line's + opens it.
+      const tab = state.activeTab;
+      const added = [...tab.els.diffBody.querySelectorAll('.diff-line.add')];
+      const row = added.find((r) => /cmd === 'help'/.test(r.textContent)) || added.find((r) => /help/.test(r.textContent));
+      if (row) {
+        const file = row.closest('.diff-file');
+        if (file.classList.contains('collapsed')) file.querySelector('.diff-file-head').click();
+        row.querySelector('.dl-comment').click();
+        const input = row.nextElementSibling && row.nextElementSibling.querySelector('textarea');
+        if (input) input.value = 'Print this list when no command is given too, not only on help.';
+        row.scrollIntoView({ block: 'center' });
+        await pause(400);
+      }
       return onScreen();
     })()`
   },
