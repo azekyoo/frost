@@ -384,6 +384,8 @@ function bufferLineText(term, y) {
   return line ? line.translateToString(true) : '';
 }
 
+const lastOpened = { uri: '', at: 0 }; // the link last sent to the browser, and when
+
 function attachLinks(node) {
   const term = node.term;
 
@@ -393,6 +395,14 @@ function attachLinks(node) {
   term.loadAddon(
     new WebLinksAddon.WebLinksAddon((ev, uri) => {
       if (!ev.ctrlKey) return;
+      // One click, one tab. Under Claude Code, which turns mouse tracking on,
+      // a single Ctrl+click reached here twice and the browser opened the link
+      // twice; a second ask for the same link straight after the first is
+      // that, not a second click.
+      const now = Date.now();
+      if (lastOpened.uri === uri && now - lastOpened.at < 1000) return;
+      lastOpened.uri = uri;
+      lastOpened.at = now;
       api.openExternal(uri).then((ok) => {
         if (!ok) toast('Refused to open ' + uri.slice(0, 60), { error: true });
       });
