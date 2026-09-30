@@ -3,6 +3,55 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.0.0 — 2026-09-30
+
+A new look. The glass, acrylic and mica materials are what they were; what sits
+on them has been redrawn. Every feature and setting from 1.x is still there.
+
+### Changed
+
+- **One frosted material for everything that floats.** Menus, tooltips, the
+  command palette, the settings drawer, toasts, dialogs and the search bar are
+  the same sheet of glass: blurred, lit along the top edge, softly shadowed,
+  with a fine grain. They open with a short settle instead of blinking in, or
+  simply appear when Windows is set to reduce animations.
+- **The window catches the light.** A thin highlight runs along the top edge
+  of the glass window, brighter while it has focus.
+- **A cleaner titlebar.** Drawn icons replace the text symbols, `+` and the
+  shell picker are one control, and the active tab is raised with a glowing
+  accent under it.
+- **Panes read as sheets.** In a split, every pane has a faint edge and the
+  focused one is lit; a lone pane no longer wears a ring. Dividers show a grip
+  when you reach for them.
+- **Settings are grouped into cards**, with switches instead of tick boxes and
+  each slider's value beside its label.
+- **The palette** blurs the terminal behind it, and shortcuts are drawn as
+  keys.
+- **Agent mode** gets the same treatment: raised side panels, the selected
+  agent marked down its side, status dots with a halo, a segmented
+  Session / Uncommitted switch, and changed lines edged in their colour.
+
+### Added
+
+- **Shell opens under the diff.** In agent mode, **Shell** now docks a
+  terminal below the diff, in the selected session's folder, instead of
+  opening a new tab. Each session keeps its own: switch sessions and the dock
+  follows, and a shell you left comes back as it was — still running, at the
+  height you dragged it to. Ending a session closes its shell; typing `exit`
+  closes just the shell. It moves with the agent tab between windows.
+
+### Fixed
+
+- **Switching agents no longer flashes the previous agent's diff.** The panel
+  stays blank for the moment until the new one arrives.
+- **The command palette's selection follows the mouse.**
+
+### Docs
+
+- The README is now a short tour; the full text lives in
+  [docs/GUIDE.md](docs/GUIDE.md). Screenshots are retaken in the new design,
+  and the 1.x ones are kept in `assets/design-v1`.
+
 ## 1.0.4 — 2026-09-29
 
 ### Added
