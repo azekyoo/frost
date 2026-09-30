@@ -58,6 +58,8 @@ Run `claude` in any tab and it becomes an agent with live status — working,
   comment to the agent as one message
 - **A shell per session**, docked under the diff, that stays running while you
   switch between agents
+- **Send it what broke** — a failed command in that shell, its output, or
+  whatever you've selected goes to the agent in one click (`Ctrl+Shift+S`)
 - **Resume any past session** in one click, or start a new one in any folder
 
 ## Install

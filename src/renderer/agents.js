@@ -348,6 +348,9 @@ function buildAgentLayout(tab) {
           <svg viewBox="0 0 16 16"><path d="m3.5 5 3 3-3 3M8.5 11.5h4" /></svg>
           <span class="dock-name">Shell</span>
         </span>
+        <button class="dock-send" title="Send the last command's output to this session's agent (Ctrl+Shift+S)">
+          <svg viewBox="0 0 16 16"><path d="M2.75 8h9.5M8.75 4.5 12.25 8l-3.5 3.5" /></svg><span>Send output</span>
+        </button>
         <button class="dock-close" title="Close this shell"><svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg></button>
       </div>
       <div class="dock-body"></div>
@@ -379,8 +382,12 @@ function buildAgentLayout(tab) {
     dock: layout.querySelector('.agents-dock'),
     dockGutter: layout.querySelector('.agents-dock-gutter'),
     dockBody: layout.querySelector('.dock-body'),
-    dockName: layout.querySelector('.dock-name')
+    dockName: layout.querySelector('.dock-name'),
+    dockSend: layout.querySelector('.dock-send')
   };
+  tab.els.dockSend.addEventListener('click', () => {
+    if (tab.dockShown) sendOutputToAgent(tab.dockShown);
+  });
   tab.els.diffFoldBtn.addEventListener('click', () => {
     const files = [...tab.els.diffBody.querySelectorAll('.diff-file')];
     // fold everything, unless it is already all folded
@@ -479,6 +486,15 @@ async function openDockShell(tab, owner, cwd) {
 function addDockLeaf(tab, leaf, owner, cwd) {
   leaf.dockOwner = owner;
   leaf.dockCwd = cwd;
+  // a failed command lights the dock's Send button; a passing one puts it out
+  leaf.onCommandDone = (mark) => {
+    leaf.dockFailed = mark.exit !== 0;
+    if (tab.dockShown === leaf) renderDockSend(tab);
+  };
+  // and a selection turns it into "Send selection", which is what it will send
+  leaf.term.onSelectionChange(() => {
+    if (tab.dockShown === leaf) renderDockSend(tab);
+  });
   leaf.el.classList.add('dock-pane');
   leaf.el.style.display = 'none';
   tab.dockLeaves.add(leaf);
@@ -495,6 +511,7 @@ function showDockLeaf(tab, leaf, { focus = true, animate = false } = {}) {
   tab.els.dockGutter.hidden = false;
   tab.els.dockName.textContent = String(leaf.dockCwd || '').split(/[\\/]/).pop() || 'Shell';
   tab.els.dockName.title = leaf.dockCwd || '';
+  renderDockSend(tab);
   tab.appliedDock = null;
   applyDockHeight(tab);
   requestAnimationFrame(() => {
@@ -972,4 +989,106 @@ function renderSessionList(tab) {
 function reselectDiff(tab) {
   if (!tab.diffKey?.startsWith('agent:')) return;
   api.agentsSelectDiff({ agentId: tab.diffKey.slice(6), mode: tab.diffMode });
+}
+
+// ---------- a command's output, to an agent ----------
+// Tests fail in the shell beside an agent, and the agent is who has to know.
+// The command, how it ended and what it printed go into the agent's prompt as
+// one message — pasted, not submitted, as review comments are.
+
+const OUTPUT_HEAD = 40; // lines kept from the top of a long output…
+const OUTPUT_TAIL = 300; // …and from the bottom, where a failure usually says why
+
+// Whether path p is dir or inside it, as Windows compares paths
+function pathWithin(dir, p) {
+  const norm = (x) => String(x || '').replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+  const d = norm(dir);
+  const x = norm(p);
+  return !!d && !!x && (x === d || x.startsWith(d + '\\'));
+}
+
+// Whose output this is to be: a docked shell's own session; otherwise the agent
+// working in the folder the shell is in, or the only agent there is.
+function agentForPane(node) {
+  if (!node) return null;
+  if (node.dockOwner) return agentsByPty.get(node.dockOwner.ptyId) || null;
+  if (agentsByPty.has(node.ptyId)) return null; // the agent's own terminal
+  const all = [...globalAgents.values()];
+  const here = all.filter((a) => pathWithin(a.cwd, node.cwd) || pathWithin(node.cwd, a.cwd));
+  const selected = agentTabs()[0]?.selected;
+  return here.find((a) => a.id === selected) || here[0] || (all.length === 1 ? all[0] : null);
+}
+
+function outputPrompt(out, cwd) {
+  const folder = String(cwd || '').split(/[\\/]/).pop();
+  // a remote prompt says where the command ran better than the local folder
+  const where = out.host || folder;
+  const on = where ? (out.host ? ' on ' : ' in ') + where : '';
+  const cmd = out.command ? '`' + out.command + '`' : 'This command';
+  // no exit code: a remote command's, or a selection's, which nothing reports
+  const how = out.selection ? '' : out.running ? ' is still running' : out.exit ? ` failed (exit ${out.exit})` : ' ran';
+  let lines = out.output;
+  if (lines.length > OUTPUT_HEAD + OUTPUT_TAIL) {
+    const cut = lines.length - OUTPUT_HEAD - OUTPUT_TAIL;
+    lines = [...lines.slice(0, OUTPUT_HEAD), `… ${cut} lines left out …`, ...lines.slice(-OUTPUT_TAIL)];
+  }
+  const head = out.selection
+    ? `From the shell${on}:`
+    : `${cmd}${how}${on}` + (lines.length ? ':' : ', printing nothing.');
+  return lines.length ? [head, '', '```', ...lines, '```'].join('\n') : head;
+}
+
+// Brought on screen wherever its pane lives, with the keyboard in it
+function revealAgent(agent) {
+  const host = agentTabs().find((t) => t.centerLeaves.has(agent.leaf));
+  if (host) {
+    activateTab(host);
+    selectAgent(host, agent.id);
+    return;
+  }
+  const tab = tabOfPane(agent.leaf);
+  if (tab) {
+    activateTab(tab);
+    focusPane(agent.leaf);
+  }
+}
+
+function sendOutputToAgent(node) {
+  if (!node) return;
+  const agent = agentForPane(node);
+  if (!agent?.leaf?.term) {
+    const why = agentsByPty.has(node.ptyId)
+      ? 'Run the command in a shell, not in the agent'
+      : 'No agent to send it to — none is working in this folder';
+    toast(why, { error: true });
+    return;
+  }
+  const out = commandOutput(node);
+  if (!out) {
+    const why = liveMarks(node).length ? 'No finished command to send yet' : 'No command marks yet — this shell has not reported one';
+    toast(why, { error: true });
+    return;
+  }
+  agent.leaf.term.paste(outputPrompt(out, node.cwd));
+  // sent: the selection has done its job, and the button goes back to the output
+  if (out.selection) node.term.clearSelection();
+  else node.dockFailed = false;
+  const tab = dockHostOf(node);
+  if (tab) renderDockSend(tab);
+  revealAgent(agent);
+  toast(`Sent to ${agent.name} — press Enter to submit`);
+}
+
+function renderDockSend(tab) {
+  const btn = tab.els?.dockSend;
+  if (!btn) return;
+  // a selection is what gets sent when there is one, so it names the button first
+  const selected = !!tab.dockShown?.term.hasSelection();
+  const failed = !selected && !!tab.dockShown?.dockFailed;
+  btn.classList.toggle('failed', failed);
+  btn.classList.toggle('selection', selected);
+  btn.querySelector('span').textContent = selected ? 'Send selection' : failed ? 'Send failure' : 'Send output';
+  btn.title = selected
+    ? "Send the selected text to this session's agent (Ctrl+Shift+S)"
+    : "Send the last command's output to this session's agent (Ctrl+Shift+S)";
 }

@@ -147,6 +147,7 @@ function attachCommandMarks(node) {
           overviewRulerOptions: { color: mark.exit === 0 ? MARK_OK : MARK_FAIL, position: 'left' }
         });
       } catch {}
+      node.onCommandDone?.(mark);
       return true;
     }
 
@@ -199,7 +200,100 @@ function commandRegion(node) {
   while (start < marks[index + 1].marker.line && buf.getLine(start)?.isWrapped) start++;
   const end = marks[index + 1].marker.line - 1;
   if (end < start) return null; // a command that printed nothing
-  return { start, end };
+  return { start, end, mark: marks[index] };
+}
+
+// Rows start..end as text, a wrapped row joined back onto the one it continues.
+// Read off the buffer rather than through a selection: selecting would put the
+// text on the clipboard as well, with copy-on-select on.
+//
+// xterm only knows a row is a continuation when it did the wrapping itself. A
+// program that breaks its own lines at the edge — a remote shell over ssh
+// redrawing what you type, ConPTY repainting after a resize — sends a real
+// newline instead. A row filled to its last column is taken as one of those:
+// a line that happens to end exactly at the edge is rarer than one cut there.
+function bufferText(term, start, end) {
+  const buf = term.buffer.active;
+  const out = [];
+  let joinNext = false;
+  for (let i = start; i <= end; i++) {
+    const line = buf.getLine(i);
+    if (!line) continue;
+    const text = line.translateToString(true);
+    if ((line.isWrapped || joinNext) && out.length) out[out.length - 1] += text;
+    else out.push(text);
+    const last = line.getCell(term.cols - 1)?.getChars() || '';
+    joinNext = last !== '' && last !== ' ';
+  }
+  return out.map((l) => l.replace(/\s+$/, ''));
+}
+
+// A prompt drawn by a shell Frost's hooks aren't in — the far end of an ssh
+// session, most often: "user@host:~# cmd", or a remote PowerShell's "PS x> cmd".
+const FOREIGN_PROMPT = /^(?:\[?([\w.-]+@[\w.-]+)[^#$\n]{0,80}?[#$]|PS [^>\n]{1,200}>) ?(.*)$/;
+
+// The last mark's command, while it is still running — ssh, a REPL, a watcher.
+// Its output never ends in a mark of Frost's, so the command worth sending is
+// found by the prompts inside it: the last one that ran something, up to the
+// prompt after it. With none to go by, everything it has printed so far.
+function runningOutput(node, marks) {
+  const mark = marks[marks.length - 1];
+  const buf = node.term.buffer.active;
+  let start = mark.marker.line + 1;
+  while (start < buf.length && buf.getLine(start)?.isWrapped) start++;
+  let end = buf.length - 1;
+  while (end >= start && !buf.getLine(end)?.translateToString(true).trim()) end--;
+  if (end < start) return null; // an idle prompt: nothing is running
+  const local = bufferText(node.term, mark.marker.line, start - 1).join(' ').replace(/^PS [^>]*>\s*/, '').trim();
+  const lines = bufferText(node.term, start, end);
+  const prompts = [];
+  lines.forEach((l, i) => {
+    const m = FOREIGN_PROMPT.exec(l);
+    if (m) prompts.push({ i, host: m[1] || '', command: m[2].trim() });
+  });
+  // what was typed at the prompt still waiting at the bottom hasn't run
+  const ran = prompts.filter((p) => p.command && p.i < lines.length - 1);
+  const last = ran[ran.length - 1];
+  if (!last) return { command: local, output: lines, exit: null, running: true };
+  const next = prompts.find((p) => p.i > last.i);
+  const output = lines.slice(last.i + 1, next ? next.i : lines.length);
+  while (output.length && !output[output.length - 1]) output.pop();
+  return { command: last.command, output, exit: null, host: last.host || null };
+}
+
+// The command being looked at, as what was typed, what it printed and how it
+// ended — for handing to an agent. The prompt's own text is taken off the
+// command where it can be recognised: PowerShell's "PS C:\x> ", or the "$ "
+// line under Git Bash's two-line prompt, which then isn't output either.
+// What is selected, when something is, is taken as it stands instead: it is
+// the one thing that works for any program at all.
+function commandOutput(node) {
+  const term = node?.term;
+  if (!term) return null;
+  if (term.hasSelection()) {
+    const text = term.getSelection().split(/\r?\n/).map((l) => l.replace(/\s+$/, ''));
+    while (text.length && !text[text.length - 1]) text.pop();
+    if (text.length) return { command: '', output: text, exit: null, selection: true };
+  }
+  const marks = liveMarks(node);
+  const buf = term.buffer.active;
+  const atBottom = buf.viewportY >= buf.baseY;
+  if (marks.length && marks[marks.length - 1].exit === null && atBottom) {
+    const running = runningOutput(node, marks);
+    if (running) return running;
+  }
+  const region = commandRegion(node);
+  if (!region) return null;
+  const promptRows = bufferText(term, region.mark.marker.line, region.start - 1);
+  let output = bufferText(term, region.start, region.end);
+  let command = promptRows.join(' ').trim();
+  if (/^\$ /.test(output[0] || '')) {
+    command = output[0];
+    output = output.slice(1);
+  }
+  command = command.replace(/^PS [^>]*>\s*/, '').replace(/^\$ /, '').trim();
+  while (output.length && !output[output.length - 1]) output.pop();
+  return { command, output, exit: region.mark.exit };
 }
 
 function selectCommandOutput(node) {
