@@ -27,7 +27,10 @@ function agentOnScreen(agent) {
   if (!document.hasFocus() || document.hidden) return false;
   const t = state.activeTab;
   if (!t || !agent.leaf) return false;
-  if (t.kind === 'agents') return t.centerLeaves.has(agent.leaf) && agent.leaf.el.style.display !== 'none';
+  if (t.kind === 'agents') {
+    if (t.dockShown === agent.leaf) return !t.els.dock.hidden;
+    return t.centerLeaves.has(agent.leaf) && agent.leaf.el.style.display !== 'none';
+  }
   return tabOfPane(agent.leaf) === t;
 }
 
@@ -118,8 +121,27 @@ function takeAgentTab(tab) {
     customTitle: tab.customTitle || null,
     diffMode: tab.diffMode,
     diffRepoPick: [...(tab.diffRepoPick || [])],
-    leaves
+    leaves,
+    // the docked shells go too, handed over like the center ones, each still
+    // tied to its session by that session's place in the list above
+    dock: [...tab.dockLeaves].map((leaf) => ({
+      ...serializeLeafForMove(leaf),
+      dockCwd: leaf.dockCwd,
+      dockHeight: leaf.dockHeight ?? null,
+      owner: [...tab.centerLeaves].indexOf(leaf.dockOwner)
+    }))
   };
+  for (const leaf of tab.dockLeaves) {
+    if (leaf.ptyId) {
+      panesByPty.delete(leaf.ptyId);
+      api.ptyOrphan(leaf.ptyId);
+    }
+    try {
+      leaf.term.dispose();
+    } catch {}
+    leaf.el.remove();
+  }
+  tab.dockLeaves.clear();
   for (const leaf of tab.centerLeaves) {
     const a = agentsByPty.get(leaf.ptyId);
     if (a) {
@@ -156,8 +178,10 @@ async function adoptAgentTab(payload) {
   }
   let shownAgent = null;
   let shownLeaf = null;
+  const centers = [];
   for (const saved of payload.leaves || []) {
     const leaf = await createPane({ profileId: saved.profileId || undefined, cwd: saved.cwd || undefined, adopt: saved });
+    centers.push(leaf);
     leaf.resumedSession = saved.resumedSession;
     addCenterLeaf(tab, leaf, false);
     if (saved.shown) shownLeaf = leaf;
@@ -168,6 +192,17 @@ async function adoptAgentTab(payload) {
     agent.status = saved.agent.status || agent.status;
     agent.unseen = Boolean(saved.agent.unseen);
     if (saved.shown) shownAgent = agent;
+  }
+  for (const saved of payload.dock || []) {
+    const owner = centers[saved.owner];
+    const leaf = await createPane({ profileId: saved.profileId || undefined, cwd: saved.cwd || saved.dockCwd || undefined, adopt: saved });
+    // its session did not make the trip: nothing left to own it
+    if (!owner) {
+      destroyLeaf(leaf);
+      continue;
+    }
+    addDockLeaf(tab, leaf, owner, saved.dockCwd);
+    if (saved.dockHeight) leaf.dockHeight = saved.dockHeight;
   }
   if (shownAgent) selectAgent(tab, shownAgent.id);
   else if (shownLeaf) setCenterVisible(tab, shownLeaf);
@@ -187,6 +222,7 @@ function addCenterLeaf(tab, leaf, show) {
 
 function setCenterVisible(tab, leaf) {
   for (const l of tab.centerLeaves) l.el.style.display = l === leaf ? '' : 'none';
+  syncDock(tab, leaf);
   markAgentsSeen();
   if (leaf.ptyId) api.ptyMute(leaf.ptyId);
   requestAnimationFrame(() => {
@@ -241,7 +277,7 @@ function wireGutter(tab, gutter, edge) {
       const other = agentColumns()[edge === 'rail' ? 'diff' : 'rail'];
       const room = tab.els.layout.clientWidth - other - AGENT_MIN.center - GUTTER * 2;
       const next = Math.max(AGENT_MIN[edge], Math.min(room, startWidth + delta));
-      state.theme.agentLayout = { ...agentColumns(), [edge]: Math.round(next) };
+      state.theme.agentLayout = { ...state.theme.agentLayout, ...agentColumns(), [edge]: Math.round(next) };
       for (const t of agentTabs()) applyAgentColumns(t);
     };
     const up = () => {
@@ -279,6 +315,7 @@ function buildAgentLayout(tab) {
       <div class="agents-empty">cd into a repo and run <b>claude</b> — it becomes an agent automatically.</div>
     </div>
     <div class="agents-gutter" data-edge="diff" title="Drag to resize"></div>
+    <div class="agents-side">
     <div class="agents-diff">
       <div class="diff-head">
         <span class="diff-title">Diff watch</span>
@@ -291,11 +328,27 @@ function buildAgentLayout(tab) {
       <div class="diff-sub">
         <span class="diff-summary"></span>
         <div class="diff-tools">
-          <button class="diff-open-tab" title="Open a terminal tab in this session's folder">shell</button>
-          <button class="diff-fold" title="Collapse or expand every file">fold</button>
+          <button class="diff-open-tab" title="Open a shell in this session's folder, under the diff">
+            <svg viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" /><path d="m4.75 6.25 2 1.75-2 1.75M8.5 10h2.75" /></svg><span>Shell</span>
+          </button>
+          <button class="diff-fold" title="Collapse or expand every file">
+            <svg viewBox="0 0 16 16"><path d="m5 3 3 3 3-3M5 13l3-3 3 3" /></svg><span>Fold</span>
+          </button>
         </div>
       </div>
       <div class="diff-body"><p class="hint">No agent selected</p></div>
+    </div>
+    <div class="agents-dock-gutter" hidden title="Drag to resize"></div>
+    <div class="agents-dock" hidden>
+      <div class="dock-head">
+        <span class="dock-title">
+          <svg viewBox="0 0 16 16"><path d="m3.5 5 3 3-3 3M8.5 11.5h4" /></svg>
+          <span class="dock-name">Shell</span>
+        </span>
+        <button class="dock-close" title="Close this shell"><svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg></button>
+      </div>
+      <div class="dock-body"></div>
+    </div>
     </div>`;
   tab.contentEl.appendChild(layout);
   tab.diffMode = 'session';
@@ -303,6 +356,10 @@ function buildAgentLayout(tab) {
   // it — folded a file away, scrolled to a hunk — has to outlive the re-render.
   tab.diffCollapsed = new Set();
   tab.diffCwd = null;
+  // Shells docked under the diff, one per folder; the one on show follows the
+  // agent you select, so the shell next to a diff is always that diff's repo.
+  tab.dockLeaves = new Set();
+  tab.dockShown = null;
   tab.els = {
     layout,
     agentsList: layout.querySelector('.agents-list'),
@@ -313,7 +370,12 @@ function buildAgentLayout(tab) {
     diffBody: layout.querySelector('.diff-body'),
     diffSummary: layout.querySelector('.diff-summary'),
     diffRepos: layout.querySelector('.diff-repos'),
-    diffFoldBtn: layout.querySelector('.diff-fold')
+    diffFoldBtn: layout.querySelector('.diff-fold'),
+    side: layout.querySelector('.agents-side'),
+    dock: layout.querySelector('.agents-dock'),
+    dockGutter: layout.querySelector('.agents-dock-gutter'),
+    dockBody: layout.querySelector('.dock-body'),
+    dockName: layout.querySelector('.dock-name')
   };
   tab.els.diffFoldBtn.addEventListener('click', () => {
     const files = [...tab.els.diffBody.querySelectorAll('.diff-file')];
@@ -329,10 +391,18 @@ function buildAgentLayout(tab) {
   });
   layout.querySelector('.diff-open-tab').addEventListener('click', () => {
     // the selected agent, not diffCwd: that one outlives an agent that has gone
-    const cwd = globalAgents.get(tab.selected)?.cwd;
-    if (cwd) newTab({ cwd });
+    const agent = globalAgents.get(tab.selected);
+    if (agent?.cwd && tab.centerLeaves.has(agent.leaf)) openDockShell(tab, agent.leaf, agent.cwd);
     else toast('Select an agent first', { error: true });
   });
+  layout.querySelector('.dock-close').addEventListener('click', () => {
+    if (tab.dockShown) closeDockLeaf(tab, tab.dockShown);
+  });
+  wireDockGutter(tab);
+  // Which of the two terminals was typed into last. Remembered, not read off the
+  // focus: the palette takes the focus, and its commands still mean that one.
+  tab.els.dockBody.addEventListener('focusin', () => (tab.dockTyping = true));
+  tab.els.center.addEventListener('focusin', () => (tab.dockTyping = false));
   layout.querySelectorAll('.diff-toggle button').forEach((btn) => {
     btn.addEventListener('click', () => {
       tab.diffMode = btn.dataset.mode;
@@ -344,10 +414,152 @@ function buildAgentLayout(tab) {
   applyAgentColumns(tab);
   // re-clamp when the window changes size, so a narrow window can't squeeze the
   // terminal out entirely
-  new ResizeObserver(() => applyAgentColumns(tab)).observe(layout);
+  new ResizeObserver(() => {
+    applyAgentColumns(tab);
+    applyDockHeight(tab);
+  }).observe(layout);
 
   layout.querySelector('.rail-refresh').addEventListener('click', () => refreshSessions());
   layout.querySelector('.rail-new').addEventListener('click', () => pickSessionFolder(tab));
+}
+
+// ---------- shell dock ----------
+// A shell under the diff, owned by a session: somewhere to run the tests or poke
+// at the repo while the agent works, without leaving the view that shows what it
+// changed. The owner is the session's center pane, which outlives a claude that
+// restarts inside it. Switching session swaps the dock for that session's own
+// shell, or puts it away; a shell out of sight keeps running, and comes back
+// exactly as it was, at the height it was left at.
+
+const DOCK_MIN = 110;
+const DIFF_MIN_H = 140;
+
+function dockLeafFor(tab, owner) {
+  return [...(tab.dockLeaves || [])].find((l) => l.dockOwner === owner) || null;
+}
+
+function dockHostOf(leaf) {
+  return agentTabs().find((t) => t.dockLeaves?.has(leaf)) || null;
+}
+
+// Stored as the user dragged it, per shell; a new shell starts at the last one
+// dragged. Squeezed for display only when the window is too short to give the
+// diff its minimum, so a taller window gives it back.
+function applyDockHeight(tab) {
+  if (!tab.els?.dock || tab.els.dock.hidden) return;
+  const stored = tab.dockShown?.dockHeight ?? state.theme?.agentLayout?.dock ?? 260;
+  const total = tab.els.side.clientHeight;
+  const room = total ? total - DIFF_MIN_H - GUTTER : stored;
+  const h = Math.max(DOCK_MIN, Math.min(stored, room));
+  if (tab.appliedDock === h) return;
+  tab.appliedDock = h;
+  tab.els.dock.style.height = h + 'px';
+}
+
+async function openDockShell(tab, owner, cwd) {
+  let leaf = dockLeafFor(tab, owner);
+  if (!leaf) {
+    leaf = await createPane({ cwd });
+    // the session may have ended while the shell was starting
+    if (!tab.centerLeaves.has(owner)) {
+      destroyLeaf(leaf);
+      return;
+    }
+    addDockLeaf(tab, leaf, owner, cwd);
+  }
+  // switched away while it started: it waits for its session instead
+  if (owner.el.style.display !== 'none') showDockLeaf(tab, leaf, { animate: true });
+}
+
+function addDockLeaf(tab, leaf, owner, cwd) {
+  leaf.dockOwner = owner;
+  leaf.dockCwd = cwd;
+  leaf.el.classList.add('dock-pane');
+  leaf.el.style.display = 'none';
+  tab.dockLeaves.add(leaf);
+  tab.els.dockBody.appendChild(leaf.el);
+}
+
+// animate: only when the button opens it. Coming back with its session, the
+// shell simply is there, as it was left.
+function showDockLeaf(tab, leaf, { focus = true, animate = false } = {}) {
+  for (const l of tab.dockLeaves) l.el.style.display = l === leaf ? '' : 'none';
+  tab.els.dock.classList.toggle('opening', animate);
+  tab.dockShown = leaf;
+  tab.els.dock.hidden = false;
+  tab.els.dockGutter.hidden = false;
+  tab.els.dockName.textContent = String(leaf.dockCwd || '').split(/[\\/]/).pop() || 'Shell';
+  tab.els.dockName.title = leaf.dockCwd || '';
+  tab.appliedDock = null;
+  applyDockHeight(tab);
+  requestAnimationFrame(() => {
+    leaf.fit.fit();
+    if (focus) leaf.term.focus();
+  });
+}
+
+// Put away, not closed: every shell stays alive for its session to come back to
+function hideDock(tab) {
+  if (!tab.dockShown && tab.els.dock.hidden) return;
+  for (const l of tab.dockLeaves) l.el.style.display = 'none';
+  tab.dockShown = null;
+  tab.dockTyping = false;
+  tab.els.dock.hidden = true;
+  tab.els.dockGutter.hidden = true;
+}
+
+// The session on show decides what the dock holds
+function syncDock(tab, centerLeaf) {
+  if (!tab.dockLeaves) return;
+  const leaf = dockLeafFor(tab, centerLeaf);
+  if (leaf === tab.dockShown) return;
+  if (leaf) showDockLeaf(tab, leaf, { focus: false });
+  else hideDock(tab);
+}
+
+// kill: false for a shell that has already exited on its own
+function closeDockLeaf(tab, leaf, { kill = true } = {}) {
+  tab.dockLeaves.delete(leaf);
+  if (kill) destroyLeaf(leaf);
+  else {
+    try {
+      leaf.term.dispose();
+    } catch {}
+    leaf.el.remove();
+  }
+  if (tab.dockShown !== leaf) return;
+  hideDock(tab);
+  // the diff takes the whole column back, the session's pane the keyboard
+  if (leaf.dockOwner?.el.style.display !== 'none') leaf.dockOwner?.term.focus();
+}
+
+function wireDockGutter(tab) {
+  const gutter = tab.els.dockGutter;
+  gutter.addEventListener('pointerdown', (ev) => {
+    ev.preventDefault();
+    gutter.setPointerCapture(ev.pointerId);
+    gutter.classList.add('dragging');
+    const startY = ev.clientY;
+    const startH = tab.els.dock.offsetHeight;
+    const move = (mv) => {
+      // the dock grows upwards, so dragging up makes it taller
+      const room = tab.els.side.clientHeight - DIFF_MIN_H - GUTTER;
+      const next = Math.max(DOCK_MIN, Math.min(room, startH + (startY - mv.clientY)));
+      if (tab.dockShown) tab.dockShown.dockHeight = Math.round(next);
+      state.theme.agentLayout = { ...state.theme.agentLayout, dock: Math.round(next) };
+      tab.appliedDock = null;
+      applyDockHeight(tab);
+    };
+    const up = () => {
+      gutter.classList.remove('dragging');
+      gutter.releasePointerCapture?.(ev.pointerId);
+      gutter.removeEventListener('pointermove', move);
+      gutter.removeEventListener('pointerup', up);
+      saveTheme();
+    };
+    gutter.addEventListener('pointermove', move);
+    gutter.addEventListener('pointerup', up);
+  });
 }
 
 // ---------- new session ----------
@@ -439,6 +651,7 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
     if (focus) setCenterVisible(tab, agent.leaf);
     else {
       for (const l of tab.centerLeaves) l.el.style.display = l === agent.leaf ? '' : 'none';
+      syncDock(tab, agent.leaf);
       agent.leaf.fit.fit();
     }
     if (tab.diffKey !== 'agent:' + agentId) {
@@ -446,6 +659,7 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
       tab.diffRepo = null;
       tab.diffMsg = null;
       tab.els.diffRepos.hidden = true;
+      holdDiff(tab);
     }
     tab.diffKey = 'agent:' + agentId;
     tab.els.diffTitle.textContent = `${agent.name} · ${agent.branch}`;
@@ -453,6 +667,17 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
     api.agentsSelectDiff({ agentId, mode: tab.diffMode });
     renderAgentList(tab);
     markAgentsSeen();
+    return;
+  }
+  // claude started in a docked shell: its row brings up the session that owns
+  // that shell, and the shell with it
+  const dockTab = dockHostOf(agent.leaf);
+  if (dockTab) {
+    activateTab(dockTab);
+    const owner = [...globalAgents.values()].find((a) => a.leaf === agent.leaf.dockOwner);
+    if (owner) selectAgent(dockTab, owner.id);
+    else setCenterVisible(dockTab, agent.leaf.dockOwner);
+    agent.leaf.term.focus();
     return;
   }
   // pane lives elsewhere (normal tab or another agent tab) — jump to it
@@ -657,6 +882,8 @@ function closeAgentPane(leaf) {
   }
   const wasShown = leaf.el.style.display !== 'none';
   host.centerLeaves.delete(leaf);
+  const shell = dockLeafFor(host, leaf);
+  if (shell) closeDockLeaf(host, shell);
   destroyLeaf(leaf);
   const agent = [...globalAgents.values()].find((a) => a.leaf === leaf);
   if (agent) {

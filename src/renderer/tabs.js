@@ -74,6 +74,11 @@ function closeTab(tab, { killPtys = true } = {}) {
         leaf.el.remove();
       } catch {}
     }
+    for (const leaf of tab.dockLeaves || []) {
+      try {
+        destroyLeaf(leaf);
+      } catch {}
+    }
     api.agentsSelectDiff(null);
     api.agentsReleaseTab();
   } else if (killPtys) {

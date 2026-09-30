@@ -601,7 +601,7 @@ function attachPaneSearch(node) {
 function allPanes() {
   const out = [];
   for (const tab of state.tabs) {
-    if (tab.kind === 'agents') out.push(...tab.centerLeaves);
+    if (tab.kind === 'agents') out.push(...tab.centerLeaves, ...(tab.dockLeaves || []));
     else if (tab.root) out.push(...allLeaves(tab.root));
   }
   return out;

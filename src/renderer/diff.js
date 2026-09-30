@@ -496,6 +496,22 @@ function renderDiffView(tab) {
   }
 }
 
+// Between picking another agent and its diff arriving from main, the panel
+// would go on showing the last agent's files — and, with the dock resizing the
+// column at the same moment, reflowed into a view that belongs to neither. So
+// the body is held blank for that gap instead: nothing is better than wrong.
+// Held for a second at most, in case the answer never comes.
+function holdDiff(tab) {
+  tab.els.diffBody.classList.add('holding');
+  clearTimeout(tab.diffHoldTimer);
+  tab.diffHoldTimer = setTimeout(() => releaseDiff(tab), 1000);
+}
+
+function releaseDiff(tab) {
+  clearTimeout(tab.diffHoldTimer);
+  tab.els.diffBody.classList.remove('holding');
+}
+
 api.onAgentDiff((msg) => {
   const { key, patch, status, root, nogit, extra = [] } = msg;
   for (const tab of agentTabs()) {
@@ -504,13 +520,17 @@ api.onAgentDiff((msg) => {
     // an ignored file git doesn't report
     const more = extra.length ? '\0' + JSON.stringify(extra) : '';
     const shown = (nogit ? key + '\0nogit' : key + '\0' + patch + '\0' + status) + more;
-    if (tab.diffShown === shown) continue;
+    if (tab.diffShown === shown) {
+      releaseDiff(tab); // back to an agent whose diff is already on screen
+      continue;
+    }
     // another agent's files are never this one's, even at the same path
     if (!tab.diffShown?.startsWith(key + '\0')) tab.diffFileEls = null;
     tab.diffShown = shown;
     tab.diffMsg = { patch, status, root, nogit, extra };
     renderDiffRepos(tab);
     renderDiffView(tab);
+    releaseDiff(tab);
   }
 });
 

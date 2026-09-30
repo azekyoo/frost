@@ -43,8 +43,8 @@ const waitFor = async (fn, timeout = 30000, step = 250) => {
 module.exports = [
   {
     name: 'screenshot-hero',
-    photo: 'peaks-sunrise',
-    wallpaper: 'alpine',
+    photo: 'ocean-dusk',
+    wallpaper: 'pine',
     // two shells side by side, real git and real program output
     setup: `(async () => {
       ${RUN}
@@ -101,8 +101,8 @@ module.exports = [
     // status and producing a real diff. So this runs `claude` for real and asks
     // it for a small edit in the demo repo.
     name: 'screenshot-agent',
-    photo: 'ocean-dusk',
-    wallpaper: 'pine',
+    photo: 'peaks-sunrise',
+    wallpaper: 'alpine',
     spaces: true,
     sessions: true, // staged demo-repo sessions for the Sessions list
     theme: { autoDetectAgents: true },
@@ -171,6 +171,18 @@ module.exports = [
         if (!bannerVisible()) break;
         await ask(filler);
         await pause(1500);
+      }
+
+      // The session's own shell, docked under its diff: real git output from
+      // the same repo the agent just edited.
+      const agent = [...globalAgents.values()][0];
+      if (agent) {
+        await openDockShell(state.activeTab, agent.leaf, agent.cwd);
+        const dock = state.activeTab.dockShown;
+        if (dock && (await waitFor(() => dock.cwd, 20000))) {
+          api.ptyInput(dock.ptyId, 'git status --short --branch\\r');
+          await pause(1500);
+        }
       }
 
       leaf.term.scrollToBottom();
