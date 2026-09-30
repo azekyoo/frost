@@ -144,6 +144,10 @@ running and supervising Claude Code agents with live status and diff watching.
     their contents before anything is committed. Other repos
     the agent changes — by editing files or from the shell — get a tab of their
     own beside its repo
+  - **Shell** docks a terminal under the diff, in the session's folder, for
+    running the tests while the agent works. Each session keeps its own: switch
+    sessions and the dock follows, and the shell you left comes back as it was —
+    still running, at the height you dragged it to
   - right-click an agent to mark it unread, copy its resume command or folder,
     open the folder, or end the session
   - **it tells you when it needs you** — a Windows notification and a taskbar
@@ -158,7 +162,7 @@ running and supervising Claude Code agents with live status and diff watching.
   listing your installed monospace fonts. A GPU renderer is one tick away in
   settings if you push enough output to want it
 
-![Agent mode — live status, terminal, and diff watch](assets/screenshot-agent.png)
+![Agent mode — live status, terminal, diff watch, and the session's docked shell](assets/screenshot-agent.png)
 
 ## Install
 

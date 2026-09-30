@@ -173,6 +173,18 @@ module.exports = [
         await pause(1500);
       }
 
+      // The session's own shell, docked under its diff: real git output from
+      // the same repo the agent just edited.
+      const agent = [...globalAgents.values()][0];
+      if (agent) {
+        await openDockShell(state.activeTab, agent.leaf, agent.cwd);
+        const dock = state.activeTab.dockShown;
+        if (dock && (await waitFor(() => dock.cwd, 20000))) {
+          api.ptyInput(dock.ptyId, 'git status --short --branch\\r');
+          await pause(1500);
+        }
+      }
+
       leaf.term.scrollToBottom();
       await pause(600);
       return onScreen();
