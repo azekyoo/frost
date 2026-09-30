@@ -1,0 +1,393 @@
+<p align="center">
+  <img src="../assets/icon-256.png" width="96" alt="Frost icon" />
+</p>
+
+<h1 align="center">Frost — the full guide</h1>
+
+<p align="center">
+  A fully customizable acrylic terminal for Windows — with a built-in AI agent mode.<br/>
+  Electron · xterm.js · ConPTY · PowerShell 7
+</p>
+
+<p align="center">
+  <a href="../README.md">← Back to the README</a>
+  ·
+  <a href="https://github.com/azekyoo/frost/releases/latest"><strong>Download for Windows</strong></a>
+  ·
+  <a href="#install">Install</a>
+  ·
+  <a href="#shortcuts">Shortcuts</a>
+  ·
+  <a href="#configuration">Configuration</a>
+</p>
+
+---
+
+![Split panes over a glass backdrop, tabs showing directory and branch](../assets/screenshot-hero.png)
+
+## Why
+
+Windows terminals let you pick a theme. Frost lets you own the whole surface:
+real acrylic/glass backdrops you control down to blur radius and tint alpha,
+hot-reloading config files, raw CSS injection — and a first-class mode for
+running and supervising Claude Code agents with live status and diff watching.
+
+## Features
+
+- **Shell profiles** — PowerShell 7, Windows PowerShell, cmd, Git Bash and every
+  WSL distro are detected on first run and written into `theme.json`. Add your
+  own (shell, args, cwd, env) by editing that list. The `▾` button next to `+`
+  lists them, `Ctrl+Shift+1…9` opens the Nth, and splitting a pane keeps the
+  shell you were already in
+- **Tab titles that say something** — each tab shows `directory · branch`, live.
+  The shell reports its cwd on every prompt (OSC 9;9, injected by wrapping
+  whatever prompt your profile already installed — starship and oh-my-posh keep
+  working), and the branch is read straight out of `.git/HEAD`, so no `git`
+  process runs per prompt. A program that sets its own title (claude, ssh, vim)
+  still wins. Splits and `Ctrl+Shift+D` inherit the current directory
+- **Tabs you can rearrange** — drag one along the strip to reorder it, drop it
+  on another Frost window to hand it over, or let go anywhere else to open it in
+  a window of its own. A copy of the tab follows the cursor the whole way — over
+  the desktop and over other windows, since it is a tiny window of its own rather
+  than something drawn inside the one you started in — outlined for which of the
+  three letting go would be. The shells are not restarted for any of it, so whatever was
+  running keeps running and the scrollback comes with it. Double-click a tab to
+  name it — worth it the moment two tabs sit in the same repo — and the name
+  sticks through a restart, clears back to `directory · branch` when you empty
+  it, and travels with the tab. Right-click a tab for rename, duplicate, move to
+  a new window and close; the last two are in the command palette too
+- **Ctrl+click a path or a URL** — `src/search.js:45:12` from a stack trace, a
+  grep hit, a `File "app.py", line 118` traceback or a bare `README.md` opens in
+  your editor at that line; links open in your browser. Candidates are only
+  underlined once they're confirmed to exist on disk, so prose doesn't light up.
+  Nothing found in terminal output is ever passed through a shell, and only
+  `http`, `https` and `mailto` are ever opened
+- **Asks before pasting several lines** — text with line breaks in it is typed
+  at the shell as if you had typed it, and a line ending in a newline runs. A
+  clipboard picked up from a web page or a chat window gets one question, with
+  the line count and the first line, before any of it reaches the shell. Off in
+  settings if you would rather it did not ask
+- **Panes that get out of the way** — `Alt+Shift+Z` lays the focused pane over
+  its whole tab and puts it back, with the other shells still running behind it
+  the whole time; the tab is marked while one is zoomed, since otherwise it looks
+  like a tab that never had splits. `Alt+Shift+←` `→` `↑` `↓` move the boundary
+  the pane sits against, a step at a time, so the dividers do not need a mouse
+- **Search that can be narrowed** — `Ctrl+F` finds text in the buffer, with
+  **Aa** for match case, **ab** for whole word and **.\*** for a regular
+  expression, on the bar itself or on `Alt+C` / `Alt+W` / `Alt+R` without leaving
+  the box. The three are one set for the app, so a search set up in one pane is
+  set up in the next, and a half-typed pattern says *Bad pattern* rather than
+  reporting no results
+- **Knows where your commands are** — the prompt hooks emit command marks, so
+  Frost knows where each command started and how it ended. Failed commands get a
+  red tick in the scrollbar, successful ones green, and `Ctrl+Shift+↑` / `↓`
+  jump between them however far you've scrolled. `Ctrl+Shift+O` copies one
+  command's whole output — just the output, without the prompt, the command line
+  or anything that ran after it, and without you dragging a selection past both
+  ends of it. Scrolled back, it takes the command you're looking at rather than
+  the last one you ran; wrapped lines come back as the single lines they were
+  printed as, so what you paste is what the program wrote
+- **Tells you when a long command finishes** — if a command ran longer than your
+  threshold and Frost is in the background, you get a notification and a taskbar
+  flash. Timed from the same prompt hook that drives tab titles, so there's no
+  extra shell integration to install
+- **Command palette and keys that are yours** — `Ctrl+Shift+P` lists every
+  command beside the key it currently answers to. Rebind any of them in
+  `keybindings.json`, which hot-reloads. Bindings match on physical key position,
+  so they land in the same place on any layout
+- **Several windows** — `Ctrl+Shift+N`. Each window owns its own tabs and
+  shells; the agent view stays unique across the app, so asking for it from a
+  second window brings the one that has it to the front instead of splitting
+  your agents in two. It moves between windows like any tab, agents and all
+- **Opens where you're working** — `frost .` opens a tab in that directory, and
+  the installer adds **Open Frost here** to the folder right-click menu. If Frost
+  is already running you get a new tab, not a second window
+- **Picks up where you left off** — every window comes back with its own size,
+  position, maximized state, tabs and split layout, each pane reopened in the
+  directory it was in. Written continuously, so a crash doesn't lose it. Toggle
+  in settings; agent tabs stay out of it — their sessions are listed there to
+  resume instead
+- **Keeps itself current** — an installed Frost looks for a new release at
+  startup and every six hours, downloads it quietly, and installs it the next
+  time you quit. Never mid-session: a terminal holds work a restart of its own
+  choosing would throw away. Settings shows the version you run beside the
+  latest one, checks on demand, and offers **Restart and install** once an
+  update is downloaded. Turn either half off — the checking, or the
+  downloading — in settings. Portable builds and runs from source say so
+  instead of checking
+- **Backdrop materials**
+  - `acrylic` / `mica` / `tabbed` — native Windows backdrops
+  - `acrylic-always` — native acrylic that **never dims on unfocus** (Frost
+    re-applies the backdrop on blur)
+  - `glass` — Frost's own backdrop: truly transparent window, wallpaper blurred
+    in-app. Blur 0–100px, tint from fully clear to opaque, zero Windows frost.
+    A separate **readability** floor darkens the backdrop behind text, so a clear
+    tint stays legible over a bright wallpaper; set it to 0 to leave the
+    wallpaper completely untouched
+- **Hot-reload everything** — save `config/theme.json` or `config/theme.css`
+  and the running window updates instantly. `theme.css` is raw CSS injected
+  last: restyle anything
+- **Agent mode** — a special tab for AI coding agents (Claude Code first),
+  heavily inspired by the excellent [herdr](https://herdr.dev/):
+  - run `claude` in any Frost terminal → it auto-registers as an agent with
+    live status: working / **blocked (needs you)** / done / idle, under the
+    session's name — the one you gave it with `/rename`, else Claude's own title.
+    One that finished while you were elsewhere stays bold until you look at it
+  - **New session** picks a folder — ones you've worked in recently, or any
+    other — and starts `claude` there. Nothing to name, nothing to set up
+  - **Sessions** lists your recent Claude Code sessions, read from Claude Code's
+    own history: one click resumes that exact session (`claude --resume <id>`).
+    One still open in another terminal says so, and asks before a second copy
+    starts writing to the same history
+  - diff watch panel: live green/red diff of the agent's repo — **Session**
+    (only what changed since the agent started, commits included, so edits you
+    had lying around beforehand stay out of it, and so does the work of another
+    agent in the same repo) or **Uncommitted**. Files it creates show with
+    their contents before anything is committed. Other repos
+    the agent changes — by editing files or from the shell — get a tab of their
+    own beside its repo
+  - **Shell** docks a terminal under the diff, in the session's folder, for
+    running the tests while the agent works. Each session keeps its own: switch
+    sessions and the dock follows, and the shell you left comes back as it was —
+    still running, at the height you dragged it to
+  - right-click an agent to mark it unread, copy its resume command or folder,
+    open the folder, or end the session
+  - **it tells you when it needs you** — a Windows notification and a taskbar
+    flash when an agent goes blocked or finishes, raised only while Frost is in
+    the background; clicking the notification jumps to that agent
+  - status comes from Claude Code hooks injected per-session via `--settings` —
+    your global Claude config is never touched. Kill switch in settings
+- **Terminal quality**: text hinted by the system rather than blended out of a
+  GPU atlas — the difference shows on a translucent window — full-color emoji,
+  Unicode 11 widths, a palette picked to stay readable through glass (with
+  optional auto-contrast for one that isn't), tabs, split panes, font picker
+  listing your installed monospace fonts. A GPU renderer is one tick away in
+  settings if you push enough output to want it
+
+![Agent mode — live status, terminal, diff watch, and the session's docked shell](../assets/screenshot-agent.png)
+
+## Install
+
+Grab `Frost-Setup-<version>.exe` from
+[Releases](https://github.com/azekyoo/frost/releases) — a per-user install, no
+admin needed. `Frost-<version>-portable.exe` runs with no install at all.
+
+The installer also adds:
+
+- **Open Frost here** in the folder right-click menu (on a folder, or on empty
+  space inside one)
+- **`frost`** on your PATH — `frost .` opens a tab in that directory. If Frost is
+  already running, it opens a new tab there instead of a second window
+
+The installed build updates itself: it checks GitHub for a newer release,
+downloads it in the background and installs it when you next quit Frost. The
+portable exe can't — nothing installed it, so there is no installation to
+replace — and it says so in settings rather than pretending to check. Both are
+governed by `update` in `theme.json`.
+
+Settings live in `%APPDATA%\Frost\config` for installed builds. Running from
+source uses the repo's `config/` folder instead, so the two never collide.
+
+Windows 11 is needed for the acrylic/mica materials (`glass` works anywhere), and
+[PowerShell 7](https://github.com/PowerShell/PowerShell) is used when present
+(falls back to Windows PowerShell). Agent mode expects
+[Claude Code](https://claude.com/claude-code) on PATH.
+
+> **The builds are unsigned.** SmartScreen will warn on first run — "More info"
+> then "Run anyway". With Smart App Control *enforcing*, Windows blocks unsigned
+> binaries outright and Frost can't run until you turn SAC off. Code signing
+> needs a certificate this project doesn't have yet.
+
+## Build from source
+
+```
+npm install
+npm start            # run it
+npm run dist         # installer + portable exe into dist/
+npm run pack         # unpacked build only, faster
+npm run shots        # re-render the screenshots above
+npm run test:status  # end-to-end check of agent status reporting
+npm run test:tabs    # drag-reorder, rename, and moving a tab to a new window
+npm run test:search  # the buffer search's case, whole-word and regex options
+npm run test:panes   # pane zoom and keyboard resize, measured on screen
+npm run test:marks   # copying one command's output, against a real shell
+npm run test:paste   # the multi-line paste question, and the ligature joiner
+npm run test:resume  # the sessions list, resuming, and the New session picker
+npm run test:exit    # a claude that exits leaves the agent list, however it ends
+```
+
+`npm run test:status` drives a real Frost over the debugging protocol: it opens
+an agent tab in the demo repo, runs `claude` for real, prompts it, and prints
+every status transition with a timestamp — then clicks between panes and idles,
+asserting neither invents activity. It costs one short Claude turn. Point it at
+another repo with `FROST_SHOT_REPO`.
+
+`npm run test:tabs` drives a real Frost over the debugging protocol with real
+mouse events: it drags a tab along the strip, renames one, drags a tab off the
+strip and checks that the window which opens has the *same* shell — same pty,
+scrollback intact, still running commands — then drags a tab from one window onto
+the other and checks it was handed over rather than opening a third. No API
+usage, a few seconds.
+
+`npm run shots` drives real Frost instances over the debugging protocol — real
+keystrokes into a real shell, real program output — then composites each capture
+onto a generated landscape so the `glass` backdrop is shown doing its job.
+Nothing in those images is mocked, and it leaves your own config, window layout
+and desktop untouched. Pass a name to render one: `npm run shots -- palette`.
+
+The agent scenario runs a **real Claude Code session** against the demo repo,
+because agent mode isn't itself without one — so that shot costs a little API
+usage, and the renderer refuses to capture it while Claude's start-up banner is
+still on screen, which would put your account name and organisation in the image.
+
+Requires Node 22.12+, which is what Electron 43 asks for. Tagged builds come out
+of [CI](../.github/workflows/release.yml) on `windows-latest`, so you only need this
+to hack on Frost.
+
+`npm install` runs `tools/patch-xterm-alpha.js`, which edits three expressions in
+`@xterm/addon-webgl`. Its WebGL renderer hard-codes a background rectangle's
+alpha to 1, and italic and dim are stored as flags on a cell's *background*
+field — so on the transparent theme `glass` needs, every italic or dim cell was
+painted into an opaque black box. PowerShell's inline prediction is dim and
+italic, so it was the visible symptom. Filed upstream as
+[xtermjs/xterm.js#6116](https://github.com/xtermjs/xterm.js/issues/6116); the
+script is idempotent and exits non-zero if a future release stops matching, so an
+upgrade fails loudly rather than quietly bringing the box back. Setting
+`"gpuRenderer": false` avoids it too — the DOM renderer never had the bug.
+
+## Shortcuts
+
+`Ctrl+Shift+P` opens the command palette, which lists every command next to the
+key it currently answers to — that, not this table, is the authoritative list.
+
+![Command palette, filtered, showing each command's current key](../assets/screenshot-palette.png)
+
+| Keys | Action |
+|------|--------|
+| `Ctrl+Shift+P` | Command palette |
+| `Ctrl+Shift+N` | New window |
+| `Ctrl+Shift+T` | New tab (default profile) |
+| `Ctrl+Shift+1` … `9` | New tab with the Nth shell profile |
+| `Ctrl+1` … `8` / `Ctrl+9` | Go to tab N / last tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+Shift+A` | New agent tab |
+| `Ctrl+Shift+D` | Duplicate tab (same shell, same directory) |
+| `Ctrl+Shift+W` | Close pane (last pane closes tab) |
+| `Alt+Shift+=` / `Alt+Shift+-` | Split right / down (inherits directory) |
+| `Alt+←` `→` `↑` `↓` | Move focus to the pane in that direction |
+| `Alt+Shift+←` `→` `↑` `↓` | Move that pane's edge — resize without the mouse |
+| `Alt+Shift+Z` | Zoom the pane over its tab, and back |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the whole UI in / out / reset — remembered per monitor |
+| `Ctrl+F` | Search buffer (`Alt+C` case, `Alt+W` whole word, `Alt+R` regex) |
+| `Ctrl+Shift+K` | Clear buffer |
+| `Ctrl+Shift+↑` / `↓` | Jump to previous / next command |
+| `Ctrl+Shift+O` | Copy that command's output, without selecting it |
+| `Ctrl+,` | Settings panel |
+| `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
+| `Ctrl+click` | Open a file path in your editor, or a URL in your browser |
+| Right-click | Copy selection, else paste |
+| Drag a tab | Sideways reorders; onto another window hands it over; anywhere else opens it in a new window |
+| Double-click a tab | Rename it (empty restores `directory · branch`) |
+| Right-click a tab | Rename, duplicate, move to a new window, close |
+| Right-click an agent | Mark unread, copy resume command or folder, open folder, end session |
+
+Every one of them is remappable in `config/keybindings.json`:
+
+```json
+{
+  "bindings": [
+    { "keys": "ctrl+t", "command": "tab.new" },
+    { "keys": "ctrl+shift+k", "command": null },
+    { "keys": "alt+2", "command": "tab.go", "args": { "index": 2 } }
+  ]
+}
+```
+
+Reusing a built-in's `keys` replaces it, `"command": null` unbinds it, and the
+file hot-reloads on save. Keys are matched on physical position, so a binding
+lands on the same key on every keyboard layout.
+
+## Configuration
+
+![Settings — glass backdrop, tint, fonts, agent options](../assets/screenshot-options.png)
+
+Created with defaults on first run, all hot-reloading. In `%APPDATA%\Frost\config`
+for an installed build, in the repo's `config/` when running from source:
+
+- `config/theme.json` — material, colors, blur, tint, `glassReadability`, fonts, cursor, `scroll`, padding,
+  corner radii, start directory, ANSI palette, agent auto-detect, and
+  `profiles` / `defaultProfile`:
+
+  ```json
+  {
+    "id": "ubuntu",
+    "name": "Ubuntu",
+    "shell": "C:\\Windows\\System32\\wsl.exe",
+    "args": ["-d", "Ubuntu", "--cd", "~"],
+    "cwd": "",
+    "env": {},
+    "agentWrapper": "none"
+  }
+  ```
+
+  `agentWrapper` says which dialect the session-local `claude` wrapper is
+  written in: `powershell`, `bash`, or `none` (no agent auto-detect in that
+  shell — agent tabs then use the first profile that supports it)
+
+  Every pane starts with `TERM=xterm-256color` and `COLORTERM=truecolor`, because
+  ConPTY passes neither and a program that finds no hint assumes sixteen colours —
+  gradients and blended colours come out flat. A profile's `env` is applied after,
+  so it can override or unset both.
+
+  `font` takes `family`, `size` (CSS pixels — Windows Terminal counts in points,
+  where its 12pt default is these 16), `lineHeight`, `weight` / `weightBold` and
+  `ligatures`. Ligatures are on and cost nothing when there is nothing to draw:
+  Frost asks the font whether it has them before changing anything, so the
+  default — Cascadia **Mono**, whose whole difference from Cascadia **Code** is
+  having none — renders exactly as it did. Pick a font that has them (Cascadia
+  Code, Fira Code, JetBrains Mono, Iosevka) and `=>`, `!=` and `->` appear as the
+  single glyphs their designer cut, with no setting to go and find.
+  Weight exists because a transparent window is composited, and composited text
+  gets grayscale antialiasing rather than ClearType. Against white text over a
+  photograph those soft edges read as extra mass, so the default is 350 — below
+  normal, where an opaque terminal would want 400. Cascadia ships as a variable
+  font whose weight axis runs 200 to 700, so anything in that range interpolates
+  rather than being synthesised. Nothing reflows: weight does not change the
+  metrics.
+
+  ![The shell profile menu, listing detected shells](../assets/screenshot-profiles.png)
+
+  `update` is `{ "check": true, "download": true }`. `check` looks for a newer
+  release at startup and every six hours; `download` fetches one when it is
+  found. The installer only ever runs when Frost quits, or when you press
+  **Restart and install** in settings. With `check` off nothing is looked for and
+  **Check now** is still there for when you want to ask.
+
+  `scrollback` is how many lines a pane keeps after they scroll off the top,
+  10,000 by default and held between 1,000 and 200,000 — it is memory, and what
+  is not kept is gone rather than hidden: not scrollable, not findable. It
+  applies to the panes already open the moment it is saved.
+
+  `notify` controls background alerts:
+  `{ "agentBlocked": true, "agentDone": true, "commandSeconds": 20 }`.
+  `commandSeconds` is the threshold for the long-command notification, and `0`
+  turns it off.
+
+  `editor` is the command Ctrl+click uses, as an argv template — for example
+  `"editor": "code --goto {file}:{line}:{column}"`. `{file}`, `{line}` and
+  `{column}` are substituted as whole arguments and never handed to a shell.
+  Empty means the first of `code`, `code-insiders`, `cursor`, `windsurf`, `subl`,
+  `idea` or `nvim-qt` found on PATH, falling back to whatever Windows associates
+  with the file
+- `config/theme.css` — raw CSS, injected last, overrides anything
+- `config/keybindings.json` — key overrides (see [Shortcuts](#shortcuts))
+- `config/agents.json` — extra folders to offer under **New session**
+- `config/window.json` — window geometry and tab layout (managed automatically)
+- `config/zoom.json` — UI zoom per monitor, keyed by resolution and scale (managed automatically)
+
+The settings panel (`Ctrl+,`) edits `theme.json` for you, including font size,
+weight and the default text colour.
+
+## License
+
+MIT
