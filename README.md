@@ -18,7 +18,7 @@
 
 ---
 
-![Agent mode — live status, terminal, diff watch, and the session's docked shell](assets/screenshot-agent.png)
+![Agent mode — live status, terminal, a review comment being written on the diff, and the session's docked shell](assets/screenshot-agent.png)
 
 ## Why Frost
 
@@ -54,6 +54,8 @@ Run `claude` in any tab and it becomes an agent with live status — working,
 **blocked (needs you)**, done — and a Windows notification when it needs you.
 
 - **Diff watch** — a live diff of just what the agent changed this session
+- **Review it in place** — comment on any line of the diff, then send every
+  comment to the agent as one message
 - **A shell per session**, docked under the diff, that stays running while you
   switch between agents
 - **Resume any past session** in one click, or start a new one in any folder

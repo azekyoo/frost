@@ -146,6 +146,11 @@ running and supervising Claude Code agents with live status and diff watching.
     their contents before anything is committed. Other repos
     the agent changes — by editing files or from the shell — get a tab of their
     own beside its repo
+  - **review comments**: hover a line in the diff and click **+** to leave a
+    note on it (Ctrl+Enter saves, Esc cancels). **Send** pastes every note into
+    the agent's prompt as one message — file, line, the code quoted, your
+    comment — without submitting it, so you can read it over and press Enter
+    yourself. Notes are kept per agent, and survive the diff redrawing
   - **Shell** docks a terminal under the diff, in the session's folder, for
     running the tests while the agent works. Each session keeps its own: switch
     sessions and the dock follows, and the shell you left comes back as it was —
@@ -164,7 +169,7 @@ running and supervising Claude Code agents with live status and diff watching.
   listing your installed monospace fonts. A GPU renderer is one tick away in
   settings if you push enough output to want it
 
-![Agent mode — live status, terminal, diff watch, and the session's docked shell](../assets/screenshot-agent.png)
+![Agent mode — live status, terminal, a review comment being written on the diff, and the session's docked shell](../assets/screenshot-agent.png)
 
 ## Install
 
