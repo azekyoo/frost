@@ -399,6 +399,7 @@ function buildAgentLayout(tab) {
       if (expand) tab.diffCollapsed.delete(p);
       else tab.diffCollapsed.add(p);
     }
+    syncFoldButton(tab);
   });
   tab.els.diffSendBtn.addEventListener('click', () => sendNotes(tab));
   layout.querySelector('.diff-open-tab').addEventListener('click', () => {

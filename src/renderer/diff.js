@@ -401,6 +401,7 @@ function renderDiffFile(tab, file) {
     el.classList.toggle('collapsed');
     if (el.classList.contains('collapsed')) tab.diffCollapsed.add(id);
     else tab.diffCollapsed.delete(id);
+    syncFoldButton(tab);
   });
 
   const body = document.createElement('div');
@@ -553,6 +554,7 @@ function renderUntracked(tab, untracked, cwd = tab.diffCwd, id = '\0untracked') 
     el.classList.toggle('collapsed');
     if (el.classList.contains('collapsed')) tab.diffCollapsed.add(id);
     else tab.diffCollapsed.delete(id);
+    syncFoldButton(tab);
   });
   const body = document.createElement('div');
   body.className = 'diff-file-body';
@@ -645,6 +647,21 @@ function renderDiffRepos(tab) {
   );
 }
 
+// The fold button says what clicking it will do: Unfold once every file is
+// folded, Fold otherwise — so a file arriving open turns it back to Fold.
+const FOLD_ICON = 'm5 3 3 3 3-3M5 13l3-3 3 3';
+const UNFOLD_ICON = 'm5 6 3-3 3 3M5 10l3 3 3-3';
+
+function syncFoldButton(tab) {
+  const btn = tab.els.diffFoldBtn;
+  const files = [...tab.els.diffBody.querySelectorAll('.diff-file')];
+  const unfold = files.length > 0 && files.every((f) => f.classList.contains('collapsed'));
+  btn.classList.toggle('unfold', unfold);
+  btn.querySelector('span').textContent = unfold ? 'Unfold' : 'Fold';
+  btn.querySelector('path').setAttribute('d', unfold ? UNFOLD_ICON : FOLD_ICON);
+  btn.title = unfold ? 'Expand every file' : 'Collapse every file';
+}
+
 // The picked repo's part of the last diff main sent.
 function renderDiffView(tab) {
   const m = tab.diffMsg;
@@ -661,6 +678,7 @@ function renderDiffView(tab) {
     // need not be
     renderDiff(tab, m.patch, m.status, m.root || tab.diffCwd);
   }
+  syncFoldButton(tab);
 }
 
 // Between picking another agent and its diff arriving from main, the panel

@@ -1704,6 +1704,11 @@ body.frameless #win-controls {
   transform: scaleY(0.8);
 }
 
+/* and part, when the click will open them */
+.diff-fold.unfold:hover svg {
+  transform: scaleY(1.2);
+}
+
 /* while its shell is open under the diff, the button says so */
 .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab {
   color: var(--fg);
