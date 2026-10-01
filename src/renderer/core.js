@@ -265,6 +265,6 @@ function applyTheme(theme, css) {
     applyGpu(node);
     node.fit.fit();
   }
-  for (const tab of agentTabs()) applyAgentColumns(tab);
+  for (const tab of agentTabs()) renderPaneLayout(tab);
   syncSettingsUI();
 }

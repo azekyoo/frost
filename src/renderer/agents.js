@@ -28,7 +28,7 @@ function agentOnScreen(agent) {
   const t = state.activeTab;
   if (!t || !agent.leaf) return false;
   if (t.kind === 'agents') {
-    if (t.dockShown === agent.leaf) return !t.els.dock.hidden;
+    if (t.dockShown === agent.leaf) return true;
     return t.centerLeaves.has(agent.leaf) && agent.leaf.el.style.display !== 'none';
   }
   return tabOfPane(agent.leaf) === t;
@@ -127,7 +127,6 @@ function takeAgentTab(tab) {
     dock: [...tab.dockLeaves].map((leaf) => ({
       ...serializeLeafForMove(leaf),
       dockCwd: leaf.dockCwd,
-      dockHeight: leaf.dockHeight ?? null,
       owner: [...tab.centerLeaves].indexOf(leaf.dockOwner)
     }))
   };
@@ -168,6 +167,8 @@ async function adoptAgentTab(payload) {
   // the old window let go of it before sending, so this claim is the one
   await api.agentsClaimTab();
   const tab = makeAgentTab();
+  // its own shells are on their way: none fresh in their place meanwhile
+  tab.adopting = true;
   tab.customTitle = payload.customTitle || null;
   tab.diffRepoPick = new Map(payload.diffRepoPick || []);
   if (payload.diffMode) {
@@ -202,8 +203,8 @@ async function adoptAgentTab(payload) {
       continue;
     }
     addDockLeaf(tab, leaf, owner, saved.dockCwd);
-    if (saved.dockHeight) leaf.dockHeight = saved.dockHeight;
   }
+  tab.adopting = false;
   if (shownAgent) selectAgent(tab, shownAgent.id);
   else if (shownLeaf) setCenterVisible(tab, shownLeaf);
   if (!tab.centerLeaves.size) tab.els.empty.style.display = '';
@@ -231,54 +232,136 @@ function setCenterVisible(tab, leaf) {
   });
 }
 
-// ---------- agent layout sizing ----------
-// The rail and the diff panel are draggable and remembered. Widths are stored as
-// the user set them; when the window is too narrow to honour both, they're
-// scaled down for display only, so widening the window restores them.
+// ---------- agent layout ----------
+// Four panes — the rail, the shell, the diff and the agent — laid out as columns
+// of stacked panes, every one of them dragged by its grip to wherever it should
+// go, and every gap between them dragged to size them. Sizes are in pixels as
+// the user left them, but for the one that takes up the slack: the agent, in
+// whichever column it is in, and in the others the pane at the foot. A window
+// too small for the pixels squeezes them for display only, so a bigger one
+// gives them back. Shared by every agent tab and remembered in theme.json.
 
-const AGENT_MIN = { rail: 150, diff: 220, center: 260 };
-const GUTTER = 6;
+const PANE_IDS = ['rail', 'shell', 'diff', 'agent'];
+const PANE_MIN_W = { rail: 150, shell: 200, diff: 220, agent: 260 };
+const PANE_MIN_H = { rail: 120, shell: 110, diff: 140, agent: 160 };
 
-function agentColumns() {
-  const stored = state.theme?.agentLayout || {};
-  return { rail: stored.rail ?? 210, diff: stored.diff ?? 340 };
+function defaultPaneLayout() {
+  // the widths of the layout this replaced carry over, where there are any
+  const old = state.theme?.agentLayout || {};
+  return [
+    { w: old.rail ?? 210, panes: [{ id: 'rail' }] },
+    { w: old.diff ?? 340, panes: [{ id: 'shell', h: old.dock ?? 260 }, { id: 'diff' }] },
+    { panes: [{ id: 'agent' }] }
+  ];
 }
 
-function applyAgentColumns(tab) {
-  if (!tab.els?.layout) return;
-  let { rail, diff } = agentColumns();
-  const total = tab.els.layout.clientWidth;
-  if (total) {
-    const available = total - AGENT_MIN.center - GUTTER * 2;
-    if (rail + diff > available) {
-      const scale = Math.max(0.15, available / (rail + diff));
-      rail = Math.max(AGENT_MIN.rail, Math.round(rail * scale));
-      diff = Math.max(AGENT_MIN.diff, Math.round(diff * scale));
+function paneLayout() {
+  const stored = state.theme?.agentLayout?.panes;
+  // anything but every pane exactly once is a layout from somewhere else
+  const ids = Array.isArray(stored) ? stored.flatMap((c) => (c?.panes || []).map((p) => p?.id)) : [];
+  const valid = ids.length === PANE_IDS.length && PANE_IDS.every((id) => ids.includes(id));
+  return valid ? structuredClone(stored) : defaultPaneLayout();
+}
+
+function savePaneLayout(cols) {
+  state.theme.agentLayout = { ...state.theme.agentLayout, panes: cols };
+  for (const t of agentTabs()) renderPaneLayout(t);
+  saveTheme();
+}
+
+// The pane that takes up the slack in a column, and the column that does
+const flexPaneOf = (col) => col.panes.find((p) => p.id === 'agent') || col.panes[col.panes.length - 1];
+const isFlexCol = (col) => col.panes.some((p) => p.id === 'agent');
+
+function sizeSlot(el, fixed, px, minProp, min) {
+  el.style.flex = fixed ? `0 1 ${px}px` : '1 1 0px';
+  el.style[minProp] = min + 'px';
+}
+
+// Built afresh only when the arrangement changes: moving an element in the DOM
+// takes the keyboard off it. A resize only restyles what is there.
+function renderPaneLayout(tab) {
+  const layout = tab.els?.layout;
+  if (!layout) return;
+  const cols = paneLayout();
+  const key = cols.map((c) => c.panes.map((p) => p.id).join('/')).join('|');
+  if (tab.layoutKey !== key) {
+    tab.layoutKey = key;
+    const focused = layout.contains(document.activeElement) ? document.activeElement : null;
+    for (const el of layout.querySelectorAll(':scope > .agents-col, :scope > .agents-gutter')) {
+      for (const slot of el.querySelectorAll('.agents-slot')) layout.appendChild(slot);
+      el.remove();
     }
+    cols.forEach((col, ci) => {
+      if (ci) layout.appendChild(makeGutter(tab, 'col', ci));
+      const colEl = document.createElement('div');
+      colEl.className = 'agents-col';
+      col.panes.forEach((p, pi) => {
+        if (pi) colEl.appendChild(makeGutter(tab, 'row', ci, pi));
+        colEl.appendChild(tab.els.slots[p.id]);
+      });
+      layout.appendChild(colEl);
+    });
+    focused?.focus();
   }
-  const columns = `${rail}px ${GUTTER}px 1fr ${GUTTER}px ${diff}px`;
-  // guard against feeding the ResizeObserver its own change
-  if (tab.appliedColumns === columns) return;
-  tab.appliedColumns = columns;
-  tab.els.layout.style.gridTemplateColumns = columns;
+  const colEls = layout.querySelectorAll(':scope > .agents-col');
+  cols.forEach((col, ci) => {
+    const minW = Math.max(...col.panes.map((p) => PANE_MIN_W[p.id]));
+    sizeSlot(colEls[ci], !isFlexCol(col), col.w ?? 300, 'minWidth', minW);
+    const flex = flexPaneOf(col);
+    for (const p of col.panes) sizeSlot(tab.els.slots[p.id], p !== flex, p.h ?? 260, 'minHeight', PANE_MIN_H[p.id]);
+  });
 }
 
-function wireGutter(tab, gutter, edge) {
+// What is on screen now, written back into the layout: a pane that was the
+// slack has a size of its own once it is moved somewhere it no longer is.
+function measuredLayout(tab) {
+  const cols = paneLayout();
+  const colEls = tab.els.layout.querySelectorAll(':scope > .agents-col');
+  cols.forEach((col, ci) => {
+    col.w = Math.round(colEls[ci]?.offsetWidth || col.w || 300);
+    for (const p of col.panes) p.h = Math.round(tab.els.slots[p.id].offsetHeight || p.h || 260);
+  });
+  return cols;
+}
+
+// The gap between two columns, or between two panes stacked in one. Dragging it
+// moves the line between them: a pane of fixed size grows or shrinks with it,
+// the slack takes up the rest.
+function makeGutter(tab, axis, ci, pi) {
+  const gutter = document.createElement('div');
+  gutter.className = axis === 'col' ? 'agents-gutter' : 'agents-row-gutter';
+  gutter.title = 'Drag to resize';
   gutter.addEventListener('pointerdown', (ev) => {
     ev.preventDefault();
     gutter.setPointerCapture(ev.pointerId);
     gutter.classList.add('dragging');
-    const startX = ev.clientX;
-    const startWidth = agentColumns()[edge];
-
+    const cols = measuredLayout(tab);
+    const horizontal = axis === 'col';
+    const start = horizontal ? ev.clientX : ev.clientY;
+    // either side of the gap, with their sizes and floors as they are now
+    const [a, b] = horizontal
+      ? [cols[ci - 1], cols[ci]].map((c) => ({
+          item: c,
+          size: c.w,
+          min: Math.max(...c.panes.map((p) => PANE_MIN_W[p.id])),
+          fixed: !isFlexCol(c),
+          key: 'w'
+        }))
+      : [cols[ci].panes[pi - 1], cols[ci].panes[pi]].map((p) => ({
+          item: p,
+          size: p.h,
+          min: PANE_MIN_H[p.id],
+          fixed: p !== flexPaneOf(cols[ci]),
+          key: 'h'
+        }));
     const move = (mv) => {
-      // the diff panel grows leftwards, so its delta is inverted
-      const delta = edge === 'rail' ? mv.clientX - startX : startX - mv.clientX;
-      const other = agentColumns()[edge === 'rail' ? 'diff' : 'rail'];
-      const room = tab.els.layout.clientWidth - other - AGENT_MIN.center - GUTTER * 2;
-      const next = Math.max(AGENT_MIN[edge], Math.min(room, startWidth + delta));
-      state.theme.agentLayout = { ...state.theme.agentLayout, ...agentColumns(), [edge]: Math.round(next) };
-      for (const t of agentTabs()) applyAgentColumns(t);
+      const raw = (horizontal ? mv.clientX : mv.clientY) - start;
+      const d = Math.max(a.min - a.size, Math.min(b.size - b.min, raw));
+      if (a.fixed) a.item[a.key] = a.size + d;
+      if (b.fixed) b.item[b.key] = b.size - d;
+      state.theme.agentLayout = { ...state.theme.agentLayout, panes: cols };
+      for (const t of agentTabs()) renderPaneLayout(t);
     };
     const up = () => {
       gutter.classList.remove('dragging');
@@ -290,12 +373,97 @@ function wireGutter(tab, gutter, edge) {
     gutter.addEventListener('pointermove', move);
     gutter.addEventListener('pointerup', up);
   });
+  return gutter;
+}
+
+// Picked up by its grip and dropped on another pane: on that pane's left or
+// right edge it becomes a column of its own beside that pane's column; on its
+// top or bottom edge it stacks above or below it. The nearest edge is the one.
+function wirePaneGrip(tab, id) {
+  const slot = tab.els.slots[id];
+  const grip = slot.querySelector('.slot-grip');
+  grip.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    grip.setPointerCapture(ev.pointerId);
+    const layout = tab.els.layout;
+    const marker = document.createElement('div');
+    marker.className = 'agents-drop';
+    marker.hidden = true;
+    layout.appendChild(marker);
+    layout.classList.add('moving');
+    slot.classList.add('lifted');
+    let drop = null;
+
+    const move = (mv) => {
+      const under = document
+        .elementsFromPoint(mv.clientX, mv.clientY)
+        .find((el) => el.classList?.contains('agents-slot') && layout.contains(el));
+      const target = under?.dataset.pane;
+      if (!target || target === id) {
+        drop = null;
+        marker.hidden = true;
+        return;
+      }
+      const r = under.getBoundingClientRect();
+      const fx = (mv.clientX - r.left) / r.width;
+      const fy = (mv.clientY - r.top) / r.height;
+      const side = [
+        ['left', fx],
+        ['right', 1 - fx],
+        ['top', fy],
+        ['bottom', 1 - fy]
+      ].sort((x, y) => x[1] - y[1])[0][0];
+      drop = { target, side };
+      const box = layout.getBoundingClientRect();
+      const [x, y, w, h] = { left: [0, 0, 0.5, 1], right: [0.5, 0, 0.5, 1], top: [0, 0, 1, 0.5], bottom: [0, 0.5, 1, 0.5] }[side];
+      marker.hidden = false;
+      marker.style.left = r.left - box.left + r.width * x + 'px';
+      marker.style.top = r.top - box.top + r.height * y + 'px';
+      marker.style.width = r.width * w + 'px';
+      marker.style.height = r.height * h + 'px';
+    };
+    const up = () => {
+      grip.releasePointerCapture?.(ev.pointerId);
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      marker.remove();
+      layout.classList.remove('moving');
+      slot.classList.remove('lifted');
+      if (drop) movePane(tab, id, drop.target, drop.side);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+  });
+}
+
+function movePane(tab, id, target, side) {
+  const cols = measuredLayout(tab);
+  const from = cols.find((c) => c.panes.some((p) => p.id === id));
+  const pane = from.panes.find((p) => p.id === id);
+  from.panes = from.panes.filter((p) => p !== pane);
+  const rest = cols.filter((c) => c.panes.length);
+  const col = rest.find((c) => c.panes.some((p) => p.id === target));
+  if (side === 'left' || side === 'right') {
+    // a column of its own, as wide as it was, if the column it lands by can spare it
+    const w = Math.max(PANE_MIN_W[id], Math.min(from.w, Math.round(col.w / 2)));
+    rest.splice(rest.indexOf(col) + (side === 'right' ? 1 : 0), 0, { w, panes: [{ id }] });
+  } else {
+    // it takes half the height of the pane it lands on
+    const t = col.panes.find((p) => p.id === target);
+    pane.h = Math.max(PANE_MIN_H[id], Math.round(t.h / 2));
+    t.h = Math.max(PANE_MIN_H[t.id], t.h - pane.h);
+    col.panes.splice(col.panes.indexOf(t) + (side === 'bottom' ? 1 : 0), 0, pane);
+  }
+  savePaneLayout(rest);
 }
 
 function buildAgentLayout(tab) {
   const layout = document.createElement('div');
   layout.className = 'agents-layout';
   layout.innerHTML = `
+    <div class="agents-slot" data-pane="rail">
+    <div class="slot-grip" title="Drag to move"></div>
     <div class="agents-rail">
       <button class="rail-new" title="Start Claude Code in a folder">+ New session</button>
       <div class="rail-section">
@@ -310,12 +478,9 @@ function buildAgentLayout(tab) {
         <div class="sessions-list"></div>
       </div>
     </div>
-    <div class="agents-gutter" data-edge="rail" title="Drag to resize"></div>
-    <div class="agents-center">
-      <div class="agents-empty">cd into a repo and run <b>claude</b> — it becomes an agent automatically.</div>
     </div>
-    <div class="agents-gutter" data-edge="diff" title="Drag to resize"></div>
-    <div class="agents-side">
+    <div class="agents-slot" data-pane="diff">
+    <div class="slot-grip" title="Drag to move"></div>
     <div class="agents-diff">
       <div class="diff-head">
         <span class="diff-title">Diff watch</span>
@@ -331,9 +496,6 @@ function buildAgentLayout(tab) {
           <button class="diff-send" hidden title="Send comments to the agent">
             <svg viewBox="0 0 16 16"><path d="M2.75 8h9.5M8.75 4.5 12.25 8l-3.5 3.5" /></svg><span>Send</span>
           </button>
-          <button class="diff-open-tab" title="Open a shell in this session's folder, under the diff">
-            <svg viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" /><path d="m4.75 6.25 2 1.75-2 1.75M8.5 10h2.75" /></svg><span>Shell</span>
-          </button>
           <button class="diff-fold" title="Collapse or expand every file">
             <svg viewBox="0 0 16 16"><path d="m5 3 3 3 3-3M5 13l3-3 3 3" /></svg><span>Fold</span>
           </button>
@@ -341,8 +503,10 @@ function buildAgentLayout(tab) {
       </div>
       <div class="diff-body"><p class="hint">No agent selected</p></div>
     </div>
-    <div class="agents-dock-gutter" hidden title="Drag to resize"></div>
-    <div class="agents-dock" hidden>
+    </div>
+    <div class="agents-slot" data-pane="shell">
+    <div class="slot-grip" title="Drag to move"></div>
+    <div class="agents-dock">
       <div class="dock-head">
         <span class="dock-title">
           <svg viewBox="0 0 16 16"><path d="m3.5 5 3 3-3 3M8.5 11.5h4" /></svg>
@@ -351,9 +515,14 @@ function buildAgentLayout(tab) {
         <button class="dock-send" title="Send the last command's output to this session's agent (Ctrl+Shift+S)">
           <svg viewBox="0 0 16 16"><path d="M2.75 8h9.5M8.75 4.5 12.25 8l-3.5 3.5" /></svg><span>Send output</span>
         </button>
-        <button class="dock-close" title="Close this shell"><svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg></button>
       </div>
-      <div class="dock-body"></div>
+      <div class="dock-body"><p class="hint dock-empty">The shell opens in the session's folder</p></div>
+    </div>
+    </div>
+    <div class="agents-slot" data-pane="agent">
+    <div class="slot-grip" title="Drag to move"></div>
+    <div class="agents-center">
+      <div class="agents-empty">cd into a repo and run <b>claude</b> — it becomes an agent automatically.</div>
     </div>
     </div>`;
   tab.contentEl.appendChild(layout);
@@ -362,10 +531,11 @@ function buildAgentLayout(tab) {
   // it — folded a file away, scrolled to a hunk — has to outlive the re-render.
   tab.diffCollapsed = new Set();
   tab.diffCwd = null;
-  // Shells docked under the diff, one per folder; the one on show follows the
+  // Shells docked by the diff, one per session; the one on show follows the
   // agent you select, so the shell next to a diff is always that diff's repo.
   tab.dockLeaves = new Set();
   tab.dockShown = null;
+  tab.dockPending = new Set();
   tab.els = {
     layout,
     agentsList: layout.querySelector('.agents-list'),
@@ -378,9 +548,9 @@ function buildAgentLayout(tab) {
     diffRepos: layout.querySelector('.diff-repos'),
     diffFoldBtn: layout.querySelector('.diff-fold'),
     diffSendBtn: layout.querySelector('.diff-send'),
-    side: layout.querySelector('.agents-side'),
+    slots: Object.fromEntries([...layout.querySelectorAll('.agents-slot')].map((el) => [el.dataset.pane, el])),
     dock: layout.querySelector('.agents-dock'),
-    dockGutter: layout.querySelector('.agents-dock-gutter'),
+    dockEmpty: layout.querySelector('.dock-empty'),
     dockBody: layout.querySelector('.dock-body'),
     dockName: layout.querySelector('.dock-name'),
     dockSend: layout.querySelector('.dock-send')
@@ -402,16 +572,6 @@ function buildAgentLayout(tab) {
     syncFoldButton(tab);
   });
   tab.els.diffSendBtn.addEventListener('click', () => sendNotes(tab));
-  layout.querySelector('.diff-open-tab').addEventListener('click', () => {
-    // the selected agent, not diffCwd: that one outlives an agent that has gone
-    const agent = globalAgents.get(tab.selected);
-    if (agent?.cwd && tab.centerLeaves.has(agent.leaf)) openDockShell(tab, agent.leaf, agent.cwd);
-    else toast('Select an agent first', { error: true });
-  });
-  layout.querySelector('.dock-close').addEventListener('click', () => {
-    if (tab.dockShown) closeDockLeaf(tab, tab.dockShown);
-  });
-  wireDockGutter(tab);
   // Which of the two terminals was typed into last. Remembered, not read off the
   // focus: the palette takes the focus, and its commands still mean that one.
   tab.els.dockBody.addEventListener('focusin', () => (tab.dockTyping = true));
@@ -423,29 +583,20 @@ function buildAgentLayout(tab) {
       reselectDiff(tab);
     });
   });
-  layout.querySelectorAll('.agents-gutter').forEach((g) => wireGutter(tab, g, g.dataset.edge));
-  applyAgentColumns(tab);
-  // re-clamp when the window changes size, so a narrow window can't squeeze the
-  // terminal out entirely
-  new ResizeObserver(() => {
-    applyAgentColumns(tab);
-    applyDockHeight(tab);
-  }).observe(layout);
+  for (const id of PANE_IDS) wirePaneGrip(tab, id);
+  renderPaneLayout(tab);
 
   layout.querySelector('.rail-refresh').addEventListener('click', () => refreshSessions());
   layout.querySelector('.rail-new').addEventListener('click', () => pickSessionFolder(tab));
 }
 
 // ---------- shell dock ----------
-// A shell under the diff, owned by a session: somewhere to run the tests or poke
-// at the repo while the agent works, without leaving the view that shows what it
+// A shell by the diff, owned by a session: somewhere to run the tests or poke at
+// the repo while the agent works, without leaving the view that shows what it
 // changed. The owner is the session's center pane, which outlives a claude that
-// restarts inside it. Switching session swaps the dock for that session's own
-// shell, or puts it away; a shell out of sight keeps running, and comes back
-// exactly as it was, at the height it was left at.
-
-const DOCK_MIN = 110;
-const DIFF_MIN_H = 140;
+// restarts inside it. Every session has one, started in its folder as soon as
+// the folder is known; switching session swaps the dock for that session's own
+// shell. A shell out of sight keeps running, and comes back exactly as it was.
 
 function dockLeafFor(tab, owner) {
   return [...(tab.dockLeaves || [])].find((l) => l.dockOwner === owner) || null;
@@ -455,21 +606,7 @@ function dockHostOf(leaf) {
   return agentTabs().find((t) => t.dockLeaves?.has(leaf)) || null;
 }
 
-// Stored as the user dragged it, per shell; a new shell starts at the last one
-// dragged. Squeezed for display only when the window is too short to give the
-// diff its minimum, so a taller window gives it back.
-function applyDockHeight(tab) {
-  if (!tab.els?.dock || tab.els.dock.hidden) return;
-  const stored = tab.dockShown?.dockHeight ?? state.theme?.agentLayout?.dock ?? 260;
-  const total = tab.els.side.clientHeight;
-  const room = total ? total - DIFF_MIN_H - GUTTER : stored;
-  const h = Math.max(DOCK_MIN, Math.min(stored, room));
-  if (tab.appliedDock === h) return;
-  tab.appliedDock = h;
-  tab.els.dock.style.height = h + 'px';
-}
-
-async function openDockShell(tab, owner, cwd) {
+async function openDockShell(tab, owner, cwd, { focus = true } = {}) {
   let leaf = dockLeafFor(tab, owner);
   if (!leaf) {
     leaf = await createPane({ cwd });
@@ -481,12 +618,24 @@ async function openDockShell(tab, owner, cwd) {
     addDockLeaf(tab, leaf, owner, cwd);
   }
   // switched away while it started: it waits for its session instead
-  if (owner.el.style.display !== 'none') showDockLeaf(tab, leaf, { animate: true });
+  if (owner.el.style.display !== 'none') showDockLeaf(tab, leaf, { focus });
+}
+
+// The folder a session's shell starts in: its agent's, else wherever its pane
+// has said it is. Not known yet, and the shell waits until it is.
+function ensureDockShell(tab, owner) {
+  if (tab.adopting || !owner || !tab.centerLeaves.has(owner) || dockLeafFor(tab, owner) || tab.dockPending.has(owner)) return;
+  const agent = [...globalAgents.values()].find((a) => a.leaf === owner);
+  const cwd = agent?.cwd || owner.cwd;
+  if (!cwd) return;
+  tab.dockPending.add(owner);
+  openDockShell(tab, owner, cwd, { focus: false }).finally(() => tab.dockPending.delete(owner));
 }
 
 function addDockLeaf(tab, leaf, owner, cwd) {
   leaf.dockOwner = owner;
   leaf.dockCwd = cwd;
+  leaf.dockBorn = Date.now();
   // a failed command lights the dock's Send button; a passing one puts it out
   leaf.onCommandDone = (mark) => {
     leaf.dockFailed = mark.exit !== 0;
@@ -502,19 +651,13 @@ function addDockLeaf(tab, leaf, owner, cwd) {
   tab.els.dockBody.appendChild(leaf.el);
 }
 
-// animate: only when the button opens it. Coming back with its session, the
-// shell simply is there, as it was left.
-function showDockLeaf(tab, leaf, { focus = true, animate = false } = {}) {
+function showDockLeaf(tab, leaf, { focus = true } = {}) {
   for (const l of tab.dockLeaves) l.el.style.display = l === leaf ? '' : 'none';
-  tab.els.dock.classList.toggle('opening', animate);
   tab.dockShown = leaf;
-  tab.els.dock.hidden = false;
-  tab.els.dockGutter.hidden = false;
+  tab.els.dockEmpty.hidden = true;
   tab.els.dockName.textContent = String(leaf.dockCwd || '').split(/[\\/]/).pop() || 'Shell';
   tab.els.dockName.title = leaf.dockCwd || '';
   renderDockSend(tab);
-  tab.appliedDock = null;
-  applyDockHeight(tab);
   requestAnimationFrame(() => {
     leaf.fit.fit();
     if (focus) leaf.term.focus();
@@ -523,21 +666,25 @@ function showDockLeaf(tab, leaf, { focus = true, animate = false } = {}) {
 
 // Put away, not closed: every shell stays alive for its session to come back to
 function hideDock(tab) {
-  if (!tab.dockShown && tab.els.dock.hidden) return;
   for (const l of tab.dockLeaves) l.el.style.display = 'none';
   tab.dockShown = null;
   tab.dockTyping = false;
-  tab.els.dock.hidden = true;
-  tab.els.dockGutter.hidden = true;
+  tab.els.dockEmpty.hidden = false;
+  tab.els.dockName.textContent = 'Shell';
+  tab.els.dockName.title = '';
+  renderDockSend(tab);
 }
 
-// The session on show decides what the dock holds
+// The session on show decides what the dock holds, and starts it if it has none
 function syncDock(tab, centerLeaf) {
   if (!tab.dockLeaves) return;
   const leaf = dockLeafFor(tab, centerLeaf);
-  if (leaf === tab.dockShown) return;
+  if (leaf && leaf === tab.dockShown) return;
   if (leaf) showDockLeaf(tab, leaf, { focus: false });
-  else hideDock(tab);
+  else {
+    hideDock(tab);
+    ensureDockShell(tab, centerLeaf);
+  }
 }
 
 // kill: false for a shell that has already exited on its own
@@ -552,37 +699,12 @@ function closeDockLeaf(tab, leaf, { kill = true } = {}) {
   }
   if (tab.dockShown !== leaf) return;
   hideDock(tab);
-  // the diff takes the whole column back, the session's pane the keyboard
-  if (leaf.dockOwner?.el.style.display !== 'none') leaf.dockOwner?.term.focus();
-}
-
-function wireDockGutter(tab) {
-  const gutter = tab.els.dockGutter;
-  gutter.addEventListener('pointerdown', (ev) => {
-    ev.preventDefault();
-    gutter.setPointerCapture(ev.pointerId);
-    gutter.classList.add('dragging');
-    const startY = ev.clientY;
-    const startH = tab.els.dock.offsetHeight;
-    const move = (mv) => {
-      // the dock grows upwards, so dragging up makes it taller
-      const room = tab.els.side.clientHeight - DIFF_MIN_H - GUTTER;
-      const next = Math.max(DOCK_MIN, Math.min(room, startH + (startY - mv.clientY)));
-      if (tab.dockShown) tab.dockShown.dockHeight = Math.round(next);
-      state.theme.agentLayout = { ...state.theme.agentLayout, dock: Math.round(next) };
-      tab.appliedDock = null;
-      applyDockHeight(tab);
-    };
-    const up = () => {
-      gutter.classList.remove('dragging');
-      gutter.releasePointerCapture?.(ev.pointerId);
-      gutter.removeEventListener('pointermove', move);
-      gutter.removeEventListener('pointerup', up);
-      saveTheme();
-    };
-    gutter.addEventListener('pointermove', move);
-    gutter.addEventListener('pointerup', up);
-  });
+  const owner = leaf.dockOwner;
+  if (owner?.el.style.display === 'none') return;
+  // exited: a fresh one in its place, unless it died as it started, which a
+  // fresh one would only do again
+  if (!kill && Date.now() - leaf.dockBorn > 2000) ensureDockShell(tab, owner);
+  owner?.term.focus();
 }
 
 // ---------- new session ----------

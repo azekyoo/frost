@@ -989,18 +989,93 @@ body.frameless #win-controls {
 
 /* ---------- agent mode ---------- */
 
+/* Columns of stacked panes, sized and ordered from JS and remembered in
+   theme.json; each pane sits in a slot with the grip it is moved by. */
 .agents-layout {
-  display: grid;
-  /* set from JS: rail | gutter | centre | gutter | diff, remembered in theme.json */
-  grid-template-columns: 210px 6px 1fr 6px 340px;
+  position: relative;
+  display: flex;
   width: 100%;
   height: 100%;
   min-height: 0;
 }
 
+.agents-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.agents-slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.agents-slot > :not(.slot-grip) {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
+/* The grip is a strip above the sheet, drawn like the gaps: a pill that shows
+   when pointed at, the strip itself the hit area. */
+.slot-grip {
+  flex: none;
+  position: relative;
+  height: 10px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.slot-grip::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background 0.15s var(--ease), width 0.2s var(--ease-out);
+}
+
+.slot-grip:hover::after,
+.agents-slot.lifted .slot-grip::after {
+  width: 56px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.agents-layout.moving,
+.agents-layout.moving * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+.agents-slot.lifted > :not(.slot-grip) {
+  opacity: 0.45;
+}
+
+/* where the pane being moved will land: the half of the pane it is over */
+.agents-drop {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent), 0 0 24px -6px var(--accent-glow);
+  transition: left 0.1s var(--ease), top 0.1s var(--ease), width 0.1s var(--ease), height 0.1s var(--ease);
+}
+
+.agents-drop[hidden] {
+  display: none;
+}
+
 /* The drag handle is the gap: invisible until pointed at, with a hit area wider
    than the line it draws. */
 .agents-gutter {
+  flex: none;
+  width: 6px;
   position: relative;
   cursor: col-resize;
   touch-action: none;
@@ -1342,16 +1417,8 @@ body.frameless #win-controls {
 }
 
 /* ---------- shell dock ---------- */
-/* The right-hand column is the diff over an optional shell: two sheets of the
-   same glass, with a gap to drag between them. */
-.agents-side {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-}
-
-.agents-dock-gutter {
+/* the gap between two panes stacked in one column */
+.agents-row-gutter {
   flex: none;
   height: 6px;
   position: relative;
@@ -1359,12 +1426,7 @@ body.frameless #win-controls {
   touch-action: none;
 }
 
-.agents-dock-gutter[hidden],
-.agents-dock[hidden] {
-  display: none;
-}
-
-.agents-dock-gutter::after {
+.agents-row-gutter::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -1377,19 +1439,17 @@ body.frameless #win-controls {
   transition: background 0.15s var(--ease), width 0.2s var(--ease-out);
 }
 
-.agents-dock-gutter:hover::after,
-.agents-dock-gutter.dragging::after {
+.agents-row-gutter:hover::after,
+.agents-row-gutter.dragging::after {
   background: var(--accent);
   box-shadow: 0 0 10px var(--accent-glow);
 }
 
-.agents-dock-gutter.dragging::after {
+.agents-row-gutter.dragging::after {
   width: 72px;
 }
 
 .agents-dock {
-  flex: none;
-  height: 260px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1398,10 +1458,6 @@ body.frameless #win-controls {
   border-radius: var(--radius);
   overflow: hidden;
   transition: box-shadow 0.2s var(--ease);
-}
-
-.agents-dock.opening {
-  animation: condense 0.2s var(--ease-out);
 }
 
 /* lit while it has the keyboard, like a focused pane */
@@ -1500,28 +1556,6 @@ body.frameless #win-controls {
     0 0 14px -4px var(--accent-glow);
 }
 
-.dock-close {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  transition: background 0.12s var(--ease), color 0.12s var(--ease);
-}
-
-.dock-close svg {
-  width: 13px;
-  height: 13px;
-}
-
-.dock-close:hover {
-  background: var(--surface-3);
-  color: #fff;
-}
-
 .dock-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -1608,6 +1642,15 @@ body.frameless #win-controls {
 .diff-body.holding > *,
 .agents-diff:has(.diff-body.holding) .diff-summary {
   visibility: hidden;
+}
+
+.dock-body > .dock-empty {
+  margin: auto;
+  text-align: center;
+}
+
+.dock-body > .dock-empty[hidden] {
+  display: none;
 }
 
 .diff-body > .hint {
@@ -1707,13 +1750,6 @@ body.frameless #win-controls {
 /* and part, when the click will open them */
 .diff-fold.unfold:hover svg {
   transform: scaleY(1.2);
-}
-
-/* while its shell is open under the diff, the button says so */
-.agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab {
-  color: var(--fg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 14%, transparent));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .diff-tools button.on {
