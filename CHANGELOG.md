@@ -3,6 +3,42 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.1.0 — 2026-10-01
+
+### Added
+
+- **Comment on the diff, then send it all to the agent.** Hover a line in the
+  diff and click **+** to leave a note on it (Ctrl+Enter saves, Esc cancels).
+  **Send** pastes every note into the agent's prompt as one message — file,
+  line, the code quoted, your comment — without submitting it, so you can read
+  it over and press Enter yourself. Notes are kept per agent and survive the
+  diff redrawing.
+- **Send a command's output to the agent.** The dock's **Send output** button,
+  or `Ctrl+Shift+S`, pastes the last command into the agent's prompt — what was
+  typed, how it ended, what it printed — without submitting it. When a command
+  fails the button turns red and reads **Send failure**; with text selected it
+  reads **Send selection** and sends just that. It works inside ssh too, and
+  from a shell in a normal tab it goes to the agent working in that folder.
+  Long output keeps its first 40 and last 300 lines. What the command printed
+  is sent as it is, so mind secrets in it.
+
+### Changed
+
+- **A new app icon,** cut from the same frosted ice as the 2.0 interface, with
+  its own drawing at 16 and 32 px so it still reads in the taskbar.
+- **The fold button says what it will do.** With every file folded it reads
+  **Unfold**; as soon as one is open again — by hand, or a new edit arriving —
+  it reads **Fold**.
+
+### Fixed
+
+- **Typing while a session starts no longer breaks it.** New session and resume
+  type `claude --resume …` into a fresh shell, and anything typed before the
+  shell was up landed on the same line, so claude never started. Keys typed in
+  that moment are now held and handed to claude's prompt once it is ready —
+  the question you started typing is still there.
+- **A Ctrl+clicked link opens once under Claude Code,** not twice.
+
 ## 2.0.0 — 2026-09-30
 
 A new look. The glass, acrylic and mica materials are what they were; what sits
