@@ -41,9 +41,10 @@ const configDir = path.join(LAB, 'config');
 const stateFile = path.join(configDir, 'window.json');
 
 function launch(port) {
-  const env = { ...process.env, FROST_SHOT: JSON.stringify({ configDir }) };
+  const env = { ...process.env, FROST_SHOT: JSON.stringify({ configDir, closeGraceMs: 3000 }) };
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
-  return spawn(process.execPath, [ROOT, `--remote-debugging-port=${port}`, `--user-data-dir=${path.join(LAB, 'ud')}`],
+  // keep drawing while covered: see the note in panetest.js
+  return spawn(process.execPath, [ROOT, '--disable-features=CalculateNativeWinOcclusion', `--remote-debugging-port=${port}`, `--user-data-dir=${path.join(LAB, 'ud')}`],
     { cwd: ROOT, stdio: 'ignore', env });
 }
 
@@ -113,9 +114,15 @@ async function ready(c) {
     for (const c of back) counts2.push(await c.eval(`state.tabs.length`));
     check('tabs restored per window', counts2.sort().join(',') === '1,3', JSON.stringify(counts2));
 
-    // close one window, then quit: only the survivor should be saved
-    const three = back[counts2.indexOf(3) >= 0 ? 0 : 0];
-    await back[0].eval(`api.winClose(), true`);
+    // close one window and carry on with the other, then quit: only the
+    // survivor should be saved. A closed window is kept for a grace period in
+    // case the app is closing too, so wait that out; the survivor's next
+    // layout change is what writes the file without it.
+    // The reply to this never comes — the window it was evaluated in is the
+    // one being closed — so the call is sent and the close is waited for.
+    back[0].eval(`api.winClose(), true`).catch(() => {});
+    await sleep(4000);
+    await back[1].eval('runCommand("tab.new"), true');
     await sleep(2000);
     spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
     await sleep(1200);

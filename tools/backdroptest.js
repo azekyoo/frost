@@ -52,7 +52,8 @@ function connect(url) {
 
   const env = { ...process.env, FROST_SHOT: JSON.stringify({ configDir, bounds: { x: 60, y: 60, width: 900, height: 560 } }) };
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
-  const child = spawn(process.execPath, [ROOT, `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(LAB, 'ud')}`],
+  // keep drawing while covered: see the note in panetest.js
+  const child = spawn(process.execPath, [ROOT, '--disable-features=CalculateNativeWinOcclusion', `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(LAB, 'ud')}`],
     { cwd: ROOT, stdio: 'ignore', env });
 
   let pass = 0, fail = 0;

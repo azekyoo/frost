@@ -118,7 +118,8 @@ const modalState = `(() => {
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
   const child = spawn(
     process.execPath,
-    [ROOT, `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(TMP, 'ud')}`],
+    // keep drawing while covered: see the note in panetest.js
+    [ROOT, '--disable-features=CalculateNativeWinOcclusion', `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(TMP, 'ud')}`],
     { cwd: ROOT, stdio: 'ignore', env }
   );
 
@@ -137,7 +138,7 @@ const modalState = `(() => {
 
     // --- one line goes straight through ------------------------------------
     await setClipboard(w, 'echo one-liner');
-    await w.eval('(() => { pasteInto(activePane().term); return true })()');
+    await w.eval('(() => { pasteInto(activePane()); return true })()');
     await sleep(600);
     const quiet = await w.eval(modalState);
     check('a single line is pasted without asking', quiet.open === false, JSON.stringify(quiet.title));
@@ -146,7 +147,7 @@ const modalState = `(() => {
     // Inert on purpose: this is typed at a real shell, and a confirmed paste
     // does run it — which is the very thing the warning exists for
     await setClipboard(w, 'echo first\necho second\necho third\n');
-    await w.eval('(() => { pasteInto(activePane().term); return true })()');
+    await w.eval('(() => { pasteInto(activePane()); return true })()');
     await sleep(600);
     const asked = await w.eval(modalState);
     check('several lines are held back and asked about', asked.open === true, JSON.stringify(asked));
@@ -162,7 +163,7 @@ const modalState = `(() => {
     check('cancelling pastes nothing', afterCancel === before, `row ${before} -> ${afterCancel}`);
 
     // Confirming pastes it — into the prompt, not run, since nothing presses Enter
-    await w.eval('(() => { pasteInto(activePane().term); return true })()');
+    await w.eval('(() => { pasteInto(activePane()); return true })()');
     await sleep(500);
     await w.eval(`(() => { document.querySelector('#modal .modal-confirm').click(); return true })()`);
     await sleep(900);
@@ -176,7 +177,7 @@ const modalState = `(() => {
     // --- turned off, nothing is asked ---------------------------------------
     await w.eval(`(() => { applyTheme({ ...state.theme, paste: { warnMultiline: false } }, undefined); return true })()`);
     await setClipboard(w, 'echo alpha\necho beta\n');
-    await w.eval('(() => { pasteInto(activePane().term); return true })()');
+    await w.eval('(() => { pasteInto(activePane()); return true })()');
     await sleep(700);
     const off = await w.eval(modalState);
     check('the warning can be turned off', off.open === false, JSON.stringify(off.title));

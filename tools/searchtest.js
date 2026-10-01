@@ -117,7 +117,8 @@ const setOptions = (opts) => `(() => {
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
   const child = spawn(
     process.execPath,
-    [ROOT, `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(TMP, 'ud')}`],
+    // keep drawing while covered: see the note in panetest.js
+    [ROOT, '--disable-features=CalculateNativeWinOcclusion', `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(TMP, 'ud')}`],
     { cwd: ROOT, stdio: 'ignore', env }
   );
 

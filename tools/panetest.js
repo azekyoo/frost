@@ -105,9 +105,17 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     FROST_SHOT: JSON.stringify({ configDir, bounds: { x: 40, y: 40, width: 1100, height: 700 } })
   };
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
+  // Windows reports a window covered by others as hidden, and Chromium stops
+  // drawing it — so a fit waiting on the next frame never comes, and the zoom
+  // check failed whenever something else was on top of the test window.
   const child = spawn(
     process.execPath,
-    [ROOT, `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(TMP, 'ud')}`],
+    [
+      ROOT,
+      '--disable-features=CalculateNativeWinOcclusion',
+      `--remote-debugging-port=${PORT}`,
+      `--user-data-dir=${path.join(TMP, 'ud')}`
+    ],
     { cwd: ROOT, stdio: 'ignore', env }
   );
 
