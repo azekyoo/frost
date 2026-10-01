@@ -1198,6 +1198,57 @@ function branchFor(cwd) {
 
 ipcMain.handle('git:branch', (_e, cwd) => branchFor(cwd));
 
+// A pane opened to run a command — New session, a resume — types it once its
+// shell is up, and that takes a moment. Whatever was typed in that moment used
+// to land on the same line and break the command, so claude never started.
+// It is held instead, and handed over once claude is drawing its own prompt:
+// the question typed early still reaches it.
+const typeAhead = new Map(); // ptyId -> { run, stage: 'shell' | 'claude', held: [], timer }
+// A shell without Frost's prompt hook gives no sign it is ready: the old guess.
+const RUN_UNMARKED_MS = 1500;
+// One with the hook whose first prompt never shows: type the command anyway.
+const RUN_MARKED_CAP_MS = 10000;
+// claude that never draws (not installed, a typo in a profile): give the keys
+// back to the shell rather than swallow them.
+const HOLD_CAP_MS = 15000;
+
+function holdForRun(id, run, marked) {
+  const ta = { run, stage: 'shell', held: [], timer: null };
+  typeAhead.set(id, ta);
+  ta.timer = setTimeout(() => typeRun(id), marked ? RUN_MARKED_CAP_MS : RUN_UNMARKED_MS);
+}
+
+function typeRun(id) {
+  const ta = typeAhead.get(id);
+  if (!ta || ta.stage !== 'shell') return;
+  clearTimeout(ta.timer);
+  ta.stage = 'claude';
+  try {
+    ptys.get(id)?.write(ta.run + '\r');
+  } catch {}
+  ta.timer = setTimeout(() => releaseTypeAhead(id), HOLD_CAP_MS);
+}
+
+function releaseTypeAhead(id) {
+  const ta = typeAhead.get(id);
+  if (!ta) return;
+  clearTimeout(ta.timer);
+  typeAhead.delete(id);
+  if (!ta.held.length) return;
+  try {
+    ptys.get(id)?.write(ta.held.join(''));
+  } catch {}
+}
+
+// The shell's first prompt is the moment to type; claude switching on focus
+// reporting — no shell does — is the moment its prompt takes keys.
+function watchTypeAhead(id, data) {
+  const ta = typeAhead.get(id);
+  if (!ta) return;
+  if (ta.stage === 'shell' && data.includes('\x1b]133;A')) typeRun(id);
+  else if (ta.stage === 'claude' && data.includes('\x1b[?1004h')) releaseTypeAhead(id);
+}
+
 // owner is the window the output belongs to. It can be null, for a shell that
 // exists before any pane does — nothing does that today, and the buffering
 // below is what a tab in flight between windows relies on.
@@ -1279,22 +1330,19 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
       const agentId = [...agents].find(([, r]) => r === rec)?.[0];
       if (agentId) agentEnded(agentId);
     }
+    watchTypeAhead(id, data);
     sendToOwner(id, 'pty:data', { id, data });
   });
   p.onExit(({ exitCode }) => {
+    clearTimeout(typeAhead.get(id)?.timer);
+    typeAhead.delete(id);
     ptys.delete(id);
     sendToOwner(id, 'pty:exit', { id, exitCode });
     ptyOwners.delete(id);
     ptyMeta.delete(id);
   });
-  if (run) {
-    // let the shell finish its prompt, then type the command for the user
-    setTimeout(() => {
-      try {
-        p.write(run + '\r');
-      } catch {}
-    }, 1500);
-  }
+  // both dialects draw the 133;A prompt marker, with or without the wrapper
+  if (run) holdForRun(id, run, dialect !== 'none');
   return { id, profileId: profile.id, profileName: profile.name };
 }
 
@@ -1305,6 +1353,11 @@ ipcMain.handle('profiles:list', () =>
 );
 
 ipcMain.on('pty:input', (_e, { id, data }) => {
+  const ta = typeAhead.get(id);
+  if (ta) {
+    ta.held.push(data);
+    return;
+  }
   const p = ptys.get(id);
   if (p) p.write(data);
   const rec = agentByPty.get(id);
@@ -1335,6 +1388,8 @@ ipcMain.on('pty:kill', (_e, { id }) => {
   ptyOwners.delete(id);
   ptyMeta.delete(id);
   detachedPtys.delete(id);
+  clearTimeout(typeAhead.get(id)?.timer);
+  typeAhead.delete(id);
   if (p) {
     ptys.delete(id);
     p.kill();
