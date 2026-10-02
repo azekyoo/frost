@@ -123,12 +123,25 @@ function attachCommandMarks(node) {
     if (kind === 'A') {
       const marker = node.term.registerMarker(0);
       if (!marker) return true;
-      node.marks.push({ marker, exit: null, decoration: null });
+      // a prompt that never got a D had nothing run at it — Enter on an empty
+      // line, Ctrl+C on a half-typed one. It's no command, and kept as one it
+      // would stand between the last real command and everything that looks
+      // for it. Its line is still where the command before it stopped
+      // printing, though: the first such prompt is kept as that command's end.
+      const prev = node.marks[node.marks.length - 1];
+      if (prev && prev.exit === null) {
+        node.marks.pop();
+        const ran = node.marks[node.marks.length - 1];
+        if (ran && !ran.end) ran.end = prev.marker;
+        else prev.marker.dispose();
+      }
+      node.marks.push({ marker, exit: null, decoration: null, end: null });
       // scrollback is finite, and so is the number of marks worth keeping
       while (node.marks.length > MARK_LIMIT) {
         const old = node.marks.shift();
         old.decoration?.dispose();
         old.marker.dispose();
+        old.end?.dispose();
       }
       return true;
     }
@@ -171,35 +184,25 @@ function liveMarks(node) {
   return (node?.marks || []).filter((m) => !m.marker.isDisposed).sort((a, b) => a.marker.line - b.marker.line);
 }
 
-// The command being looked at: the last finished one that starts at or above the
-// top of the screen. Scrolled to the bottom that is the command that just ran;
-// scrolled up it is the one whose output fills the screen, which is the one
-// being read — anchoring on the top of the viewport rather than the bottom is
-// what makes those the same rule. A screen showing no prompt at all falls back
-// to the last finished command, since that is the only one it could mean.
+// The last finished command, wherever the screen is scrolled to: it is the one
+// that just ran, and the one a Send or a copy means.
 function commandRegion(node) {
   const term = node?.term;
   if (!term) return null;
   const marks = liveMarks(node);
   if (marks.length < 2) return null;
   const buf = term.buffer.active;
-  // At the bottom, the command being looked at is the one that just ran — and
-  // saying "at or above the top of the screen" would pick the first command in
-  // the session while everything still fits on one screen, where the top of the
-  // screen is the top of the buffer.
-  const scrolledBack = buf.viewportY < buf.baseY;
-  let index = marks.length - 2; // the last one that has finished
-  if (scrolledBack) {
-    for (let i = 0; i < marks.length - 1; i++) {
-      if (marks[i].marker.line <= buf.viewportY) index = i;
-    }
-  }
+  const index = marks.length - 2; // the last one that has finished
 
+  // up to the next prompt — the first empty one after it, when there were any
+  const own = marks[index].end;
+  const stop = own && !own.isDisposed ? own.line : marks[index + 1].marker.line;
   let start = marks[index].marker.line + 1;
   // Past the rows the command line itself wrapped onto
-  while (start < marks[index + 1].marker.line && buf.getLine(start)?.isWrapped) start++;
-  const end = marks[index + 1].marker.line - 1;
-  if (end < start) return null; // a command that printed nothing
+  while (start < stop && buf.getLine(start)?.isWrapped) start++;
+  const end = stop - 1;
+  // end < start: a command that printed nothing, which is still a command —
+  // one that failed silently is worth sending
   return { start, end, mark: marks[index] };
 }
 
@@ -261,7 +264,7 @@ function runningOutput(node, marks) {
   return { command: last.command, output, exit: null, host: last.host || null };
 }
 
-// The command being looked at, as what was typed, what it printed and how it
+// The last command, as what was typed, what it printed and how it
 // ended — for handing to an agent. The prompt's own text is taken off the
 // command where it can be recognised: PowerShell's "PS C:\x> ", or the "$ "
 // line under Git Bash's two-line prompt, which then isn't output either.
@@ -276,9 +279,7 @@ function commandOutput(node) {
     if (text.length) return { command: '', output: text, exit: null, selection: true };
   }
   const marks = liveMarks(node);
-  const buf = term.buffer.active;
-  const atBottom = buf.viewportY >= buf.baseY;
-  if (marks.length && marks[marks.length - 1].exit === null && atBottom) {
+  if (marks.length && marks[marks.length - 1].exit === null) {
     const running = runningOutput(node, marks);
     if (running) return running;
   }
@@ -298,7 +299,7 @@ function commandOutput(node) {
 
 function selectCommandOutput(node) {
   const region = commandRegion(node);
-  if (!region) {
+  if (!region || region.end < region.start) {
     // cmd and WSL profiles install no prompt hook, so they never report one
     toast(
       liveMarks(node).length

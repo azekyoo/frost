@@ -1090,16 +1090,21 @@ const CLAUDE_WRAPPER =
 // A marks where this prompt begins. Together they let Frost show how each
 // command ended and jump between them. $? has to be read before anything else
 // in the function, or it reports on our own statements instead.
+// D goes out only when the history has grown: an empty Enter redraws the
+// prompt with $? still holding the last command's result, and reporting it
+// again would turn that empty line into a command of its own.
 const PS_CWD_HOOK =
   '$global:__frostPrompt = $function:prompt; ' +
   'function global:prompt { ' +
   '$__ok = $?; $__ec = $LASTEXITCODE; ' +
   '$__code = if ($__ok) { 0 } elseif ($__ec) { $__ec } else { 1 }; ' +
+  '$__h = try { (Get-History -Count 1).Id } catch { $null }; ' +
+  '$__ran = $__h -ne $global:__frostHist; $global:__frostHist = $__h; ' +
   '$out = try { & $global:__frostPrompt } catch { "PS " + (Get-Location).Path + "> " }; ' +
   'try { $l = Get-Location; if ($l.Provider.Name -eq "FileSystem") { ' +
   '[Console]::Write([char]27 + "]9;9;" + $l.ProviderPath + [char]7) } } catch {}; ' +
   'try { ' +
-  'if ($global:__frostSeen) { [Console]::Write([char]27 + "]133;D;" + $__code + [char]7) }; ' +
+  'if ($global:__frostSeen -and $__ran) { [Console]::Write([char]27 + "]133;D;" + $__code + [char]7) }; ' +
   '$global:__frostSeen = $true; ' +
   '[Console]::Write([char]27 + "]133;A" + [char]7) } catch {}; ' +
   '$out }';
@@ -1133,10 +1138,18 @@ function bashRc(withClaude) {
     // pwd -W gives the Windows path under MSYS, so Frost gets a path it can stat
     // BEL-terminated: keeps the format string free of backslash escaping traps
     "__frost_cwd() { local p; p=$(pwd -W 2>/dev/null || pwd); printf '\\033]9;9;%s\\007' \"$p\"; }",
-    // $? first, before anything else can overwrite it
+    // $? first, before anything else can overwrite it. D only for a prompt
+    // that follows a command: an empty Enter leaves $? where the last command
+    // put it, and the prompt's command number (\#) with it — only a command
+    // that ran moves the number, so that is what tells the two apart. HISTCMD would also stand still for a rerun that
+    // ignoredups kept out of the history. Bash before 4.4 can't expand \#, and
+    // reports every prompt as before.
     '__frost_prompt() {',
-    '  local ec=$?',
-    "  if [ -n \"$__frost_seen\" ]; then printf '\\033]133;D;%s\\007' \"$ec\"; fi",
+    "  local ec=$? n='\\#' ran=1",
+    '  if [ "${BASH_VERSINFO[0]}${BASH_VERSINFO[1]}" -ge 44 ] 2>/dev/null; then',
+    '    n=${n@P}; [ "$n" = "$__frost_num" ] && ran=; __frost_num=$n',
+    '  fi',
+    "  if [ -n \"$__frost_seen\" ] && [ -n \"$ran\" ]; then printf '\\033]133;D;%s\\007' \"$ec\"; fi",
     '  __frost_seen=1',
     "  printf '\\033]133;A\\007'",
     '  __frost_cwd',

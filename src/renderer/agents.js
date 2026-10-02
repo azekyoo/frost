@@ -1073,7 +1073,6 @@ function sendOutputToAgent(node) {
   agent.leaf.term.paste(outputPrompt(out, node.cwd));
   // sent: the selection has done its job, and the button goes back to the output
   if (out.selection) node.term.clearSelection();
-  else node.dockFailed = false;
   const tab = dockHostOf(node);
   if (tab) renderDockSend(tab);
   revealAgent(agent);
@@ -1085,6 +1084,7 @@ function renderDockSend(tab) {
   if (!btn) return;
   // a selection is what gets sent when there is one, so it names the button first
   const selected = !!tab.dockShown?.term.hasSelection();
+  // red for as long as the last command is a failure — what Send takes
   const failed = !selected && !!tab.dockShown?.dockFailed;
   btn.classList.toggle('failed', failed);
   btn.classList.toggle('selection', selected);

@@ -161,7 +161,23 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     const empty = await w.eval(select);
     check('a command that printed nothing selects nothing', empty === null, JSON.stringify(empty));
 
-    // --- scrolled up, it is the command on screen --------------------------
+    // --- one that failed without a word --------------------------------------
+    // still a command to send: that it failed is the whole message
+    await runCommand(w, 'cmd /c exit 4');
+    await sleep(400);
+    const silent = await w.eval(`(() => {
+      activePane().term.clearSelection(); // the earlier checks' selection would be sent instead
+      const out = commandOutput(activePane());
+      return out && { command: out.command, exit: out.exit, message: outputPrompt(out, 'C:\\\\dev\\\\demo') };
+    })()`);
+    check(
+      'a silent failure is sent as one',
+      silent?.message === '`cmd /c exit 4` failed (exit 4) in demo, printing nothing.',
+      JSON.stringify(silent)
+    );
+
+    // --- scrolled up, it is still the last command -------------------------
+    // what is on screen doesn't change what ran last, which is what is meant
     await runCommand(w, 'echo needle-one');
     await runCommand(w, '1..60 | ForEach-Object { "filler $_" }');
     await sleep(600);
@@ -174,9 +190,9 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     await sleep(400);
     const onScreen = await w.eval(select);
     check(
-      'scrolled up, it takes the command being looked at',
-      onScreen === 'needle-one',
-      JSON.stringify(onScreen)
+      'scrolled up, it still takes the last command',
+      String(onScreen).startsWith('filler 1\n') && String(onScreen).endsWith('filler 60'),
+      JSON.stringify(String(onScreen).slice(0, 40))
     );
     await w.eval('(() => { activePane().term.scrollToBottom(); return true })()');
 
@@ -205,6 +221,37 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     );
     const selection = await w.eval('activePane().term.hasSelection()');
     check('reading it selects nothing', selection === false, String(selection));
+
+    // --- Enter on an empty line ------------------------------------------------
+    // Redraws the prompt with $? still holding the failure: no command, and the
+    // failure above is still the one to send — not an empty one at each prompt
+    const marksBefore = await w.eval('liveMarks(activePane()).length');
+    for (let i = 0; i < 2; i++) {
+      await w.eval(`(() => { api.ptyInput(activePane().ptyId, '\\r'); return true })()`);
+      await sleep(1200);
+    }
+    const afterEmpty = await w.eval(`(() => {
+      const node = activePane();
+      const marks = liveMarks(node);
+      const out = commandOutput(node);
+      return { marks: marks.length, open: marks[marks.length - 1].exit, command: out?.command, exit: out?.exit, output: out?.output };
+    })()`);
+    check('an empty Enter adds no command', afterEmpty.marks === marksBefore, `${marksBefore} → ${afterEmpty.marks}`);
+    check('and reports no result', afterEmpty.open === null, JSON.stringify(afterEmpty.open));
+    check(
+      'the failure before it is still what gets sent',
+      afterEmpty.command === 'cmd /c "echo boom & exit 3"' && afterEmpty.exit === 3,
+      JSON.stringify(afterEmpty)
+    );
+    check('with its own output, not the empty prompts after it', JSON.stringify(afterEmpty.output) === '["boom"]', JSON.stringify(afterEmpty.output));
+
+    // --- while the next one runs ----------------------------------------------
+    // its output so far is the last output, so that is what goes
+    await w.eval(`(() => { api.ptyInput(activePane().ptyId, 'echo early; Start-Sleep 3\\r'); return true })()`);
+    await sleep(1500);
+    const busy = await w.eval('(() => { const o = commandOutput(activePane()); return o && { running: !!o.running, output: o.output }; })()');
+    check('while a command runs, its output so far is sent', busy?.running && JSON.stringify(busy.output) === '["early"]', JSON.stringify(busy));
+    await sleep(2500);
 
     // --- a line the program broke at the edge itself ---------------------------
     // A real newline right at the last column, as a remote shell redrawing a
