@@ -18,7 +18,7 @@
 
 ---
 
-![Agent mode — live status, terminal, a review comment being written on the diff, and the session's docked shell](assets/screenshot-agent.png)
+![Frost in 30 seconds — the glass backdrop, split panes, the command palette and agent mode](assets/frost-promo.webp)
 
 ## Why Frost
 
@@ -52,6 +52,8 @@ doing while it does it.
 
 Run `claude` in any tab and it becomes an agent with live status — working,
 **blocked (needs you)**, done — and a Windows notification when it needs you.
+
+![Agent mode — live status, terminal, a review comment being written on the diff, and the session's docked shell](assets/screenshot-agent.png)
 
 - **Diff watch** — a live diff of just what the agent changed this session
 - **Review it in place** — comment on any line of the diff, then send every
