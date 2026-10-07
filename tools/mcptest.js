@@ -150,7 +150,18 @@ async function runCommand(w, line) {
     const init = await rpc('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '0' } });
     check('it introduces itself as frost', init.body?.result?.serverInfo?.name === 'frost', JSON.stringify(init.body?.result?.serverInfo));
     const tools = (await rpc('tools/list', {})).body?.result?.tools?.map((t) => t.name) || [];
-    check('with its three tools', tools.join() === 'list_panes,read_pane,get_selection', tools.join());
+    check(
+      'with its tools',
+      tools.join() === 'list_panes,read_pane,get_selection,open_shell,run_in_pane,wait_for_output,interrupt_pane',
+      tools.join()
+    );
+    const hooks = JSON.parse(fs.readFileSync(path.join(userData, 'agent-status', `cfg-pty${first}.json`), 'utf8'));
+    const allowed = hooks.permissions?.allow || [];
+    check(
+      'reading is allowed up front, typing is left to claude to ask',
+      allowed.includes('mcp__frost__read_pane') && allowed.includes('mcp__frost__wait_for_output') && !allowed.some((t) => /run_in_pane|interrupt_pane|open_shell/.test(t)),
+      allowed.join()
+    );
 
     // --- some history to read --------------------------------------------------
     await runCommand(w, 'echo one-1; echo one-2');
@@ -199,6 +210,51 @@ async function runCommand(w, line) {
       return true })()`);
     const sel = await call('get_selection');
     check('a selection in a pane that is not focused is still found', sel.text.includes(`pane ${first}`) && sel.text.includes('two-boom'), JSON.stringify(sel.text));
+
+    // --- open_shell ----------------------------------------------------------------
+    // pane 1 stands in for an agent's pane in a normal tab: its shell is a split
+    // of it, and the keyboard stays where the user left it
+    const focusedBefore = await w.eval('activePane().ptyId');
+    const opened = await call('open_shell', {});
+    let shell = {};
+    try { shell = JSON.parse(opened.text); } catch {}
+    check('open_shell splits the caller and returns the new pane', shell.where === 'split' && shell.pane && shell.pane !== first, opened.text);
+    check('without taking the keyboard', (await w.eval('activePane().ptyId')) === focusedBefore, await w.eval('activePane().ptyId'));
+    const dockAsked = await call('open_shell', { where: 'dock' });
+    check('a normal tab has no dock, and says so', dockAsked.isError && /split/.test(dockAsked.text), dockAsked.text);
+
+    // --- run_in_pane -------------------------------------------------------------
+    const ran = await call('run_in_pane', { pane: shell.pane, command: 'echo ran-by-agent; cmd /c exit 7' });
+    check('run_in_pane returns what the command printed', ran.text.includes('ran-by-agent'), JSON.stringify(ran.text));
+    check('and how it ended', ran.text.includes('[exit 7]'), JSON.stringify(ran.text));
+    // something half-typed by the user is cleared, not glued onto the command
+    await w.eval(`(() => { api.ptyInput(${JSON.stringify(shell.pane)}, 'half-typed-junk'); return true })()`);
+    await sleep(500);
+    const clean = await call('run_in_pane', { pane: shell.pane, command: 'echo clean-line' });
+    check('a half-typed line is cleared first', clean.text.includes('$ echo clean-line') && clean.text.includes('[exit 0]'), JSON.stringify(clean.text));
+    const own = await call('run_in_pane', { pane: first, command: 'echo nope' });
+    check('its own pane is refused', own.isError && /own pane/.test(own.text), own.text);
+    const multi = await call('run_in_pane', { pane: shell.pane, command: 'echo a\necho b' });
+    check('several lines are refused', multi.isError && /One line/.test(multi.text), multi.text);
+
+    // --- something that keeps running ----------------------------------------------
+    const server = await call('run_in_pane', {
+      pane: shell.pane,
+      command: "Start-Sleep 2; echo 'server ready on 4000'; Start-Sleep 60",
+      timeout: 1
+    });
+    check('a command still running at the timeout is left running', /still running after 1s/.test(server.text), JSON.stringify(server.text));
+    const ready = await call('wait_for_output', { pane: shell.pane, pattern: 'ready on \\d+', timeout: 15 });
+    check('wait_for_output catches the line it waits for', ready.text.includes('[matched') && ready.text.includes('server ready on 4000'), JSON.stringify(ready.text));
+    const busyRun = await call('run_in_pane', { pane: shell.pane, command: 'echo too-soon' });
+    check('a busy pane is refused', busyRun.isError && /busy/.test(busyRun.text), busyRun.text);
+    const stop = await call('interrupt_pane', { pane: shell.pane });
+    check('interrupt_pane sends Ctrl+C', !stop.isError, stop.text);
+    await sleep(1500);
+    const after = await call('run_in_pane', { pane: shell.pane, command: 'echo after-stop' });
+    check('and the pane is free again', after.text.includes('after-stop') && after.text.includes('[exit 0]'), JSON.stringify(after.text));
+    const idle = await call('wait_for_output', { pane: shell.pane, timeout: 2 });
+    check('waiting on an idle pane returns at once', idle.text.startsWith('[nothing is running'), JSON.stringify(idle.text.slice(0, 60)));
 
     // --- the setting -------------------------------------------------------------
     fs.writeFileSync(path.join(configDir, 'theme.json'), JSON.stringify({ ...theme, agentTools: false }, null, 2));

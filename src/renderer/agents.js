@@ -469,19 +469,21 @@ function applyDockHeight(tab) {
   tab.els.dock.style.height = h + 'px';
 }
 
-async function openDockShell(tab, owner, cwd) {
+// focus: false when an agent opens it, not the user — the keyboard stays put
+async function openDockShell(tab, owner, cwd, { focus = true } = {}) {
   let leaf = dockLeafFor(tab, owner);
   if (!leaf) {
     leaf = await createPane({ cwd });
     // the session may have ended while the shell was starting
     if (!tab.centerLeaves.has(owner)) {
       destroyLeaf(leaf);
-      return;
+      return null;
     }
     addDockLeaf(tab, leaf, owner, cwd);
   }
   // switched away while it started: it waits for its session instead
-  if (owner.el.style.display !== 'none') showDockLeaf(tab, leaf, { animate: true });
+  if (owner.el.style.display !== 'none') showDockLeaf(tab, leaf, { animate: true, focus });
+  return leaf;
 }
 
 function addDockLeaf(tab, leaf, owner, cwd) {

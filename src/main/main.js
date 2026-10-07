@@ -2326,7 +2326,7 @@ function readSessionId(agentId) {
 // main asks the window that owns each one and passes the answer on.
 
 let frostMcp = null;
-let mcpToolNames = [];
+let mcpAllowed = []; // tools the agent may call without asking
 const mcpPending = new Map(); // reqId -> resolve
 let mcpSeq = 0;
 
@@ -2336,7 +2336,7 @@ function startFrostMcp() {
     enabled: () => (readTheme() || DEFAULT_THEME).agentTools !== false,
     callTool: mcpTool
   });
-  mcpToolNames = frostMcp.toolNames;
+  mcpAllowed = frostMcp.readOnly;
   frostMcp.ready.catch((e) => {
     console.error('frost mcp server failed to start', e);
     frostMcp = null;
@@ -2353,14 +2353,14 @@ function mcpConfigFile(agentId) {
   return file;
 }
 
-function askRenderer(wc, op, args) {
+function askRenderer(wc, op, args, timeoutMs = 3000) {
   return new Promise((resolve) => {
     if (!wc || wc.isDestroyed()) return resolve(null);
     const reqId = ++mcpSeq;
     const timer = setTimeout(() => {
       mcpPending.delete(reqId);
       resolve(null);
-    }, 3000);
+    }, timeoutMs);
     mcpPending.set(reqId, (result) => {
       clearTimeout(timer);
       resolve(result);
@@ -2382,14 +2382,95 @@ function ptyOfAgent(agentId) {
   return agents.get(agentId)?.ptyId || null;
 }
 
+// What to send before a command so it lands on an empty line, whatever the
+// user had half-typed there: Esc reverts the line in PSReadLine; readline
+// needs the cursor at the end first, then Ctrl+U. cmd has neither.
+const CLEAR_LINE = { powershell: '\x1b', bash: '\x05\x15' };
+
+// How a notice names the agent: its session title can be anything ("Frost MCP
+// test"), so it is quoted and labelled as an agent, never left to read as a message.
+function agentLabel(agentId) {
+  const rec = agents.get(agentId) || agentByPty.get(ptyOfAgent(agentId));
+  const name = rec?.title || (rec?.cwd ? path.basename(rec.cwd) : '');
+  return name ? `Agent "${name}"` : 'An agent';
+}
+
+// A pane an agent may type into: a live shell, not its own, not another
+// agent's claude, in a window that can answer for it.
+async function typingTarget(args, self) {
+  const pane = String(args.pane ?? '');
+  const wc = ptyOwners.get(pane);
+  if (!ptys.has(pane) || !wc || wc.isDestroyed()) throw new Error(`No pane "${pane}" — call list_panes for the ids.`);
+  if (pane === self) throw new Error('That is your own pane. Use your Bash tool, or open_shell for one the user can watch.');
+  if (agentByPty.has(pane)) throw new Error(`Pane ${pane} is another agent's session, not a shell.`);
+  const st = await askRenderer(wc, 'state', { pane });
+  if (!st) throw new Error('That window did not answer.');
+  if (st.error) throw new Error(st.error);
+  return { pane, wc, st };
+}
+
+async function mcpWait(wc, op, args, secs) {
+  const r = await askRenderer(wc, op, { ...args, ms: secs * 1000 }, secs * 1000 + 5000);
+  if (!r) throw new Error('That window did not answer.');
+  if (r.error) throw new Error(r.error);
+  return r.text;
+}
+
 async function mcpTool(name, args, agentId) {
   const self = ptyOfAgent(agentId);
+  if (name === 'open_shell') {
+    if (!self) throw new Error('Frost does not know which pane you are in yet.');
+    const r = await askRenderer(ptyOwners.get(self), 'open', { from: self, where: args.where || null, cwd: args.cwd || null }, 20000);
+    if (!r) throw new Error('The shell did not start in time.');
+    if (r.error) throw new Error(r.error);
+    return JSON.stringify(r);
+  }
+  if (name === 'run_in_pane') {
+    const command = String(args.command ?? '').trim();
+    if (!command) throw new Error('No command given.');
+    if (/[\r\n]/.test(command)) throw new Error('One line only — join commands with ";".');
+    const { pane, wc, st } = await typingTarget(args, self);
+    if (st.running) {
+      throw new Error(`Pane ${pane} is busy running "${st.running}". Use interrupt_pane, or open_shell for another.`);
+    }
+    const dialect = findProfile(ptyMeta.get(pane)?.profileId)?.agentWrapper || 'none';
+    askRenderer(wc, 'notice', { pane, text: `${agentLabel(agentId)} typed: ${command}` });
+    const clear = CLEAR_LINE[dialect];
+    if (clear) {
+      ptys.get(pane)?.write(clear);
+      // Esc with a key right behind it reads as Alt+that key
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    ptys.get(pane)?.write(command + '\r');
+    const secs = Math.min(600, Math.max(1, Number(args.timeout) || 30));
+    return mcpWait(wc, 'waitDone', { pane, done: st.done }, secs);
+  }
+  if (name === 'wait_for_output') {
+    const pane = String(args.pane ?? '');
+    const wc = ptyOwners.get(pane);
+    if (!wc || wc.isDestroyed()) throw new Error(`No pane "${pane}" — call list_panes for the ids.`);
+    if (args.pattern) {
+      try {
+        new RegExp(args.pattern, 'i');
+      } catch {
+        throw new Error('That pattern is not a valid regular expression.');
+      }
+    }
+    const secs = Math.min(600, Math.max(1, Number(args.timeout) || 60));
+    return mcpWait(wc, 'waitOutput', { pane, pattern: args.pattern || null }, secs);
+  }
+  if (name === 'interrupt_pane') {
+    const { pane, wc } = await typingTarget(args, self);
+    askRenderer(wc, 'notice', { pane, text: `${agentLabel(agentId)} pressed Ctrl+C` });
+    ptys.get(pane).write('\x03');
+    return `Sent Ctrl+C to pane ${pane}.`;
+  }
   if (name === 'list_panes') {
     const wins = liveWindows();
     const lists = await Promise.all(wins.map((w) => askRenderer(w.webContents, 'panes')));
     const panes = [];
     lists.forEach((list, i) => {
-      for (const p of list || []) {
+      for (const p of Array.isArray(list) ? list : []) {
         const rec = agentByPty.get(p.pane);
         panes.push({
           ...p,
@@ -2420,7 +2501,7 @@ async function mcpTool(name, args, agentId) {
     const order = [first, ...liveWindows().filter((w) => w !== first)].filter(Boolean);
     for (const w of order) {
       const r = await askRenderer(w.webContents, 'selection');
-      if (r) return `Selected in pane ${r.pane} (${r.title}):\n${r.text}`;
+      if (r?.text) return `Selected in pane ${r.pane} (${r.title}):\n${r.text}`;
     }
     return 'Nothing is selected in any Frost terminal.';
   }
@@ -2431,9 +2512,10 @@ function hookSettingsFile(agentId) {
   const statusFile = path.join(STATUS_DIR, 'st-' + agentId).replace(/\\/g, '/');
   const write = (s) => `node -e "require('fs').writeFileSync('${statusFile}','${s}')"`;
   const cfg = {
-    // Frost's tools only read what is already on the user's screen, so they
-    // don't stop the agent to ask each time
-    permissions: { allow: mcpToolNames.map((t) => 'mcp__frost__' + t) },
+    // Frost's reading tools only see what is already on the user's screen, so
+    // they don't stop the agent to ask each time. The ones that type are left
+    // to Claude Code's permission prompt.
+    permissions: { allow: mcpAllowed.map((t) => 'mcp__frost__' + t) },
     hooks: {
       UserPromptSubmit: [{ hooks: [{ type: 'command', command: write('working') }] }],
       Notification: [{ hooks: [{ type: 'command', command: blockedHook(statusFile) }] }],

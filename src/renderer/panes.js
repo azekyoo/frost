@@ -154,6 +154,7 @@ function attachCommandMarks(node) {
       const exit = Number(arg);
       mark.exit = Number.isFinite(exit) ? exit : 0;
       node.lastExit = mark.exit;
+      node.doneCount = (node.doneCount || 0) + 1; // what waiting for a command watches
       try {
         mark.decoration = node.term.registerDecoration({
           marker: mark.marker,
@@ -1180,13 +1181,15 @@ function focusPane(node) {
   refreshPaneTitle(node);
 }
 
-async function splitPane(dir) {
-  const tab = state.activeTab;
-  if (!tab || !tab.activePane) return;
+// target: a pane other than the focused one; focus: false leaves the keyboard
+// where it is, for a split the user did not make themselves.
+async function splitPane(dir, { target = null, focus = true, cwd = null } = {}) {
+  const tab = target ? tabOfPane(target) : state.activeTab;
+  if (!tab || !(target || tab.activePane)) return null;
   unzoom(tab); // a new pane hidden behind a zoomed one reads as a split that failed
-  const target = tab.activePane;
+  target = target || tab.activePane;
   // a split keeps the shell and directory you were already in
-  const newLeaf = await createPane({ profileId: target.profileId, cwd: target.cwd });
+  const newLeaf = await createPane({ profileId: target.profileId, cwd: cwd || target.cwd });
   const parent = tab.root === target ? null : findParent(tab.root, target);
 
   if (parent && parent.dir === dir) {
@@ -1204,8 +1207,9 @@ async function splitPane(dir) {
     }
   }
   renderTab(tab);
-  focusPane(newLeaf);
+  if (focus) focusPane(newLeaf);
   saveSession();
+  return newLeaf;
 }
 
 function destroyLeaf(node) {

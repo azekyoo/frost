@@ -1,7 +1,9 @@
 // Frost's own MCP server: what every agent running in a Frost pane can ask of
 // the terminal around it. A claude session sees its folder and its own pty and
 // nothing else; Frost sees every tab, pane and scrollback, and this is where it
-// lends that sight out. Read-only for now — nothing here can type.
+// lends that sight out. The read tools are allowed up front; the ones that
+// type into a pane are left to Claude Code's own permission prompt, so the user
+// says yes to each the first time.
 //
 // The transport is MCP's streamable HTTP in its plainest form: one POST per
 // JSON-RPC message, answered with JSON, no event stream. That is all a server
@@ -18,11 +20,17 @@ const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_BODY = 1024 * 1024;
 
 const INSTRUCTIONS =
-  'You are running inside Frost, a terminal with several tabs and split panes. ' +
-  'These tools read the other terminals the user has open: when they mention ' +
-  '"my other tab", "the server", "the build", "the error I am looking at", or ' +
-  'output you have not seen, call list_panes, then read_pane. get_selection ' +
-  'returns what the user has highlighted. Pane ids are what list_panes returns.';
+  'You are running inside Frost, a Windows terminal with tabs and split panes. ' +
+  'An "agents" tab shows a rail of agent sessions on the left, the agent terminal ' +
+  '(you) in the middle, and a diff viewer on the right of what the session changed. ' +
+  'Under the diff viewer, each session can have a docked shell: "the shell", "the ' +
+  'dock", "the shell under the diff". These tools reach every terminal the user has ' +
+  'open. When they mention "my other tab", "the server", "the build", "the error I ' +
+  'am looking at", or output you have not seen, call list_panes, then read_pane. ' +
+  'get_selection returns what the user has highlighted. To run something the user ' +
+  'should watch or keep (a dev server, a test run, a watcher), use open_shell and ' +
+  'run_in_pane instead of your own Bash tool; wait_for_output waits on a pane that ' +
+  'is still running. Pane ids are what list_panes and open_shell return.';
 
 const TOOLS = [
   {
@@ -58,10 +66,78 @@ const TOOLS = [
     description: 'The text the user has selected in a Frost terminal, and which pane it is in.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true }
+  },
+  {
+    name: 'open_shell',
+    description:
+      'Open a new shell the user can see and return its pane id. "dock" (the default ' +
+      'in an agents tab) docks it under the diff viewer, for your session; "split" ' +
+      'splits your own pane in a normal tab. If your session already has a docked ' +
+      'shell, that one is returned. Keyboard focus is left where it is.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        where: { type: 'string', enum: ['dock', 'split'] },
+        cwd: { type: 'string', description: 'Folder to start in (default: your own)' }
+      },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false }
+  },
+  {
+    name: 'run_in_pane',
+    description:
+      'Type one command into a shell pane, press Enter, and wait for it to finish: ' +
+      'returns its output and exit code. A command still running at the timeout ' +
+      '(a server, a watcher) keeps running, and what it printed so far is returned — ' +
+      'follow it with wait_for_output or read_pane. Refuses panes that are busy, ' +
+      'your own pane, and other agents. One line only: join commands with ";".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pane: { type: 'string', description: 'Pane id from list_panes or open_shell' },
+        command: { type: 'string' },
+        timeout: { type: 'integer', minimum: 1, maximum: 600, description: 'Seconds to wait (default 30)' }
+      },
+      required: ['pane', 'command'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true }
+  },
+  {
+    name: 'wait_for_output',
+    description:
+      'Wait on a pane until new output matches a pattern (a regular expression, ' +
+      'case-insensitive) — "ready on", "compiled", "error" — or, with no pattern, ' +
+      'until its running command finishes. Returns what it printed meanwhile.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pane: { type: 'string' },
+        pattern: { type: 'string' },
+        timeout: { type: 'integer', minimum: 1, maximum: 600, description: 'Seconds (default 60)' }
+      },
+      required: ['pane'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: true }
+  },
+  {
+    name: 'interrupt_pane',
+    description: 'Press Ctrl+C in a pane, to stop what is running there.',
+    inputSchema: {
+      type: 'object',
+      properties: { pane: { type: 'string' } },
+      required: ['pane'],
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true }
   }
 ];
 
 const TOOL_NAMES = TOOLS.map((t) => t.name);
+// what the user is not asked about: these only look at what is on screen
+const READ_ONLY = ['list_panes', 'read_pane', 'get_selection', 'wait_for_output'];
 
 // deps:
 //   enabled()                  — the setting, read live
@@ -100,7 +176,7 @@ function startMcpServer(deps) {
         const name = params?.name;
         if (!TOOL_NAMES.includes(name)) return fail(-32602, `Unknown tool: ${name}`);
         if (!deps.enabled()) {
-          return reply({ content: [{ type: 'text', text: 'Turned off in Frost settings (Let agents read your terminals).' }], isError: true });
+          return reply({ content: [{ type: 'text', text: 'Turned off in Frost settings (Let agents use your terminals).' }], isError: true });
         }
         try {
           const text = await deps.callTool(name, params.arguments || {}, agentId);
@@ -178,7 +254,7 @@ function startMcpServer(deps) {
     };
   }
 
-  return { ready, configFor, toolNames: TOOL_NAMES, close: () => server.close() };
+  return { ready, configFor, toolNames: TOOL_NAMES, readOnly: READ_ONLY, close: () => server.close() };
 }
 
 module.exports = { startMcpServer };
