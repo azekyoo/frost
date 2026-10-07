@@ -883,11 +883,54 @@ function glowErased(node, e) {
     return true;
   }
   if (buf.cursorX >= e.x) return false;
-  for (let x = buf.cursorX; x < e.x; x++) {
-    const c = e.cells[x];
-    if (c && c.w > 0 && c.ch) glowCell(node, x, row, c.w, c.ch);
+  const gone = e.cells.slice(buf.cursorX, e.x);
+  const letters = gone.filter((c) => c.w > 0 && c.ch.trim());
+  if (letters.length > 1) {
+    // a word at once (Ctrl+Backspace, Ctrl+W) breaks as the one thing it was
+    glowCell(node, buf.cursorX, row, e.x - buf.cursorX, gone);
+  } else {
+    for (let x = buf.cursorX; x < e.x; x++) {
+      const c = e.cells[x];
+      if (c && c.w > 0 && c.ch) glowCell(node, x, row, c.w, c.ch);
+    }
   }
   return true;
+}
+
+// A word's shards: the block cut into columns along slanted lines, each column
+// split by a crack that runs the length of the word, so the pieces fit back
+// together. Positions in % of the block; every cut is a little off true.
+function wordShards(letters) {
+  const cols = Math.min(6, Math.max(2, Math.round(letters / 2.5)));
+  const wob = (n) => n + (Math.random() * 2 - 1) * (40 / cols);
+  const top = [0];
+  const bottom = [0];
+  const crack = [50 + (Math.random() * 24 - 12)];
+  for (let i = 1; i < cols; i++) {
+    const at = (i / cols) * 100;
+    top.push(wob(at));
+    bottom.push(wob(at));
+    crack.push(50 + (Math.random() * 30 - 15));
+  }
+  top.push(100);
+  bottom.push(100);
+  crack.push(50 + (Math.random() * 24 - 12));
+  const mid = (i) => (top[i] * (100 - crack[i]) + bottom[i] * crack[i]) / 100;
+  const out = [];
+  for (let i = 0; i < cols; i++) {
+    const center = (top[i] + top[i + 1] + bottom[i] + bottom[i + 1]) / 4;
+    out.push({
+      clip: `polygon(${top[i]}% 0, ${top[i + 1]}% 0, ${mid(i + 1)}% ${crack[i + 1]}%, ${mid(i)}% ${crack[i]}%)`,
+      center,
+      up: true
+    });
+    out.push({
+      clip: `polygon(${mid(i)}% ${crack[i]}%, ${mid(i + 1)}% ${crack[i + 1]}%, ${bottom[i + 1]}% 100%, ${bottom[i]}% 100%)`,
+      center,
+      up: false
+    });
+  }
+  return out;
 }
 
 // Frost, literally. A typed character (typed) freezes: drawn again exactly
@@ -929,18 +972,48 @@ function glowCell(node, x, row, width, erased = null, typed = null) {
     ice.style.lineHeight = ch + 'px';
     g.appendChild(ice);
   } else {
-    for (const s of SHARDS) {
+    const word = Array.isArray(erased);
+    const makeShard = (clip) => {
       const shard = document.createElement('div');
-      shard.className = 'shard';
-      shard.textContent = erased;
+      shard.className = word ? 'shard word' : 'shard';
       shard.style.fontFamily = node.term.options.fontFamily;
       shard.style.fontSize = node.term.options.fontSize + 'px';
       shard.style.lineHeight = ch + 'px';
-      shard.style.clipPath = s.clip;
-      shard.style.setProperty('--dx', jitter(s.dx * cw * 1.6) + 'px');
-      shard.style.setProperty('--dy', jitter(s.dy * ch) + 'px');
-      shard.style.setProperty('--rot', jitter(s.rot) + 'deg');
+      shard.style.clipPath = clip;
+      if (!word) shard.textContent = erased;
+      // a box per cell, so the word sits on the grid it was drawn on
+      else {
+        for (const c of erased) {
+          if (c.w === 0) continue;
+          const span = document.createElement('span');
+          span.textContent = c.ch || ' ';
+          span.style.width = (c.w || 1) * cw + 'px';
+          shard.appendChild(span);
+        }
+      }
       g.appendChild(shard);
+      return shard;
+    };
+    if (!word) {
+      for (const s of SHARDS) {
+        const shard = makeShard(s.clip);
+        shard.style.setProperty('--dx', jitter(s.dx * cw * 1.6) + 'px');
+        shard.style.setProperty('--dy', jitter(s.dy * ch) + 'px');
+        shard.style.setProperty('--rot', jitter(s.rot) + 'deg');
+      }
+    } else {
+      // outward from the middle of the word: the ends go furthest, the top
+      // half is thrown up, the bottom half drops
+      const span = width * cw;
+      const letters = erased.filter((c) => c.w > 0 && c.ch.trim()).length;
+      for (const s of wordShards(letters)) {
+        const shard = makeShard(s.clip);
+        const off = ((s.center - 50) / 50) * span; // -span..span from the middle
+        const side = Math.sign(off) || (Math.random() < 0.5 ? -1 : 1);
+        shard.style.setProperty('--dx', jitter(off * 0.35 + side * cw * 0.6) + 'px');
+        shard.style.setProperty('--dy', jitter(s.up ? -ch * 0.6 : ch * 0.5) + 'px');
+        shard.style.setProperty('--rot', side * jitter(s.up ? 18 : 10) * (s.up ? 1 : -1) + 'deg');
+      }
     }
   }
   screen.appendChild(g);

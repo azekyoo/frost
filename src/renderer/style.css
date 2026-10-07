@@ -959,6 +959,17 @@ body.frameless #win-controls {
   animation: type-glow-shard calc(var(--t) * 1.7) cubic-bezier(0.2, 0.6, 0.35, 1) forwards;
 }
 
+/* a piece of a whole word: the word laid out cell by cell, then cut */
+.pane .xterm-screen .type-glow .shard.word {
+  display: flex;
+}
+
+.pane .xterm-screen .type-glow .shard.word span {
+  display: inline-block;
+  flex: none;
+  text-align: center;
+}
+
 @keyframes type-glow {
   from {
     opacity: 1;
