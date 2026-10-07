@@ -101,6 +101,9 @@ const DEFAULT_THEME = {
   // yesterday's tabs in it is a surprise, and the tabs it restores are empty
   // shells in the right directories rather than the work that was in them.
   restoreSession: false,
+  // Off for the same reason: letters that freeze and shatter are a look to
+  // choose, not one to find a terminal already wearing.
+  typingGlow: false,
   notify: { agentBlocked: true, agentDone: true, commandSeconds: 20 },
   // check: look for a newer release at startup and every six hours. download:
   // fetch it when one is found. Either way the installer only runs when Frost

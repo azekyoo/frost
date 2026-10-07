@@ -855,7 +855,7 @@ function attachTypingGlow(node) {
     return { x: buf.cursorX, y: buf.baseY + buf.cursorY };
   };
   term.onData((d) => {
-    if (state.theme?.typingGlow === false) return;
+    if (state.theme?.typingGlow !== true) return; // off unless turned on
     if (ERASE_BACK.has(d) || d === ERASE_FORWARD) {
       const buf = term.buffer.active;
       const y = buf.baseY + buf.cursorY;
@@ -948,7 +948,7 @@ function attachTypingGlow(node) {
 // selection, cut to its rows, so a selection over several lines is swept as
 // one — and only over text, not the blank end of a row.
 function glowCopy(node) {
-  if (state.theme?.typingGlow === false) return;
+  if (state.theme?.typingGlow !== true) return;
   // one copy, however many ways it was asked for at once
   if (Date.now() - (node.copyGlowAt || 0) < 400) return;
   const term = node.term;
