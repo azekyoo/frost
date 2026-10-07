@@ -912,8 +912,30 @@ body.frameless #win-controls {
 
 /* frozen: the character itself in ice white, glowing, laid exactly over the
    real one — holds a beat, then thaws back into the terminal's own colour */
+/* Behind it, frost spreading: a round haze with no edge to it, starting tight
+   around the letter and opening out as it fades — the cold coming off the
+   letter, not a box drawn round its cell */
 .pane .xterm-screen .type-glow:not(.erased) .flash {
-  background: color-mix(in srgb, var(--glow) 22%, transparent);
+  inset: -45% -70%;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--glow) 42%, transparent),
+    color-mix(in srgb, var(--glow) 16%, transparent) 55%,
+    transparent
+  );
+  animation: type-glow-haze calc(var(--t) * 1.6) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes type-glow-haze {
+  from {
+    opacity: 1;
+    transform: scale(0.45);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.15);
+  }
 }
 
 .pane .xterm-screen .type-glow .ice {
@@ -922,7 +944,7 @@ body.frameless #win-controls {
   text-align: center;
   white-space: pre;
   color: color-mix(in srgb, var(--glow) 25%, white);
-  text-shadow: 0 0 4px var(--glow), 0 0 10px color-mix(in srgb, var(--glow) 70%, transparent);
+  text-shadow: 0 0 2px var(--glow), 0 0 6px var(--glow), 0 0 12px color-mix(in srgb, var(--glow) 70%, transparent);
   animation: type-glow-thaw calc(var(--t) * 1.6) ease-in forwards;
 }
 
