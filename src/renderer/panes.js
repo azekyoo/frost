@@ -858,7 +858,7 @@ function attachTypingGlow(node) {
       if (!cell || cell.getChars() !== pending[i].ch) break;
       const width = cell.getWidth() || 1;
       x -= width;
-      glowCell(node, x, y - buf.viewportY, width);
+      glowCell(node, x, y - buf.viewportY, width, null, pending[i].ch);
       matched = true;
     }
     // what came back is done with, and so is anything typed before it
@@ -890,10 +890,11 @@ function glowErased(node, e) {
   return true;
 }
 
-// Frost, literally. A typed character flashes and throws off a few sparks of
-// ice; nothing is drawn over the character itself, which is already there. An
-// erased one (erased: the character that was there) shatters: its shards, in
-// red, fly apart, turn and fade.
+// Frost, literally. A typed character (typed) freezes: drawn again exactly
+// over itself in ice white, glowing, then thawing back into its own colour —
+// nothing moves, so nothing reads as a second copy. An erased one (erased: the
+// character that was there) shatters: its shards, in red, fly apart, turn and
+// fade.
 
 // Where each shard of a shattered character is cut, and where it goes: two
 // from the top thrown up and out, the heavy bottom one dropping.
@@ -903,7 +904,7 @@ const SHARDS = [
   { clip: 'polygon(0 68%, 42% 52%, 100% 58%, 100% 100%, 0 100%)', dx: 0.1, dy: 0.45, rot: 9 }
 ];
 
-function glowCell(node, x, row, width, erased = null) {
+function glowCell(node, x, row, width, erased = null, typed = null) {
   const screen = node.term.element?.querySelector('.xterm-screen');
   if (!screen || x < 0 || row < 0 || row >= node.term.rows) return;
   const cw = screen.clientWidth / node.term.cols;
@@ -919,17 +920,14 @@ function glowCell(node, x, row, width, erased = null) {
   g.appendChild(flash);
   const jitter = (n) => n * (0.75 + Math.random() * 0.5);
   if (erased === null) {
-    // up and to the sides, spread out so no two leave together
-    const base = -90 + (Math.random() * 30 - 15);
-    for (const offset of [-60, 0, 60]) {
-      const a = ((base + offset + (Math.random() * 20 - 10)) * Math.PI) / 180;
-      const dist = jitter(ch * 0.95);
-      const spark = document.createElement('i');
-      spark.className = 'spark';
-      spark.style.setProperty('--dx', Math.cos(a) * dist + 'px');
-      spark.style.setProperty('--dy', Math.sin(a) * dist + 'px');
-      g.appendChild(spark);
-    }
+    const ice = document.createElement('div');
+    ice.className = 'ice';
+    ice.textContent = typed || '';
+    ice.style.fontFamily = node.term.options.fontFamily;
+    ice.style.fontSize = node.term.options.fontSize + 'px';
+    ice.style.fontWeight = node.term.options.fontWeight;
+    ice.style.lineHeight = ch + 'px';
+    g.appendChild(ice);
   } else {
     for (const s of SHARDS) {
       const shard = document.createElement('div');

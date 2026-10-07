@@ -887,7 +887,7 @@ body.frameless #win-controls {
 }
 
 /* Typing glow, as frost: a typed character flashes in the accent colour and
-   throws off three sparks of ice; a deleted one shatters into red shards that
+   freezes, ice white, then thaws; a deleted one shatters into red shards that
    fly apart, turn and fade. --type-glow-ms retimes all of it from theme.css. */
 .pane .xterm-screen .type-glow {
   --glow: var(--accent);
@@ -910,18 +910,20 @@ body.frameless #win-controls {
   animation: type-glow var(--t) ease-out forwards;
 }
 
-/* a speck of ice: bright core, cold halo, thrown off and melting on the way */
-.pane .xterm-screen .type-glow .spark {
+/* frozen: the character itself in ice white, glowing, laid exactly over the
+   real one — holds a beat, then thaws back into the terminal's own colour */
+.pane .xterm-screen .type-glow:not(.erased) .flash {
+  background: color-mix(in srgb, var(--glow) 22%, transparent);
+}
+
+.pane .xterm-screen .type-glow .ice {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 3px;
-  height: 3px;
-  margin: -1.5px 0 0 -1.5px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--glow) 35%, white);
-  box-shadow: 0 0 4px var(--glow), 0 0 8px color-mix(in srgb, var(--glow) 60%, transparent);
-  animation: type-glow-spark calc(var(--t) * 1.5) cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+  inset: 0;
+  text-align: center;
+  white-space: pre;
+  color: color-mix(in srgb, var(--glow) 25%, white);
+  text-shadow: 0 0 4px var(--glow), 0 0 10px color-mix(in srgb, var(--glow) 70%, transparent);
+  animation: type-glow-thaw calc(var(--t) * 1.6) ease-in forwards;
 }
 
 /* one piece of the broken character, cut by its clip-path */
@@ -948,14 +950,13 @@ body.frameless #win-controls {
   }
 }
 
-@keyframes type-glow-spark {
-  from {
+@keyframes type-glow-thaw {
+  0%,
+  30% {
     opacity: 1;
-    transform: translate(0, 0) scale(1);
   }
-  to {
+  100% {
     opacity: 0;
-    transform: translate(var(--dx), var(--dy)) scale(0.3);
   }
 }
 
