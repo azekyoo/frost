@@ -91,6 +91,14 @@ running and supervising Claude Code agents with live status and diff watching.
   threshold and Frost is in the background, you get a notification and a taskbar
   flash. Timed from the same prompt hook that drives tab titles, so there's no
   extra shell integration to install
+- **Typing effects, made of ice** — off by default; **Typing effects** in
+  settings, or **Toggle typing effects** in the palette. What you type freezes
+  ice white and thaws; what you delete shatters into red shards, a whole word
+  at once with Ctrl+Backspace; pastes, suggestions taken with →, Tab
+  completions and ↑ recalls freeze along their length; a copy sends a green
+  beam across the selection. Placed by reading the screen, so full-screen
+  programs and password prompts never get one in the wrong place.
+  `--type-glow-ms` in `theme.css` retimes them (default `260ms`)
 - **Command palette and keys that are yours** — `Ctrl+Shift+P` lists every
   command beside the key it currently answers to. Rebind any of them in
   `keybindings.json`, which hot-reloads. Bindings match on physical key position,

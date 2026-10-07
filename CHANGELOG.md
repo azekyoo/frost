@@ -3,6 +3,36 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.2.0 — 2026-10-07
+
+### Added
+
+- **Typing effects, made of ice.** Off by default; turn them on in Settings
+  (**Typing effects**) or with **Toggle typing effects** in the command palette.
+  - A character you type **freezes**: it lights up ice white in a soft haze that
+    spreads off it, then thaws back into its own colour.
+  - A character you delete **shatters** into red shards that fly apart and
+    fade. Ctrl+Backspace and Ctrl+W break the whole word as one block.
+  - A paste, a suggestion taken with →, a Tab completion and a command brought
+    back with ↑ freeze along their length, one character after another.
+  - A copy — Ctrl+C, Ctrl+Shift+C, right-click, copy last output — sends a
+    green beam across the selection. Selecting alone doesn't, even with
+    copy-on-select.
+
+  Every effect is placed by reading the screen, not by guessing, so a program
+  that draws its own cursor or a password prompt that doesn't echo gets no
+  effect in the wrong place. `--type-glow-ms` in `theme.css` retimes them, and
+  with Windows set to reduce animations they don't play.
+
+### Fixed
+
+- **Send failure always means the last command.** An empty Enter redrew the
+  prompt with the last result still in place, so every empty line counted as a
+  command of its own: the button stayed red while Send found nothing to send.
+  Empty prompts no longer count, a command that printed nothing can still be
+  sent, and Send, its shortcut and copy output always take the last command
+  instead of the one scrolled to.
+
 ## 2.1.0 — 2026-10-01
 
 ### Added
