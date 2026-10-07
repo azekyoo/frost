@@ -886,6 +886,58 @@ body.frameless #win-controls {
   background: transparent !important;
 }
 
+/* Typing glow: an accent box behind a character just typed, its halo opening
+   out while it fades — the shape of VS Code's "Basic UI Animations", in
+   Frost's colours. A deleted character gets the same in the error red, the
+   character itself drifting up out of it. --type-glow-ms retimes both from
+   theme.css. */
+.pane .xterm-screen .type-glow {
+  --glow: var(--accent);
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--glow) 45%, transparent);
+  animation: type-glow var(--type-glow-ms, 260ms) ease-out forwards;
+}
+
+.pane .xterm-screen .type-glow.erased {
+  --glow: var(--danger);
+  color: color-mix(in srgb, var(--danger) 70%, white);
+  text-align: center;
+  white-space: pre;
+  overflow: visible;
+  animation-name: type-glow-erased;
+}
+
+@keyframes type-glow {
+  from {
+    opacity: 1;
+    box-shadow: 0 0 3px color-mix(in srgb, var(--glow) 85%, transparent),
+      0 0 9px color-mix(in srgb, var(--glow) 55%, transparent);
+  }
+  to {
+    opacity: 0;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--glow) 85%, transparent),
+      0 0 16px color-mix(in srgb, var(--glow) 55%, transparent);
+  }
+}
+
+@keyframes type-glow-erased {
+  from {
+    opacity: 1;
+    transform: none;
+    box-shadow: 0 0 3px color-mix(in srgb, var(--glow) 85%, transparent),
+      0 0 9px color-mix(in srgb, var(--glow) 55%, transparent);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-35%) scale(1.15);
+    box-shadow: 0 0 6px color-mix(in srgb, var(--glow) 85%, transparent),
+      0 0 16px color-mix(in srgb, var(--glow) 55%, transparent);
+  }
+}
+
 /* xterm.js hands the whole pane an I-beam, on the theory that a terminal is a
    text field. Windows Terminal doesn't, and neither does a console window: the
    arrow is the shell's cursor, and selection works under it just the same. The

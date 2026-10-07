@@ -789,6 +789,132 @@ async function droppedText(dt) {
   return plain || (src.startsWith('data:') ? '' : src);
 }
 
+// ---------- typing glow ----------
+// Each character typed lights up where it lands and fades out, in the accent
+// colour. Where it lands is read off the screen, not guessed: the shell echoes
+// it, and the cell just behind the cursor then holds that very character. A
+// program drawing its own cursor somewhere else (claude does) or not echoing at
+// all (a password prompt) leaves nothing to match, and nothing lights up in the
+// wrong place.
+//
+// Deleting gets the same in red: the cells that emptied light up, with the
+// character that was there fading out of them. Again read off the screen —
+// the line as it stood when the key went down, against the line after.
+
+const GLOW_WAIT_MS = 250; // how long a key may take to come back as an echo
+
+// Backspace (DEL, or ^H), Ctrl+W and Alt/Ctrl+Backspace rub out behind the
+// cursor; the Delete key takes the character under it
+const ERASE_BACK = new Set(['\x7f', '\b', '\x17', '\x1b\x7f', '\x1b\b']);
+const ERASE_FORWARD = '\x1b[3~';
+
+function lineCells(line, cols) {
+  const out = [];
+  for (let x = 0; x < cols; x++) {
+    const c = line.getCell(x);
+    out.push({ ch: c?.getChars() || '', w: c?.getWidth() ?? 1 });
+  }
+  return out;
+}
+
+function attachTypingGlow(node) {
+  const term = node.term;
+  let pending = []; // keys typed and not yet seen on screen: { ch, at }
+  let erasing = null; // a delete key waiting for its echo: { y, x, cells, forward, at }
+  term.onData((d) => {
+    if (state.theme?.typingGlow === false) return;
+    if (ERASE_BACK.has(d) || d === ERASE_FORWARD) {
+      const buf = term.buffer.active;
+      const y = buf.baseY + buf.cursorY;
+      const line = buf.getLine(y);
+      if (line) erasing = { y, x: buf.cursorX, cells: lineCells(line, term.cols), forward: d === ERASE_FORWARD, at: Date.now() };
+      return;
+    }
+    // one printable character: a key, not a paste or an arrow
+    if ([...d].length !== 1 || d < ' ') return;
+    pending.push({ ch: d, at: Date.now() });
+  });
+  term.onWriteParsed(() => {
+    if (erasing) {
+      if (Date.now() - erasing.at > GLOW_WAIT_MS) erasing = null;
+      else if (glowErased(node, erasing)) erasing = null;
+    }
+    if (!pending.length) return;
+    const now = Date.now();
+    pending = pending.filter((p) => now - p.at < GLOW_WAIT_MS);
+    if (!pending.length) return;
+    const buf = term.buffer.active;
+    const y = buf.baseY + buf.cursorY;
+    const line = buf.getLine(y);
+    if (!line) return;
+    // Keys typed fast come back in one write: walk left from the cursor, newest
+    // key first, for as long as the cells spell out what was typed.
+    let x = buf.cursorX;
+    let matched = false;
+    for (let i = pending.length - 1; i >= 0; i--) {
+      let cell = line.getCell(x - 1);
+      // a wide character (漢) takes two cells, and the second one is empty
+      if (cell && cell.getWidth() === 0) cell = line.getCell(x - 2);
+      if (!cell || cell.getChars() !== pending[i].ch) break;
+      const width = cell.getWidth() || 1;
+      x -= width;
+      glowCell(node, x, y - buf.viewportY, width);
+      matched = true;
+    }
+    // what came back is done with, and so is anything typed before it
+    if (matched) pending = [];
+  });
+}
+
+// True once the echo has come back and been lit, false to keep waiting. Back:
+// the cursor moved left on the same row, and every cell it moved over held
+// something. Forward: the cursor stayed, and the cell under it changed.
+function glowErased(node, e) {
+  const buf = node.term.buffer.active;
+  const y = buf.baseY + buf.cursorY;
+  if (y !== e.y) return false;
+  const row = y - buf.viewportY;
+  if (e.forward) {
+    if (buf.cursorX !== e.x) return false;
+    const was = e.cells[e.x];
+    const now = buf.getLine(y)?.getCell(e.x)?.getChars() || '';
+    if (!was?.ch || now === was.ch) return false;
+    glowCell(node, e.x, row, was.w || 1, was.ch);
+    return true;
+  }
+  if (buf.cursorX >= e.x) return false;
+  for (let x = buf.cursorX; x < e.x; x++) {
+    const c = e.cells[x];
+    if (c && c.w > 0 && c.ch) glowCell(node, x, row, c.w, c.ch);
+  }
+  return true;
+}
+
+// erased: the character that was there, drawn fading in red; none for a
+// character typed, which is already on screen under the glow
+function glowCell(node, x, row, width, erased = null) {
+  const screen = node.term.element?.querySelector('.xterm-screen');
+  if (!screen || x < 0 || row < 0 || row >= node.term.rows) return;
+  const cw = screen.clientWidth / node.term.cols;
+  const ch = screen.clientHeight / node.term.rows;
+  const g = document.createElement('div');
+  g.className = erased === null ? 'type-glow' : 'type-glow erased';
+  if (erased !== null) {
+    g.textContent = erased;
+    g.style.fontFamily = node.term.options.fontFamily;
+    g.style.fontSize = node.term.options.fontSize + 'px';
+    g.style.lineHeight = ch + 'px';
+  }
+  g.style.left = x * cw + 'px';
+  g.style.top = row * ch + 'px';
+  g.style.width = width * cw + 'px';
+  g.style.height = ch + 'px';
+  screen.appendChild(g);
+  const done = () => g.remove();
+  g.addEventListener('animationend', done, { once: true });
+  setTimeout(done, 1500); // reduced motion, or a pane hidden mid-fade
+}
+
 function attachDrop(node) {
   const paneEl = node.el;
   const over = (ev) => {
@@ -887,6 +1013,7 @@ async function createPane(opts = {}) {
   attachCommandMarks(node);
   attachLinks(node);
   attachDrop(node);
+  attachTypingGlow(node);
 
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
