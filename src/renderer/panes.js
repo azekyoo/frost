@@ -890,8 +890,19 @@ function glowErased(node, e) {
   return true;
 }
 
-// erased: the character that was there, drawn fading in red; none for a
-// character typed, which is already on screen under the glow
+// Frost, literally. A typed character flashes and throws off a few sparks of
+// ice; nothing is drawn over the character itself, which is already there. An
+// erased one (erased: the character that was there) shatters: its shards, in
+// red, fly apart, turn and fade.
+
+// Where each shard of a shattered character is cut, and where it goes: two
+// from the top thrown up and out, the heavy bottom one dropping.
+const SHARDS = [
+  { clip: 'polygon(0 0, 58% 0, 42% 52%, 0 68%)', dx: -0.55, dy: -0.45, rot: -28 },
+  { clip: 'polygon(58% 0, 100% 0, 100% 58%, 42% 52%)', dx: 0.55, dy: -0.5, rot: 24 },
+  { clip: 'polygon(0 68%, 42% 52%, 100% 58%, 100% 100%, 0 100%)', dx: 0.1, dy: 0.45, rot: 9 }
+];
+
 function glowCell(node, x, row, width, erased = null) {
   const screen = node.term.element?.querySelector('.xterm-screen');
   if (!screen || x < 0 || row < 0 || row >= node.term.rows) return;
@@ -899,20 +910,44 @@ function glowCell(node, x, row, width, erased = null) {
   const ch = screen.clientHeight / node.term.rows;
   const g = document.createElement('div');
   g.className = erased === null ? 'type-glow' : 'type-glow erased';
-  if (erased !== null) {
-    g.textContent = erased;
-    g.style.fontFamily = node.term.options.fontFamily;
-    g.style.fontSize = node.term.options.fontSize + 'px';
-    g.style.lineHeight = ch + 'px';
-  }
   g.style.left = x * cw + 'px';
   g.style.top = row * ch + 'px';
   g.style.width = width * cw + 'px';
   g.style.height = ch + 'px';
+  const flash = document.createElement('div');
+  flash.className = 'flash';
+  g.appendChild(flash);
+  const jitter = (n) => n * (0.75 + Math.random() * 0.5);
+  if (erased === null) {
+    // up and to the sides, spread out so no two leave together
+    const base = -90 + (Math.random() * 30 - 15);
+    for (const offset of [-60, 0, 60]) {
+      const a = ((base + offset + (Math.random() * 20 - 10)) * Math.PI) / 180;
+      const dist = jitter(ch * 0.95);
+      const spark = document.createElement('i');
+      spark.className = 'spark';
+      spark.style.setProperty('--dx', Math.cos(a) * dist + 'px');
+      spark.style.setProperty('--dy', Math.sin(a) * dist + 'px');
+      g.appendChild(spark);
+    }
+  } else {
+    for (const s of SHARDS) {
+      const shard = document.createElement('div');
+      shard.className = 'shard';
+      shard.textContent = erased;
+      shard.style.fontFamily = node.term.options.fontFamily;
+      shard.style.fontSize = node.term.options.fontSize + 'px';
+      shard.style.lineHeight = ch + 'px';
+      shard.style.clipPath = s.clip;
+      shard.style.setProperty('--dx', jitter(s.dx * cw * 1.6) + 'px');
+      shard.style.setProperty('--dy', jitter(s.dy * ch) + 'px');
+      shard.style.setProperty('--rot', jitter(s.rot) + 'deg');
+      g.appendChild(shard);
+    }
+  }
   screen.appendChild(g);
-  const done = () => g.remove();
-  g.addEventListener('animationend', done, { once: true });
-  setTimeout(done, 1500); // reduced motion, or a pane hidden mid-fade
+  // the longest of its parts has finished by then, at any --type-glow-ms
+  setTimeout(() => g.remove(), 1200);
 }
 
 function attachDrop(node) {

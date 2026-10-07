@@ -886,28 +886,53 @@ body.frameless #win-controls {
   background: transparent !important;
 }
 
-/* Typing glow: an accent box behind a character just typed, its halo opening
-   out while it fades — the shape of VS Code's "Basic UI Animations", in
-   Frost's colours. A deleted character gets the same in the error red, the
-   character itself drifting up out of it. --type-glow-ms retimes both from
-   theme.css. */
+/* Typing glow, as frost: a typed character flashes in the accent colour and
+   throws off three sparks of ice; a deleted one shatters into red shards that
+   fly apart, turn and fade. --type-glow-ms retimes all of it from theme.css. */
 .pane .xterm-screen .type-glow {
   --glow: var(--accent);
+  --t: var(--type-glow-ms, 260ms);
   position: absolute;
   pointer-events: none;
   z-index: 3;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--glow) 45%, transparent);
-  animation: type-glow var(--type-glow-ms, 260ms) ease-out forwards;
+  overflow: visible;
 }
 
 .pane .xterm-screen .type-glow.erased {
   --glow: var(--danger);
-  color: color-mix(in srgb, var(--danger) 70%, white);
+}
+
+.pane .xterm-screen .type-glow .flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--glow) 45%, transparent);
+  animation: type-glow var(--t) ease-out forwards;
+}
+
+/* a speck of ice: bright core, cold halo, thrown off and melting on the way */
+.pane .xterm-screen .type-glow .spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--glow) 35%, white);
+  box-shadow: 0 0 4px var(--glow), 0 0 8px color-mix(in srgb, var(--glow) 60%, transparent);
+  animation: type-glow-spark calc(var(--t) * 1.5) cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+}
+
+/* one piece of the broken character, cut by its clip-path */
+.pane .xterm-screen .type-glow .shard {
+  position: absolute;
+  inset: 0;
   text-align: center;
   white-space: pre;
-  overflow: visible;
-  animation-name: type-glow-erased;
+  color: color-mix(in srgb, var(--danger) 60%, white);
+  text-shadow: 0 0 6px var(--danger);
+  animation: type-glow-shard calc(var(--t) * 1.7) cubic-bezier(0.2, 0.6, 0.35, 1) forwards;
 }
 
 @keyframes type-glow {
@@ -923,18 +948,28 @@ body.frameless #win-controls {
   }
 }
 
-@keyframes type-glow-erased {
+@keyframes type-glow-spark {
   from {
     opacity: 1;
-    transform: none;
-    box-shadow: 0 0 3px color-mix(in srgb, var(--glow) 85%, transparent),
-      0 0 9px color-mix(in srgb, var(--glow) 55%, transparent);
+    transform: translate(0, 0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateY(-35%) scale(1.15);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--glow) 85%, transparent),
-      0 0 16px color-mix(in srgb, var(--glow) 55%, transparent);
+    transform: translate(var(--dx), var(--dy)) scale(0.3);
+  }
+}
+
+@keyframes type-glow-shard {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.85);
   }
 }
 
