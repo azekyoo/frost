@@ -22,6 +22,7 @@ const s = {
   pasteWarn: document.getElementById('s-paste-warn'),
   pasteWarnAgent: document.getElementById('s-paste-warn-agent'),
   ligatures: document.getElementById('s-ligatures'),
+  typingGlow: document.getElementById('s-typing-glow'),
   startDir: document.getElementById('s-startdir'),
   editor: document.getElementById('s-editor'),
   tintColor: document.getElementById('s-tint-color'),
@@ -160,6 +161,7 @@ function syncSettingsUI() {
   s.pasteWarn.checked = t.paste?.warnMultiline !== false;
   s.pasteWarnAgent.checked = t.paste?.warnInAgent === true;
   s.ligatures.checked = t.font?.ligatures !== false;
+  s.typingGlow.checked = t.typingGlow !== false;
   s.startDir.value = t.startDir || '';
   s.editor.value = t.editor || '';
   s.tintColor.value = tint.hex;
@@ -233,6 +235,7 @@ function onSettingChange() {
   if (s.fontFamily.value) t.font.family = `"${s.fontFamily.value}", Consolas, monospace`;
   t.font.size = +s.fontSize.value;
   t.font.ligatures = s.ligatures.checked;
+  t.typingGlow = s.typingGlow.checked;
   t.font.weight = +s.fontWeight.value;
   t.font.lineHeight = +s.lineHeight.value;
   t.terminal = t.terminal || {};

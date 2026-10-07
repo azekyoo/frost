@@ -886,6 +886,183 @@ body.frameless #win-controls {
   background: transparent !important;
 }
 
+/* Typing glow, as frost: a typed character flashes in the accent colour and
+   freezes, ice white, then thaws; a deleted one shatters into red shards that
+   fly apart, turn and fade. --type-glow-ms retimes all of it from theme.css. */
+.pane .xterm-screen .type-glow {
+  --glow: var(--accent);
+  --t: var(--type-glow-ms, 260ms);
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+  overflow: visible;
+}
+
+.pane .xterm-screen .type-glow.erased {
+  --glow: var(--danger);
+}
+
+.pane .xterm-screen .type-glow .flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--glow) 45%, transparent);
+  animation: type-glow var(--t) ease-out forwards;
+}
+
+/* frozen: the character itself in ice white, glowing, laid exactly over the
+   real one — holds a beat, then thaws back into the terminal's own colour */
+/* Behind it, frost spreading: a round haze with no edge to it, starting tight
+   around the letter and opening out as it fades — the cold coming off the
+   letter, not a box drawn round its cell */
+.pane .xterm-screen .type-glow:not(.erased) .flash {
+  inset: -45% -70%;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--glow) 42%, transparent),
+    color-mix(in srgb, var(--glow) 16%, transparent) 55%,
+    transparent
+  );
+  animation: type-glow-haze calc(var(--t) * 1.6) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes type-glow-haze {
+  from {
+    opacity: 1;
+    transform: scale(0.45);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+}
+
+.pane .xterm-screen .type-glow .ice {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  white-space: pre;
+  color: color-mix(in srgb, var(--glow) 25%, white);
+  text-shadow: 0 0 2px var(--glow), 0 0 6px var(--glow), 0 0 12px color-mix(in srgb, var(--glow) 70%, transparent);
+  animation: type-glow-thaw calc(var(--t) * 1.6) ease-in forwards;
+}
+
+/* one piece of the broken character, cut by its clip-path */
+.pane .xterm-screen .type-glow .shard {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  white-space: pre;
+  color: color-mix(in srgb, var(--danger) 60%, white);
+  text-shadow: 0 0 6px var(--danger);
+  animation: type-glow-shard calc(var(--t) * 1.7) cubic-bezier(0.2, 0.6, 0.35, 1) forwards;
+}
+
+/* a piece of a whole word: the word laid out cell by cell, then cut */
+.pane .xterm-screen .type-glow .shard.word {
+  display: flex;
+}
+
+.pane .xterm-screen .type-glow .shard.word span {
+  display: inline-block;
+  flex: none;
+  text-align: center;
+}
+
+@keyframes type-glow {
+  from {
+    opacity: 1;
+    box-shadow: 0 0 3px color-mix(in srgb, var(--glow) 85%, transparent),
+      0 0 9px color-mix(in srgb, var(--glow) 55%, transparent);
+  }
+  to {
+    opacity: 0;
+    box-shadow: 0 0 6px color-mix(in srgb, var(--glow) 85%, transparent),
+      0 0 16px color-mix(in srgb, var(--glow) 55%, transparent);
+  }
+}
+
+@keyframes type-glow-thaw {
+  0%,
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes type-glow-shard {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.85);
+  }
+}
+
+/* Copy: a scan. A green beam crosses the selection left to right, each row
+   showing its own slice of the one beam, and the text it has passed glows and
+   fades behind it. --sweep is set per copy from how wide the selection is. */
+.pane .xterm-screen .copy-glow {
+  --copy: var(--st-done);
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.pane .xterm-screen .copy-glow .seg {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 3px;
+  animation: copy-glow-lit calc(var(--sweep) * 2.4) ease-out forwards;
+}
+
+.pane .xterm-screen .copy-glow .beam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 24px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--copy) 90%, transparent) 70%,
+    color-mix(in srgb, var(--copy) 45%, white) 92%,
+    transparent
+  );
+  animation: copy-glow-beam var(--sweep) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes copy-glow-beam {
+  from {
+    transform: translateX(var(--from));
+  }
+  to {
+    transform: translateX(var(--to));
+  }
+}
+
+/* lit the moment it is copied, let go as the beam passes — no hard box:
+   an inner glow */
+@keyframes copy-glow-lit {
+  0%,
+  20% {
+    background: color-mix(in srgb, var(--copy) 38%, transparent);
+    box-shadow: inset 0 0 8px color-mix(in srgb, var(--copy) 70%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
 /* xterm.js hands the whole pane an I-beam, on the theory that a terminal is a
    text field. Windows Terminal doesn't, and neither does a console window: the
    arrow is the shell's cursor, and selection works under it just the same. The

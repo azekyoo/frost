@@ -789,6 +789,446 @@ async function droppedText(dt) {
   return plain || (src.startsWith('data:') ? '' : src);
 }
 
+// ---------- typing glow ----------
+// Each character typed lights up where it lands and fades out, in the accent
+// colour. Where it lands is read off the screen, not guessed: the shell echoes
+// it, and the cell just behind the cursor then holds that very character. A
+// program drawing its own cursor somewhere else (claude does) or not echoing at
+// all (a password prompt) leaves nothing to match, and nothing lights up in the
+// wrong place.
+//
+// Deleting gets the same in red: the cells that emptied light up, with the
+// character that was there fading out of them. Again read off the screen —
+// the line as it stood when the key went down, against the line after.
+
+const GLOW_WAIT_MS = 250; // how long a key may take to come back as an echo
+
+// Backspace (DEL, or ^H), Ctrl+W and Alt/Ctrl+Backspace rub out behind the
+// cursor; the Delete key takes the character under it
+const ERASE_BACK = new Set(['\x7f', '\b', '\x17', '\x1b\x7f', '\x1b\b']);
+const ERASE_FORWARD = '\x1b[3~';
+
+// look: how the cell is drawn, so a grey prediction turning into real text
+// counts as a change even though the letter is the same
+function lineCells(line, cols) {
+  const out = [];
+  for (let x = 0; x < cols; x++) {
+    const c = line.getCell(x);
+    out.push({
+      ch: c?.getChars() || '',
+      w: c?.getWidth() ?? 1,
+      look: c ? `${c.getFgColorMode()}:${c.getFgColor()}:${c.isDim()}:${c.isItalic()}` : ''
+    });
+  }
+  return out;
+}
+
+// A paste: the text, wrapped in bracketed-paste markers when the program
+// asked for them
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
+const PASTE_GLOW_MAX = 600; // characters; past that it's a dump, not an input
+const ACCEPT_ROWS = 8; // how far below the cursor a taken suggestion may run
+// → and End (normal and application cursor modes), Ctrl+→, Ctrl+E, Ctrl+F,
+// Tab, ↑ and ↓
+const FILL_KEYS = new Set([
+  '\x1b[C', '\x1bOC', '\x1b[F', '\x1bOF', '\x1b[4~', '\x1b[1;5C', '\x05', '\x06',
+  '\t', '\x1b[A', '\x1bOA', '\x1b[B', '\x1bOB'
+]);
+
+function attachTypingGlow(node) {
+  const term = node.term;
+  // Keys typed and not yet seen on screen, each with the cell it should land
+  // in: where the cursor was for the first, one on from the key before for
+  // the rest. Typing outruns the echo, so the cursor alone can't say where a
+  // key goes — and matching letters backwards from it went wrong on a word
+  // with a letter twice in it, dropping keys that had yet to come back.
+  let pending = []; // { ch, x, y, at }
+  let fresh = true; // the next key starts from the cursor, not from the key before
+  let erasing = null; // a delete key waiting for its echo: { y, x, cells, forward, at }
+  let paste = null; // { chars, x, y, at }
+  let pasteTimer = null;
+  let accepting = null; // a key that may fill the line in: { x, y, cells, at }
+  let acceptTimer = null;
+  const absCursor = () => {
+    const buf = term.buffer.active;
+    return { x: buf.cursorX, y: buf.baseY + buf.cursorY };
+  };
+  term.onData((d) => {
+    if (state.theme?.typingGlow === false) return;
+    if (ERASE_BACK.has(d) || d === ERASE_FORWARD) {
+      const buf = term.buffer.active;
+      const y = buf.baseY + buf.cursorY;
+      const line = buf.getLine(y);
+      if (line) erasing = { y, x: buf.cursorX, cells: lineCells(line, term.cols), forward: d === ERASE_FORWARD, at: Date.now() };
+      fresh = true;
+      return;
+    }
+    const text = d.startsWith(PASTE_START) ? d.slice(PASTE_START.length).replace(PASTE_END, '') : d;
+    const isPaste = d.startsWith(PASTE_START) || ([...d].length > 1 && !d.startsWith('\x1b'));
+    if (isPaste) {
+      const chars = [...text].filter((c) => c.trim());
+      if (chars.length && chars.length <= PASTE_GLOW_MAX) paste = { chars, ...absCursor(), at: Date.now() };
+      fresh = true;
+      return;
+    }
+    // one printable character: a key, not an arrow or Enter
+    if ([...d].length !== 1 || d < ' ') {
+      fresh = true; // the cursor may have gone anywhere
+      // Keys that fill the line in: → or End taking a suggestion, Tab
+      // completing, ↑ ↓ bringing a command back. Only those — Ctrl+C or Enter
+      // draw a whole new prompt, which is not something typed.
+      if (FILL_KEYS.has(d)) {
+        const at = absCursor();
+        const buf = term.buffer.active;
+        // the row the cursor is on and the ones under it: a long suggestion
+        // runs on past the edge of the window
+        const rows = [];
+        for (let y = at.y; y < Math.min(buf.length, at.y + ACCEPT_ROWS); y++) rows.push(lineCells(buf.getLine(y), term.cols));
+        accepting = { ...at, rows, at: Date.now() };
+      }
+      return;
+    }
+    const prev = pending[pending.length - 1];
+    let at = fresh || !prev ? absCursor() : { x: prev.x + 1, y: prev.y };
+    if (at.x >= term.cols) at = { x: at.x - term.cols, y: at.y + 1 };
+    pending.push({ ch: d, ...at, at: Date.now() });
+    fresh = false;
+  });
+  term.onWriteParsed(() => {
+    if (erasing) {
+      if (Date.now() - erasing.at > GLOW_WAIT_MS) erasing = null;
+      else if (glowErased(node, erasing)) erasing = null;
+    }
+    if (paste) {
+      // a paste echoes in several writes: wait for the last
+      clearTimeout(pasteTimer);
+      const p = paste;
+      pasteTimer = setTimeout(() => {
+        if (paste === p) paste = null;
+        glowPasted(node, p);
+      }, 70);
+    }
+    if (accepting) {
+      if (Date.now() - accepting.at > 400) accepting = null;
+      else {
+        // the line is redrawn in more than one write too
+        clearTimeout(acceptTimer);
+        const a = accepting;
+        acceptTimer = setTimeout(() => {
+          if (accepting === a) accepting = null;
+          glowAccepted(node, a);
+        }, 60);
+      }
+    }
+    if (!pending.length) return;
+    const now = Date.now();
+    const buf = term.buffer.active;
+    const cur = absCursor();
+    let shift = 0; // a wide character landed: everything after it moves one on
+    pending = pending.filter((p) => {
+      p.x += shift;
+      const line = buf.getLine(p.y);
+      const cell = line?.getCell(p.x);
+      // there, and the cursor gone past it: echoed, not just predicted text
+      const past = cur.y > p.y || (cur.y === p.y && cur.x > p.x);
+      if (cell && cell.getChars() === p.ch && past) {
+        const width = cell.getWidth() || 1;
+        shift += width - 1;
+        glowCell(node, p.x, p.y - buf.viewportY, width, null, p.ch);
+        return false;
+      }
+      return now - p.at < GLOW_WAIT_MS;
+    });
+  });
+}
+
+// A copy is a scan: a green beam passes over what was selected, left to
+// right, and leaves it lit for a moment behind it. One beam for the whole
+// selection, cut to its rows, so a selection over several lines is swept as
+// one — and only over text, not the blank end of a row.
+function glowCopy(node) {
+  if (state.theme?.typingGlow === false) return;
+  // one copy, however many ways it was asked for at once
+  if (Date.now() - (node.copyGlowAt || 0) < 400) return;
+  const term = node.term;
+  const pos = term.getSelectionPosition();
+  const screen = term.element?.querySelector('.xterm-screen');
+  if (!pos || !screen) return;
+  node.copyGlowAt = Date.now();
+  const buf = term.buffer.active;
+  const cw = screen.clientWidth / term.cols;
+  const ch = screen.clientHeight / term.rows;
+  const rows = [];
+  for (let y = pos.start.y; y <= pos.end.y; y++) {
+    const row = y - buf.viewportY;
+    if (row < 0 || row >= term.rows) continue;
+    const line = buf.getLine(y);
+    const x0 = y === pos.start.y ? pos.start.x : 0;
+    let x1 = y === pos.end.y ? pos.end.x : term.cols;
+    while (x1 > x0 && !(line?.getCell(x1 - 1)?.getChars() || '').trim()) x1--;
+    if (x1 > x0) rows.push({ row, x0, x1 });
+  }
+  if (!rows.length) return;
+  const left = Math.min(...rows.map((r) => r.x0));
+  const right = Math.max(...rows.map((r) => r.x1));
+  const first = rows[0].row;
+  const span = (right - left) * cw;
+  const g = document.createElement('div');
+  g.className = 'copy-glow';
+  g.style.left = left * cw + 'px';
+  g.style.top = first * ch + 'px';
+  g.style.width = span + 'px';
+  g.style.height = (rows[rows.length - 1].row - first + 1) * ch + 'px';
+  // a touch longer across a wide selection, always quick
+  g.style.setProperty('--sweep', Math.round(Math.min(320, 160 + span * 0.15)) + 'ms');
+  for (const r of rows) {
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    const offset = (r.x0 - left) * cw;
+    seg.style.left = offset + 'px';
+    seg.style.top = (r.row - first) * ch + 'px';
+    seg.style.width = (r.x1 - r.x0) * cw + 'px';
+    seg.style.height = ch + 'px';
+    const beam = document.createElement('div');
+    beam.className = 'beam';
+    // every row's beam travels the same line across the whole selection, so
+    // together they read as one
+    beam.style.setProperty('--from', -offset - 12 + 'px');
+    beam.style.setProperty('--to', span - offset + 'px');
+    seg.appendChild(beam);
+    g.appendChild(seg);
+  }
+  screen.appendChild(g);
+  setTimeout(() => g.remove(), 1600);
+}
+
+// A paste freezes along its length, one character after another, as if the
+// frost were running through it. Its characters are found on screen in order
+// from where the cursor was — a shell's continuation prompts in between are
+// skipped — and if they can't all be found, it is somewhere other than where
+// it was typed (a full-screen program), and nothing lights up.
+function glowPasted(node, p) {
+  const term = node.term;
+  const buf = term.buffer.active;
+  const end = { x: buf.cursorX, y: buf.baseY + buf.cursorY };
+  const found = [];
+  let i = 0;
+  for (let y = p.y; y <= end.y && i < p.chars.length; y++) {
+    const line = buf.getLine(y);
+    if (!line) break;
+    const from = y === p.y ? p.x : 0;
+    const to = y === end.y ? end.x : term.cols;
+    for (let x = from; x < to && i < p.chars.length; x++) {
+      const cell = line.getCell(x);
+      if (cell?.getChars() === p.chars[i]) {
+        found.push({ x, y, ch: p.chars[i], w: cell.getWidth() || 1 });
+        i++;
+      }
+    }
+  }
+  if (i < p.chars.length) return;
+  glowRun(node, found);
+}
+
+// Cells frozen one after another, left to right: frost running along them
+function glowRun(node, cells) {
+  const step = Math.min(14, 420 / cells.length);
+  cells.forEach((c, n) => {
+    setTimeout(() => {
+      const b = node.term.buffer.active;
+      glowCell(node, c.x, c.y - b.viewportY, c.w, null, c.ch);
+    }, n * step);
+  });
+}
+
+// After → or End took a suggestion, or Tab completed a word: whatever arrived
+// on the line freezes like a paste. What arrived is told from what was there
+// by comparing the line before the key with the line after: from the cursor
+// on, a cell that changed its text or how it is drawn — a grey prediction
+// turned to real text — and behind the cursor, only one whose text changed
+// (Tab rewriting the start of a word). A cursor moving over text that was
+// already there changes nothing, and lights nothing.
+function glowAccepted(node, a) {
+  const term = node.term;
+  const buf = term.buffer.active;
+  const end = { x: buf.cursorX, y: buf.baseY + buf.cursorY };
+  // the cursor has to have gone forward, and not off the rows looked at
+  if (end.y < a.y || end.y >= a.y + a.rows.length || (end.y === a.y && end.x <= a.x)) return;
+  const filled = [];
+  for (let y = a.y; y <= end.y; y++) {
+    const line = buf.getLine(y);
+    if (!line) break;
+    const now = lineCells(line, term.cols);
+    const before = a.rows[y - a.y];
+    const to = y === end.y ? end.x : term.cols;
+    for (let x = 0; x < to; x++) {
+      const c = now[x];
+      const was = before[x];
+      if (!c.ch.trim() || c.w === 0) continue;
+      const ahead = y > a.y || x >= a.x;
+      const changed = ahead ? c.ch !== was.ch || c.look !== was.look : c.ch !== was.ch;
+      if (changed) filled.push({ x, y, ch: c.ch, w: c.w || 1 });
+    }
+  }
+  if (filled.length && filled.length <= PASTE_GLOW_MAX) glowRun(node, filled);
+}
+
+// True once the echo has come back and been lit, false to keep waiting. Back:
+// the cursor moved left on the same row, and every cell it moved over held
+// something. Forward: the cursor stayed, and the cell under it changed.
+function glowErased(node, e) {
+  const buf = node.term.buffer.active;
+  const y = buf.baseY + buf.cursorY;
+  if (y !== e.y) return false;
+  const row = y - buf.viewportY;
+  if (e.forward) {
+    if (buf.cursorX !== e.x) return false;
+    const was = e.cells[e.x];
+    const now = buf.getLine(y)?.getCell(e.x)?.getChars() || '';
+    if (!was?.ch || now === was.ch) return false;
+    glowCell(node, e.x, row, was.w || 1, was.ch);
+    return true;
+  }
+  if (buf.cursorX >= e.x) return false;
+  const gone = e.cells.slice(buf.cursorX, e.x);
+  const letters = gone.filter((c) => c.w > 0 && c.ch.trim());
+  if (letters.length > 1) {
+    // a word at once (Ctrl+Backspace, Ctrl+W) breaks as the one thing it was
+    glowCell(node, buf.cursorX, row, e.x - buf.cursorX, gone);
+  } else {
+    for (let x = buf.cursorX; x < e.x; x++) {
+      const c = e.cells[x];
+      if (c && c.w > 0 && c.ch) glowCell(node, x, row, c.w, c.ch);
+    }
+  }
+  return true;
+}
+
+// A word's shards: the block cut into columns along slanted lines, each column
+// split by a crack that runs the length of the word, so the pieces fit back
+// together. Positions in % of the block; every cut is a little off true.
+function wordShards(letters) {
+  const cols = Math.min(6, Math.max(2, Math.round(letters / 2.5)));
+  const wob = (n) => n + (Math.random() * 2 - 1) * (40 / cols);
+  const top = [0];
+  const bottom = [0];
+  const crack = [50 + (Math.random() * 24 - 12)];
+  for (let i = 1; i < cols; i++) {
+    const at = (i / cols) * 100;
+    top.push(wob(at));
+    bottom.push(wob(at));
+    crack.push(50 + (Math.random() * 30 - 15));
+  }
+  top.push(100);
+  bottom.push(100);
+  crack.push(50 + (Math.random() * 24 - 12));
+  const mid = (i) => (top[i] * (100 - crack[i]) + bottom[i] * crack[i]) / 100;
+  const out = [];
+  for (let i = 0; i < cols; i++) {
+    const center = (top[i] + top[i + 1] + bottom[i] + bottom[i + 1]) / 4;
+    out.push({
+      clip: `polygon(${top[i]}% 0, ${top[i + 1]}% 0, ${mid(i + 1)}% ${crack[i + 1]}%, ${mid(i)}% ${crack[i]}%)`,
+      center,
+      up: true
+    });
+    out.push({
+      clip: `polygon(${mid(i)}% ${crack[i]}%, ${mid(i + 1)}% ${crack[i + 1]}%, ${bottom[i + 1]}% 100%, ${bottom[i]}% 100%)`,
+      center,
+      up: false
+    });
+  }
+  return out;
+}
+
+// Frost, literally. A typed character (typed) freezes: drawn again exactly
+// over itself in ice white, glowing, then thawing back into its own colour —
+// nothing moves, so nothing reads as a second copy. An erased one (erased: the
+// character that was there) shatters: its shards, in red, fly apart, turn and
+// fade.
+
+// Where each shard of a shattered character is cut, and where it goes: two
+// from the top thrown up and out, the heavy bottom one dropping.
+const SHARDS = [
+  { clip: 'polygon(0 0, 58% 0, 42% 52%, 0 68%)', dx: -0.55, dy: -0.45, rot: -28 },
+  { clip: 'polygon(58% 0, 100% 0, 100% 58%, 42% 52%)', dx: 0.55, dy: -0.5, rot: 24 },
+  { clip: 'polygon(0 68%, 42% 52%, 100% 58%, 100% 100%, 0 100%)', dx: 0.1, dy: 0.45, rot: 9 }
+];
+
+function glowCell(node, x, row, width, erased = null, typed = null) {
+  const screen = node.term.element?.querySelector('.xterm-screen');
+  if (!screen || x < 0 || row < 0 || row >= node.term.rows) return;
+  const cw = screen.clientWidth / node.term.cols;
+  const ch = screen.clientHeight / node.term.rows;
+  const g = document.createElement('div');
+  g.className = erased === null ? 'type-glow' : 'type-glow erased';
+  g.style.left = x * cw + 'px';
+  g.style.top = row * ch + 'px';
+  g.style.width = width * cw + 'px';
+  g.style.height = ch + 'px';
+  const flash = document.createElement('div');
+  flash.className = 'flash';
+  g.appendChild(flash);
+  const jitter = (n) => n * (0.75 + Math.random() * 0.5);
+  if (erased === null) {
+    const ice = document.createElement('div');
+    ice.className = 'ice';
+    ice.textContent = typed || '';
+    ice.style.fontFamily = node.term.options.fontFamily;
+    ice.style.fontSize = node.term.options.fontSize + 'px';
+    ice.style.fontWeight = node.term.options.fontWeight;
+    ice.style.lineHeight = ch + 'px';
+    g.appendChild(ice);
+  } else {
+    const word = Array.isArray(erased);
+    const makeShard = (clip) => {
+      const shard = document.createElement('div');
+      shard.className = word ? 'shard word' : 'shard';
+      shard.style.fontFamily = node.term.options.fontFamily;
+      shard.style.fontSize = node.term.options.fontSize + 'px';
+      shard.style.lineHeight = ch + 'px';
+      shard.style.clipPath = clip;
+      if (!word) shard.textContent = erased;
+      // a box per cell, so the word sits on the grid it was drawn on
+      else {
+        for (const c of erased) {
+          if (c.w === 0) continue;
+          const span = document.createElement('span');
+          span.textContent = c.ch || ' ';
+          span.style.width = (c.w || 1) * cw + 'px';
+          shard.appendChild(span);
+        }
+      }
+      g.appendChild(shard);
+      return shard;
+    };
+    if (!word) {
+      for (const s of SHARDS) {
+        const shard = makeShard(s.clip);
+        shard.style.setProperty('--dx', jitter(s.dx * cw * 1.6) + 'px');
+        shard.style.setProperty('--dy', jitter(s.dy * ch) + 'px');
+        shard.style.setProperty('--rot', jitter(s.rot) + 'deg');
+      }
+    } else {
+      // outward from the middle of the word: the ends go furthest, the top
+      // half is thrown up, the bottom half drops
+      const span = width * cw;
+      const letters = erased.filter((c) => c.w > 0 && c.ch.trim()).length;
+      for (const s of wordShards(letters)) {
+        const shard = makeShard(s.clip);
+        const off = ((s.center - 50) / 50) * span; // -span..span from the middle
+        const side = Math.sign(off) || (Math.random() < 0.5 ? -1 : 1);
+        shard.style.setProperty('--dx', jitter(off * 0.35 + side * cw * 0.6) + 'px');
+        shard.style.setProperty('--dy', jitter(s.up ? -ch * 0.6 : ch * 0.5) + 'px');
+        shard.style.setProperty('--rot', side * jitter(s.up ? 18 : 10) * (s.up ? 1 : -1) + 'deg');
+      }
+    }
+  }
+  screen.appendChild(g);
+  // the longest of its parts has finished by then, at any --type-glow-ms
+  setTimeout(() => g.remove(), 1200);
+}
+
 function attachDrop(node) {
   const paneEl = node.el;
   const over = (ev) => {
@@ -887,6 +1327,7 @@ async function createPane(opts = {}) {
   attachCommandMarks(node);
   attachLinks(node);
   attachDrop(node);
+  attachTypingGlow(node);
 
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
@@ -897,6 +1338,7 @@ async function createPane(opts = {}) {
     if (ctrlOnly && ev.code === 'KeyC' && term.hasSelection()) {
       // copy instead of interrupt when text is selected
       navigator.clipboard.writeText(term.getSelection());
+      glowCopy(node);
       term.clearSelection();
       return false;
     }
@@ -910,6 +1352,7 @@ async function createPane(opts = {}) {
     }
     if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyC' && term.hasSelection()) {
       navigator.clipboard.writeText(term.getSelection());
+      glowCopy(node);
       return false;
     }
     return true;
@@ -920,6 +1363,8 @@ async function createPane(opts = {}) {
   term.onSelectionChange(() => {
     clearTimeout(selTimer);
     selTimer = setTimeout(() => {
+      // no scan here: selecting isn't copying, to the eye, even when it fills
+      // the clipboard — the scan is for a copy made on purpose
       if (state.theme?.copyOnSelect !== false && term.hasSelection()) {
         navigator.clipboard.writeText(term.getSelection());
       }
@@ -930,6 +1375,8 @@ async function createPane(opts = {}) {
   paneEl.addEventListener('contextmenu', async (ev) => {
     ev.preventDefault();
     if (term.hasSelection()) {
+      // scanned before the write: the selection it shows is gone after it
+      glowCopy(node);
       await navigator.clipboard.writeText(term.getSelection());
       term.clearSelection();
     } else {

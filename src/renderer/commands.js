@@ -236,6 +236,7 @@ cmd('command.copyOutput', "Copy the last command's output", () => {
   const text = selectCommandOutput(node);
   if (text === null) return;
   navigator.clipboard.writeText(text);
+  glowCopy(node);
   const lines = text ? text.split('\n').length : 0;
   toast(`Copied ${lines} line${lines === 1 ? '' : 's'}`);
 });
