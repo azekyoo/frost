@@ -185,14 +185,15 @@ function liveMarks(node) {
 }
 
 // The last finished command, wherever the screen is scrolled to: it is the one
-// that just ran, and the one a Send or a copy means.
-function commandRegion(node) {
+// that just ran, and the one a Send or a copy means. back counts further up:
+// 2 is the command before it, and so on.
+function commandRegion(node, back = 1) {
   const term = node?.term;
   if (!term) return null;
   const marks = liveMarks(node);
-  if (marks.length < 2) return null;
+  const index = marks.length - 1 - back; // 1: the last one that has finished
+  if (index < 0) return null;
   const buf = term.buffer.active;
-  const index = marks.length - 2; // the last one that has finished
 
   // up to the next prompt — the first empty one after it, when there were any
   const own = marks[index].end;
@@ -283,7 +284,14 @@ function commandOutput(node) {
     const running = runningOutput(node, marks);
     if (running) return running;
   }
-  const region = commandRegion(node);
+  return finishedCommand(node);
+}
+
+// One finished command — the last, or back further — as typed, printed and
+// ended.
+function finishedCommand(node, back = 1) {
+  const term = node.term;
+  const region = commandRegion(node, back);
   if (!region) return null;
   const promptRows = bufferText(term, region.mark.marker.line, region.start - 1);
   let output = bufferText(term, region.start, region.end);

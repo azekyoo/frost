@@ -77,6 +77,8 @@ contextBridge.exposeInMainWorld('api', {
   updateDownload: () => ipcRenderer.send('update:download'),
   updateInstall: () => ipcRenderer.send('update:install'),
   onUpdateState: (cb) => ipcRenderer.on('update:state', (_e, m) => cb(m)),
-  agentsClaimTab: () => ipcRenderer.invoke('agents:claimTab'),
+  onMcpQuery: (cb) => ipcRenderer.on('mcp:query', (_e, m) => cb(m)),
+  mcpReply: (reqId, result) => ipcRenderer.send('mcp:reply', { reqId, result }),
+  agentsClaimTab:() => ipcRenderer.invoke('agents:claimTab'),
   agentsReleaseTab: () => ipcRenderer.send('agents:releaseTab')
 });

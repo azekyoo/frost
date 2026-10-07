@@ -18,6 +18,7 @@ const s = {
   notifySeconds: document.getElementById('s-notify-seconds'),
   notifySecondsVal: document.getElementById('s-notify-seconds-val'),
   autoDetect: document.getElementById('s-autodetect'),
+  agentTools: document.getElementById('s-agent-tools'),
   copyOnSelect: document.getElementById('s-copyonselect'),
   pasteWarn: document.getElementById('s-paste-warn'),
   pasteWarnAgent: document.getElementById('s-paste-warn-agent'),
@@ -156,6 +157,7 @@ function syncSettingsUI() {
   s.notifySeconds.value = secs;
   s.notifySecondsVal.textContent = secs ? secs + 's' : 'Off';
   s.autoDetect.checked = t.autoDetectAgents !== false;
+  s.agentTools.checked = t.agentTools !== false;
   s.copyOnSelect.checked = t.copyOnSelect !== false;
   s.pasteWarn.checked = t.paste?.warnMultiline !== false;
   s.pasteWarnAgent.checked = t.paste?.warnInAgent === true;
@@ -219,6 +221,7 @@ function onSettingChange() {
     commandSeconds: +s.notifySeconds.value
   };
   t.autoDetectAgents = s.autoDetect.checked;
+  t.agentTools = s.agentTools.checked;
   t.copyOnSelect = s.copyOnSelect.checked;
   t.paste = {
     ...(t.paste || {}),

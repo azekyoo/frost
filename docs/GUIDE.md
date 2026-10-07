@@ -165,6 +165,14 @@ running and supervising Claude Code agents with live status and diff watching.
     300 lines, and lines a program broke at the window's edge are joined back.
     From a shell in a normal tab, it goes to the agent working in that folder.
     What the command printed is sent as it is, so mind secrets in it
+  - **agents can see your other terminals**: every `claude` started in Frost
+    is handed Frost's own MCP server, so it can list your tabs and panes, read
+    any pane's scrollback or one command's output with its exit code, and
+    pick up what you have selected. Ask "why did the server in my other tab
+    crash?" and it reads that tab itself. Read-only — nothing can type — and
+    reachable only from this machine, with a token per run. Turn it off with
+    **Let agents read your terminals** in settings; it applies to agents started
+    after the change. Anything on screen can be read, so mind secrets in it
   - right-click an agent to mark it unread, copy its resume command or folder,
     open the folder, or end the session
   - **it tells you when it needs you** — a Windows notification and a taskbar

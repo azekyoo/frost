@@ -3,6 +3,17 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## Unreleased
+
+### Added
+
+- **Agents can see your other terminals.** Every `claude` started in Frost
+  gets Frost's own MCP server: it can list your tabs and panes, read a pane's
+  scrollback or one command's output and exit code, and see what you have
+  selected. "Why did the server in my other tab crash?" now just works.
+  Read-only, local to this machine, and off with **Let agents read your
+  terminals** in settings.
+
 ## 2.1.0 — 2026-10-01
 
 ### Added

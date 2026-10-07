@@ -17,6 +17,7 @@ const fs = require('fs');
 const { spawn, spawnSync, execFile } = require('child_process');
 const chokidar = require('chokidar');
 const pty = require('@lydell/node-pty');
+const { startMcpServer } = require('./mcp');
 
 // Set by tools/shots.js to render the README screenshots: an isolated config
 // directory, a wallpaper to use instead of the desktop's, and fixed window
@@ -97,6 +98,9 @@ const DEFAULT_THEME = {
   // firehose output rather than reading.
   gpuRenderer: false,
   autoDetectAgents: true,
+  // Agents in Frost can read the other panes (list, scrollback, selection)
+  // through Frost's own MCP server. Read-only; nothing can type.
+  agentTools: true,
   // Off, like every other Windows terminal: a shell that comes back with
   // yesterday's tabs in it is a surprise, and the tabs it restores are empty
   // shells in the right directories rather than the work that was in them.
@@ -1078,7 +1082,7 @@ const CLAUDE_WRAPPER =
   'Set-Content -LiteralPath $env:FROST_LAUNCH -Value ("start|" + (Get-Location).Path) -Encoding UTF8; ' +
   // finally, because Ctrl+C stops the function too, and a plain next line
   // would never run
-  'try { & $exe --settings $env:FROST_HOOKS @args } ' +
+  'try { & $exe --mcp-config $env:FROST_MCP --settings $env:FROST_HOOKS @args } ' +
   'finally { Set-Content -LiteralPath $env:FROST_LAUNCH -Value ("end|" + (Get-Location).Path) -Encoding UTF8 } ' +
   '}';
 
@@ -1129,7 +1133,7 @@ function bashRc(withClaude) {
       '  if [ -z "$exe" ]; then echo "claude not found" >&2; return 1; fi',
       '  local here; here=$(pwd -W 2>/dev/null || pwd)',
       '  printf "start|%s" "$here" > "$FROST_LAUNCH"',
-      '  "$exe" --settings "$FROST_HOOKS" "$@"',
+      '  "$exe" --mcp-config "$FROST_MCP" --settings "$FROST_HOOKS" "$@"',
       '  printf "end|%s" "$here" > "$FROST_LAUNCH"',
       '}'
     );
@@ -1293,6 +1297,7 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
       const fix = dialect === 'bash' ? (s) => s.replace(/\\/g, '/') : (s) => s;
       env.FROST_HOOKS = fix(hooks);
       env.FROST_LAUNCH = fix(launch);
+      env.FROST_MCP = fix(mcpConfigFile(agentId));
     }
     args =
       dialect === 'bash'
@@ -2314,10 +2319,121 @@ function readSessionId(agentId) {
   }
 }
 
+// ---------- Frost's MCP server ----------
+// Every agent Frost launches is handed Frost's own MCP server, so it can see
+// the other panes: list them, read their scrollback or one command's output,
+// and pick up what the user has selected. The panes live in the renderers, so
+// main asks the window that owns each one and passes the answer on.
+
+let frostMcp = null;
+let mcpToolNames = [];
+const mcpPending = new Map(); // reqId -> resolve
+let mcpSeq = 0;
+
+function startFrostMcp() {
+  frostMcp = startMcpServer({
+    version: app.getVersion(),
+    enabled: () => (readTheme() || DEFAULT_THEME).agentTools !== false,
+    callTool: mcpTool
+  });
+  mcpToolNames = frostMcp.toolNames;
+  frostMcp.ready.catch((e) => {
+    console.error('frost mcp server failed to start', e);
+    frostMcp = null;
+  });
+}
+
+// Written per agent, at the moment its shell starts. With the setting off — or
+// the server not up — it lists no servers, so claude starts exactly as before.
+function mcpConfigFile(agentId) {
+  const on = frostMcp && (readTheme() || DEFAULT_THEME).agentTools !== false;
+  const cfg = on ? frostMcp.configFor(agentId) : { mcpServers: {} };
+  const file = path.join(STATUS_DIR, 'mcp-' + agentId + '.json');
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
+  return file;
+}
+
+function askRenderer(wc, op, args) {
+  return new Promise((resolve) => {
+    if (!wc || wc.isDestroyed()) return resolve(null);
+    const reqId = ++mcpSeq;
+    const timer = setTimeout(() => {
+      mcpPending.delete(reqId);
+      resolve(null);
+    }, 3000);
+    mcpPending.set(reqId, (result) => {
+      clearTimeout(timer);
+      resolve(result);
+    });
+    wc.send('mcp:query', { reqId, op, args });
+  });
+}
+
+ipcMain.on('mcp:reply', (_e, { reqId, result }) => {
+  const done = mcpPending.get(reqId);
+  mcpPending.delete(reqId);
+  done?.(result ?? null);
+});
+
+// The pane an agent's own claude runs in: 'pty<N>' for one the wrapper
+// announced, otherwise the pre-registered agent's record knows.
+function ptyOfAgent(agentId) {
+  if (agentId.startsWith('pty')) return agentId.slice(3);
+  return agents.get(agentId)?.ptyId || null;
+}
+
+async function mcpTool(name, args, agentId) {
+  const self = ptyOfAgent(agentId);
+  if (name === 'list_panes') {
+    const wins = liveWindows();
+    const lists = await Promise.all(wins.map((w) => askRenderer(w.webContents, 'panes')));
+    const panes = [];
+    lists.forEach((list, i) => {
+      for (const p of list || []) {
+        const rec = agentByPty.get(p.pane);
+        panes.push({
+          ...p,
+          ...(wins.length > 1 ? { window: i + 1 } : {}),
+          ...(rec ? { agentStatus: rec.status } : {}),
+          ...(p.pane === self ? { self: true } : {})
+        });
+      }
+    });
+    return JSON.stringify(panes, null, 1);
+  }
+  if (name === 'read_pane') {
+    const pane = String(args.pane ?? '');
+    const wc = ptyOwners.get(pane);
+    if (!wc || wc.isDestroyed()) throw new Error(`No pane "${pane}" — call list_panes for the ids.`);
+    const r = await askRenderer(wc, 'read', {
+      pane,
+      lines: Math.min(2000, Math.max(1, Number(args.lines) || 150)),
+      command: args.command ? Math.min(50, Math.max(1, Number(args.command))) : null
+    });
+    if (!r) throw new Error('That window did not answer.');
+    if (r.error) throw new Error(r.error);
+    return r.text;
+  }
+  if (name === 'get_selection') {
+    // the window the user is in first: that is the selection they mean
+    const first = focusedWindow();
+    const order = [first, ...liveWindows().filter((w) => w !== first)].filter(Boolean);
+    for (const w of order) {
+      const r = await askRenderer(w.webContents, 'selection');
+      if (r) return `Selected in pane ${r.pane} (${r.title}):\n${r.text}`;
+    }
+    return 'Nothing is selected in any Frost terminal.';
+  }
+  throw new Error(`Unknown tool: ${name}`);
+}
+
 function hookSettingsFile(agentId) {
   const statusFile = path.join(STATUS_DIR, 'st-' + agentId).replace(/\\/g, '/');
   const write = (s) => `node -e "require('fs').writeFileSync('${statusFile}','${s}')"`;
   const cfg = {
+    // Frost's tools only read what is already on the user's screen, so they
+    // don't stop the agent to ask each time
+    permissions: { allow: mcpToolNames.map((t) => 'mcp__frost__' + t) },
     hooks: {
       UserPromptSubmit: [{ hooks: [{ type: 'command', command: write('working') }] }],
       Notification: [{ hooks: [{ type: 'command', command: blockedHook(statusFile) }] }],
@@ -2350,6 +2466,7 @@ function initAgentInfra() {
   for (const f of fs.readdirSync(STATUS_DIR)) {
     try { fs.unlinkSync(path.join(STATUS_DIR, f)); } catch {}
   }
+  startFrostMcp();
   chokidar
     .watch(STATUS_DIR, {
       ignoreInitial: true,
@@ -2482,7 +2599,7 @@ ipcMain.handle('agents:spawn', (_e, { spacePath }) => {
     cwd,
     branch,
     git: info.git,
-    run: `claude --settings "${settingsFile}"`
+    run: `claude --mcp-config "${mcpConfigFile(agentId)}" --settings "${settingsFile}"`
   };
 });
 
