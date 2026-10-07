@@ -1007,6 +1007,62 @@ body.frameless #win-controls {
   }
 }
 
+/* Copy: a scan. A green beam crosses the selection left to right, each row
+   showing its own slice of the one beam, and the text it has passed glows and
+   fades behind it. --sweep is set per copy from how wide the selection is. */
+.pane .xterm-screen .copy-glow {
+  --copy: var(--st-done);
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.pane .xterm-screen .copy-glow .seg {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 3px;
+  animation: copy-glow-lit calc(var(--sweep) * 2.4) ease-out forwards;
+}
+
+.pane .xterm-screen .copy-glow .beam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 24px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--copy) 90%, transparent) 70%,
+    color-mix(in srgb, var(--copy) 45%, white) 92%,
+    transparent
+  );
+  animation: copy-glow-beam var(--sweep) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+@keyframes copy-glow-beam {
+  from {
+    transform: translateX(var(--from));
+  }
+  to {
+    transform: translateX(var(--to));
+  }
+}
+
+/* lit the moment it is copied, let go as the beam passes — no hard box:
+   an inner glow */
+@keyframes copy-glow-lit {
+  0%,
+  20% {
+    background: color-mix(in srgb, var(--copy) 38%, transparent);
+    box-shadow: inset 0 0 8px color-mix(in srgb, var(--copy) 70%, transparent);
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
 /* xterm.js hands the whole pane an I-beam, on the theory that a terminal is a
    text field. Windows Terminal doesn't, and neither does a console window: the
    arrow is the shell's cursor, and selection works under it just the same. The
