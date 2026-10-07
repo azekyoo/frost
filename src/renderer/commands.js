@@ -259,6 +259,13 @@ cmd('view.selectAll', 'Select everything in this pane', () => {
 });
 cmd('view.scrollToTop', 'Scroll to top', () => activePane()?.term.scrollToTop());
 cmd('view.scrollToBottom', 'Scroll to bottom', () => activePane()?.term.scrollToBottom());
+// Off by default, so the palette is where most people will come across it
+cmd('view.typingEffects', 'Toggle typing effects (freeze, shatter, copy scan)', () => {
+  if (!state.theme) return;
+  state.theme.typingGlow = state.theme.typingGlow !== true;
+  api.themeSave(state.theme);
+  toast(state.theme.typingGlow ? 'Typing effects on — type something' : 'Typing effects off');
+});
 // Bound here rather than left to a menu: the application menu is gone, because
 // its accelerators took Ctrl+R, Ctrl+W and Ctrl+Q away from the shell.
 cmd('view.devtools', 'Toggle developer tools', () => api.winDevtools());

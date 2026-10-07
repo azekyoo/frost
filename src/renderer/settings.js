@@ -161,7 +161,7 @@ function syncSettingsUI() {
   s.pasteWarn.checked = t.paste?.warnMultiline !== false;
   s.pasteWarnAgent.checked = t.paste?.warnInAgent === true;
   s.ligatures.checked = t.font?.ligatures !== false;
-  s.typingGlow.checked = t.typingGlow !== false;
+  s.typingGlow.checked = t.typingGlow === true;
   s.startDir.value = t.startDir || '';
   s.editor.value = t.editor || '';
   s.tintColor.value = tint.hex;
