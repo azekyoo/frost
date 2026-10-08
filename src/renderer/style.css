@@ -24,7 +24,9 @@
      here so a menu, the palette and the drawer can never drift apart. */
   --ice: rgba(18, 20, 30, 0.74);
   --ice-strong: rgba(15, 17, 26, 0.86);
-  --ice-blur: blur(30px) saturate(1.7);
+  /* divided by the UI zoom like everything glass: the frost is the desktop's,
+     and the desktop doesn't zoom */
+  --ice-blur: blur(calc(30px / var(--ui-zoom, 1))) saturate(1.7);
   --ice-edge: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 0 0 1px rgba(255, 255, 255, 0.055);
   --ice-lift: 0 22px 56px -14px rgba(0, 0, 0, 0.62), 0 3px 10px -2px rgba(0, 0, 0, 0.28);
   --ice-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 42%);
@@ -195,10 +197,12 @@ body.glass.win-focused::before {
 body.glass #glass-bg {
   display: block;
   position: absolute;
-  inset: -80px; /* blur bleeds transparent at edges; oversize and offset instead */
+  /* blur bleeds transparent at edges; oversize and offset instead. In screen
+     pixels, like the blur: a zoomed page must not blur the desktop harder */
+  inset: calc(-80px / var(--ui-zoom, 1));
   z-index: -2;
   background-repeat: no-repeat;
-  filter: blur(var(--glass-blur, 40px));
+  filter: blur(calc(var(--glass-blur, 40px) / var(--ui-zoom, 1)));
   pointer-events: none;
 }
 
@@ -231,6 +235,7 @@ body.glass #glass-tint::before {
 
 body.glass #glass-tint::after {
   background-image: var(--grain);
+  background-size: calc(180px / var(--ui-zoom, 1)); /* grain as fine at any zoom */
   opacity: 0.045;
   mix-blend-mode: overlay;
 }

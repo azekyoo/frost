@@ -14,9 +14,10 @@ function updateGlassPos({ bounds, display, maximized }) {
   // measures itself in smaller CSS pixels, so the wallpaper has to be divided
   // down or it drifts out of alignment with the desktop behind the window.
   const z = uiZoom || 1;
-  // #glass-bg is inset -80px, so shift the wallpaper by +80 to stay screen-aligned
+  // #glass-bg is inset 80 screen px, so shift the wallpaper by as much to stay
+  // screen-aligned
   el.glassBg.style.backgroundSize = `${d.width / z}px ${d.height / z}px`;
-  el.glassBg.style.backgroundPosition = `${(d.x - b.x) / z + 80}px ${(d.y - b.y) / z + 80}px`;
+  el.glassBg.style.backgroundPosition = `${(d.x - b.x + 80) / z}px ${(d.y - b.y + 80) / z}px`;
 }
 
 async function initGlass() {
