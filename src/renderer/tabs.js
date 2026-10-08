@@ -279,11 +279,20 @@ function showDragGhost(ev) {
 // alone would call aiming at it a reorder — which is what it did, and dropping a
 // tab on another window's tabs did nothing. Height only chooses between
 // reordering here and opening a window of its own.
-function dragModeFor(y) {
+function dragModeFor(x, y) {
   const d = tabDrag;
   if (d.target) return 'merge';
+  return wantsOwnWindow(x, y) ? 'detach' : 'reorder';
+}
+
+// Pulled well below the strip, or out of the window any way at all. Only
+// downwards used to count, so a tab dragged off the side, or up over the top,
+// came back to where it was: still a reorder, and with no tab out there to be
+// reordered against, nothing happened.
+function wantsOwnWindow(x, y) {
   const strip = el.tabstrip.getBoundingClientRect();
-  return y > strip.bottom + DETACH_DISTANCE ? 'detach' : 'reorder';
+  const outside = x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight;
+  return outside || y > strip.bottom + DETACH_DISTANCE;
 }
 
 // Position and outline travel together: both are what the copy is saying.
@@ -313,7 +322,7 @@ function startDropProbe() {
       // The drop already happened, or another drag started: this answer is stale
       if (tabDrag.session !== session || !tabDrag.live) return;
       tabDrag.target = hit || null;
-      tabDrag.mode = dragModeFor(tabDrag.lastY);
+      tabDrag.mode = dragModeFor(tabDrag.lastX, tabDrag.lastY);
       paintDragGhost();
     });
   };
@@ -333,14 +342,14 @@ function onTabDragMove(ev) {
     d.el.classList.add('dragging');
     d.lastX = ev.clientX;
     d.lastY = ev.clientY;
-    d.mode = dragModeFor(ev.clientY);
+    d.mode = dragModeFor(ev.clientX, ev.clientY);
     showDragGhost(ev);
     startDropProbe();
   }
   d.lastX = ev.clientX;
   d.lastY = ev.clientY;
 
-  d.mode = dragModeFor(ev.clientY);
+  d.mode = dragModeFor(ev.clientX, ev.clientY);
   moveDragGhost();
   if (d.mode !== 'reorder') return;
 
@@ -396,9 +405,7 @@ async function endTabDrag(ev) {
     moveTabToWindow(tab, hit);
     return;
   }
-  const strip = el.tabstrip.getBoundingClientRect();
-  const offStrip = ev.clientY > strip.bottom + DETACH_DISTANCE;
-  if (offStrip) detachTab(tab);
+  if (wantsOwnWindow(ev.clientX, ev.clientY)) detachTab(tab);
   else settle();
 }
 
