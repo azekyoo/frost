@@ -948,15 +948,41 @@ body.frameless #win-controls {
   animation: type-glow-thaw calc(var(--t) * 1.6) ease-in forwards;
 }
 
-/* one piece of the broken character, cut by its clip-path */
+/* Behind a deleted one, the same haze as a typed one but red, and the other
+   way round: it flares out wide and pulls in to nothing as the pieces go */
+.pane .xterm-screen .type-glow.erased .flash {
+  inset: -45% -70%;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--glow) 40%, transparent),
+    color-mix(in srgb, var(--glow) 14%, transparent) 55%,
+    transparent
+  );
+  animation: type-glow-implode calc(var(--t) * 1.5) cubic-bezier(0.3, 0, 0.2, 1) forwards;
+}
+
+@keyframes type-glow-implode {
+  from {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+}
+
+/* one grain of the deleted character, cut out of it by its clip-path: lit
+   red-hot like the ice of a typed one, and blown away from the first frame */
 .pane .xterm-screen .type-glow .shard {
   position: absolute;
   inset: 0;
   text-align: center;
   white-space: pre;
-  color: color-mix(in srgb, var(--danger) 60%, white);
-  text-shadow: 0 0 6px var(--danger);
-  animation: type-glow-shard calc(var(--t) * 1.7) cubic-bezier(0.2, 0.6, 0.35, 1) forwards;
+  color: color-mix(in srgb, var(--glow) 25%, white);
+  text-shadow: 0 0 2px var(--glow), 0 0 6px var(--glow);
+  animation: type-glow-shard calc(var(--t) * 1.8) cubic-bezier(0.2, 0.6, 0.35, 1) both;
 }
 
 /* a piece of a whole word: the word laid out cell by cell, then cut */
@@ -994,16 +1020,14 @@ body.frameless #win-controls {
 }
 
 @keyframes type-glow-shard {
-  0% {
+  from {
     opacity: 1;
     transform: none;
   }
-  35% {
-    opacity: 1;
-  }
-  100% {
+  to {
     opacity: 0;
-    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.85);
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.3);
+    color: var(--glow);
   }
 }
 

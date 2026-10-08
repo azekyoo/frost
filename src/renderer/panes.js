@@ -1162,38 +1162,29 @@ function glowErasedUp(node, e, y) {
   return true;
 }
 
-// A word's shards: the block cut into columns along slanted lines, each column
-// split by a crack that runs the length of the word, so the pieces fit back
-// together. Positions in % of the block; every cut is a little off true.
-function wordShards(letters) {
-  const cols = Math.min(6, Math.max(2, Math.round(letters / 2.5)));
-  const wob = (n) => n + (Math.random() * 2 - 1) * (40 / cols);
-  const top = [0];
-  const bottom = [0];
-  const crack = [50 + (Math.random() * 24 - 12)];
-  for (let i = 1; i < cols; i++) {
-    const at = (i / cols) * 100;
-    top.push(wob(at));
-    bottom.push(wob(at));
-    crack.push(50 + (Math.random() * 30 - 15));
-  }
-  top.push(100);
-  bottom.push(100);
-  crack.push(50 + (Math.random() * 24 - 12));
-  const mid = (i) => (top[i] * (100 - crack[i]) + bottom[i] * crack[i]) / 100;
+// What a deleted character or word turns to: grains of itself. The block is
+// cut into a fine grid, each grain carrying its own scrap of the letters, and
+// they blow away up and back — the way Backspace goes — the ones at the end
+// the cursor came from first, so it comes apart in the direction it was rubbed
+// out. Moves in px, delays in ms.
+function dustGrains(cells, cw, ch) {
+  const cols = Math.min(24, Math.max(3, cells * 3));
+  const rows = 4;
+  const lead = Math.min(90, 30 * cells); // how long the last grain waits
   const out = [];
-  for (let i = 0; i < cols; i++) {
-    const center = (top[i] + top[i + 1] + bottom[i] + bottom[i + 1]) / 4;
-    out.push({
-      clip: `polygon(${top[i]}% 0, ${top[i + 1]}% 0, ${mid(i + 1)}% ${crack[i + 1]}%, ${mid(i)}% ${crack[i]}%)`,
-      center,
-      up: true
-    });
-    out.push({
-      clip: `polygon(${mid(i)}% ${crack[i]}%, ${mid(i + 1)}% ${crack[i + 1]}%, ${bottom[i + 1]}% 100%, ${bottom[i]}% 100%)`,
-      center,
-      up: false
-    });
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < rows; r++) {
+      const u = (c + 0.5) / cols; // 0 at the left of the block, 1 at the right
+      const v = (r + 0.5) / rows; // 0 at the top, 1 at the bottom
+      out.push({
+        clip: `inset(${(r / rows) * 100}% ${100 - ((c + 1) / cols) * 100}% ${100 - ((r + 1) / rows) * 100}% ${(c / cols) * 100}%)`,
+        dx: -cw * (0.3 + Math.random() * 0.9) + (Math.random() - 0.5) * cw * 0.6,
+        dy: -ch * (0.25 + (1 - v) * 0.5 + Math.random() * 0.45),
+        rot: (Math.random() * 2 - 1) * 70,
+        delay: (1 - u) * lead * (0.8 + Math.random() * 0.4),
+        origin: `${u * 100}% ${v * 100}%` // turns about itself, not the block
+      });
+    }
   }
   return out;
 }
@@ -1201,16 +1192,7 @@ function wordShards(letters) {
 // Frost, literally. A typed character (typed) freezes: drawn again exactly
 // over itself in ice white, glowing, then thawing back into its own colour —
 // nothing moves, so nothing reads as a second copy. An erased one (erased: the
-// character that was there) shatters: its shards, in red, fly apart, turn and
-// fade.
-
-// Where each shard of a shattered character is cut, and where it goes: two
-// from the top thrown up and out, the heavy bottom one dropping.
-const SHARDS = [
-  { clip: 'polygon(0 0, 58% 0, 42% 52%, 0 68%)', dx: -0.55, dy: -0.45, rot: -28 },
-  { clip: 'polygon(58% 0, 100% 0, 100% 58%, 42% 52%)', dx: 0.55, dy: -0.5, rot: 24 },
-  { clip: 'polygon(0 68%, 42% 52%, 100% 58%, 100% 100%, 0 100%)', dx: 0.1, dy: 0.45, rot: 9 }
-];
+// character that was there) crumbles: red grains of it blow away and fade.
 
 function glowCell(node, x, row, width, erased = null, typed = null) {
   const screen = node.term.element?.querySelector('.xterm-screen');
@@ -1226,7 +1208,6 @@ function glowCell(node, x, row, width, erased = null, typed = null) {
   const flash = document.createElement('div');
   flash.className = 'flash';
   g.appendChild(flash);
-  const jitter = (n) => n * (0.75 + Math.random() * 0.5);
   if (erased === null) {
     const ice = document.createElement('div');
     ice.className = 'ice';
@@ -1243,6 +1224,7 @@ function glowCell(node, x, row, width, erased = null, typed = null) {
       shard.className = word ? 'shard word' : 'shard';
       shard.style.fontFamily = node.term.options.fontFamily;
       shard.style.fontSize = node.term.options.fontSize + 'px';
+      shard.style.fontWeight = node.term.options.fontWeight;
       shard.style.lineHeight = ch + 'px';
       shard.style.clipPath = clip;
       if (!word) shard.textContent = erased;
@@ -1259,26 +1241,13 @@ function glowCell(node, x, row, width, erased = null, typed = null) {
       g.appendChild(shard);
       return shard;
     };
-    if (!word) {
-      for (const s of SHARDS) {
-        const shard = makeShard(s.clip);
-        shard.style.setProperty('--dx', jitter(s.dx * cw * 1.6) + 'px');
-        shard.style.setProperty('--dy', jitter(s.dy * ch) + 'px');
-        shard.style.setProperty('--rot', jitter(s.rot) + 'deg');
-      }
-    } else {
-      // outward from the middle of the word: the ends go furthest, the top
-      // half is thrown up, the bottom half drops
-      const span = width * cw;
-      const letters = erased.filter((c) => c.w > 0 && c.ch.trim()).length;
-      for (const s of wordShards(letters)) {
-        const shard = makeShard(s.clip);
-        const off = ((s.center - 50) / 50) * span; // -span..span from the middle
-        const side = Math.sign(off) || (Math.random() < 0.5 ? -1 : 1);
-        shard.style.setProperty('--dx', jitter(off * 0.35 + side * cw * 0.6) + 'px');
-        shard.style.setProperty('--dy', jitter(s.up ? -ch * 0.6 : ch * 0.5) + 'px');
-        shard.style.setProperty('--rot', side * jitter(s.up ? 18 : 10) * (s.up ? 1 : -1) + 'deg');
-      }
+    for (const d of dustGrains(width, cw, ch)) {
+      const shard = makeShard(d.clip);
+      shard.style.setProperty('--dx', d.dx + 'px');
+      shard.style.setProperty('--dy', d.dy + 'px');
+      shard.style.setProperty('--rot', d.rot + 'deg');
+      shard.style.animationDelay = d.delay + 'ms';
+      shard.style.transformOrigin = d.origin;
     }
   }
   screen.appendChild(g);
