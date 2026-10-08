@@ -977,17 +977,10 @@ function attachTypingGlow(node) {
 // selection, cut to its rows, so a selection over several lines is swept as
 // one — and only over text, not the blank end of a row.
 function glowCopy(node) {
-  if (state.theme?.typingGlow !== true) return;
-  // one copy, however many ways it was asked for at once
-  if (Date.now() - (node.copyGlowAt || 0) < 400) return;
   const term = node.term;
   const pos = term.getSelectionPosition();
-  const screen = term.element?.querySelector('.xterm-screen');
-  if (!pos || !screen) return;
-  node.copyGlowAt = Date.now();
+  if (!pos) return;
   const buf = term.buffer.active;
-  const cw = screen.clientWidth / term.cols;
-  const ch = screen.clientHeight / term.rows;
   const rows = [];
   for (let y = pos.start.y; y <= pos.end.y; y++) {
     const row = y - buf.viewportY;
@@ -998,7 +991,134 @@ function glowCopy(node) {
     while (x1 > x0 && !(line?.getCell(x1 - 1)?.getChars() || '').trim()) x1--;
     if (x1 > x0) rows.push({ row, x0, x1 });
   }
-  if (!rows.length) return;
+  scanRows(node, rows);
+}
+
+// A program that does its own selecting (claude in fullscreen takes the mouse)
+// copies by handing the terminal the text — OSC 52 — and xterm never has a
+// selection to scan. So the text is found on screen instead, and scanned
+// there. It goes on the clipboard too, as any terminal would put it.
+function attachOscCopy(node) {
+  // where the mouse went down and came up: the same words can show more than
+  // once (pasted twice), and the copy is the one that was dragged over
+  const cellAt = (ev) => {
+    const screen = node.term.element?.querySelector('.xterm-screen');
+    if (!screen) return null;
+    const box = screen.getBoundingClientRect();
+    return {
+      x: Math.floor(((ev.clientX - box.left) / box.width) * node.term.cols),
+      row: Math.floor(((ev.clientY - box.top) / box.height) * node.term.rows)
+    };
+  };
+  node.el.addEventListener('mousedown', (ev) => (node.mouseDrag = { from: cellAt(ev), to: null }), true);
+  node.el.addEventListener('mouseup', (ev) => node.mouseDrag && (node.mouseDrag.to = cellAt(ev)), true);
+  node.term.parser.registerOscHandler(52, (data) => {
+    const b64 = data.slice(data.indexOf(';') + 1);
+    if (!b64 || b64 === '?') return true; // a read: not something we answer
+    let text;
+    try {
+      text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    } catch {
+      return true;
+    }
+    if (!text) return true;
+    navigator.clipboard.writeText(text);
+    const d = node.mouseDrag;
+    scanRows(node, rowsShowing(node, text, [d?.from, d?.to].filter(Boolean)));
+    return true;
+  });
+}
+
+// Where on screen the copied text is: its lines, one under the other, each
+// whole on its row or running on to the next when it wrapped. Spaces aren't
+// held to — a program lays text out its own way — so neither the text nor the
+// screen is compared with them. Where it shows more than once, the place
+// nearest the cells given (where the mouse was). Nothing, if it isn't all there.
+function rowsShowing(node, text, near = []) {
+  const term = node.term;
+  const buf = term.buffer.active;
+  const screen = [];
+  for (let r = 0; r < term.rows; r++) {
+    // each cell's place in the row, spaces left out
+    const line = buf.getLine(buf.viewportY + r);
+    let str = '';
+    const at = [];
+    for (let x = 0; x < term.cols; x++) {
+      const c = line?.getCell(x)?.getChars() || '';
+      if (!c.trim()) continue;
+      str += c;
+      for (let i = 0; i < c.length; i++) at.push(x);
+    }
+    screen.push({ str, at });
+  }
+  const wanted = text.split(/\r?\n/).map((l) => l.replace(/\s+/g, '')).filter(Boolean);
+  if (!wanted.length) return [];
+  const from = (r, start) => {
+    const rows = [];
+    let i = 0; // the line looked for
+    let rest = wanted[0];
+    let off = start; // where in the row's text it starts
+    for (; r < term.rows && i < wanted.length; r++) {
+      const s = screen[r];
+      const here = s.str.slice(off);
+      const take = here.startsWith(rest) ? rest.length : rest.startsWith(here) && here ? here.length : -1;
+      if (take < 0) return null;
+      rows.push({ row: r, x0: s.at[off], x1: s.at[off + take - 1] + 1 });
+      rest = rest.slice(take);
+      if (!rest && ++i < wanted.length) rest = wanted[i];
+      // a line goes on from the start of the next row; a new one may sit
+      // anywhere on it, past a border or a bullet
+      off = 0;
+      if (!rest) break;
+      if (rest === wanted[i] && r + 1 < term.rows) {
+        const k = screen[r + 1].str.indexOf(rest.slice(0, Math.min(rest.length, 8)));
+        if (k < 0) return null;
+        off = k;
+      }
+    }
+    return i >= wanted.length ? rows : null;
+  };
+  // how far a place is from the mouse: nothing for a cell inside it, else
+  // rows apart, then columns
+  const away = (rows) =>
+    near.reduce((sum, p) => {
+      let best = Infinity;
+      for (const r of rows) {
+        const dx = p.x < r.x0 ? r.x0 - p.x : p.x >= r.x1 ? p.x - r.x1 + 1 : 0;
+        best = Math.min(best, Math.abs(p.row - r.row) * term.cols + dx);
+      }
+      return sum + best;
+    }, 0);
+  const head = wanted[0].slice(0, Math.min(wanted[0].length, 8));
+  let found = [];
+  let score = Infinity;
+  // from the bottom up: with no mouse to go by, the newest place wins
+  for (let r = term.rows - 1; r >= 0; r--) {
+    let k = screen[r].str.lastIndexOf(head);
+    while (k >= 0) {
+      const rows = from(r, k);
+      if (rows) {
+        const d = away(rows);
+        if (d < score) [found, score] = [rows, d];
+        if (d === 0) return found;
+      }
+      k = k ? screen[r].str.lastIndexOf(head, k - 1) : -1;
+    }
+  }
+  return found;
+}
+
+// The scan itself, over rows on screen: { row, x0, x1 }
+function scanRows(node, rows) {
+  if (state.theme?.typingGlow !== true) return;
+  // one copy, however many ways it was asked for at once
+  if (Date.now() - (node.copyGlowAt || 0) < 400) return;
+  const term = node.term;
+  const screen = term.element?.querySelector('.xterm-screen');
+  if (!rows.length || !screen) return;
+  node.copyGlowAt = Date.now();
+  const cw = screen.clientWidth / term.cols;
+  const ch = screen.clientHeight / term.rows;
   const left = Math.min(...rows.map((r) => r.x0));
   const right = Math.max(...rows.map((r) => r.x1));
   const first = rows[0].row;
@@ -1316,6 +1436,7 @@ async function createPane(opts = {}) {
   attachLinks(node);
   attachDrop(node);
   attachTypingGlow(node);
+  attachOscCopy(node);
 
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
