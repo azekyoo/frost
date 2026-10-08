@@ -93,7 +93,7 @@ running and supervising Claude Code agents with live status and diff watching.
   extra shell integration to install
 - **Typing effects, made of ice** — off by default; **Typing effects** in
   settings, or **Toggle typing effects** in the palette. What you type freezes
-  ice white and thaws; what you delete shatters into red shards, a whole word
+  ice white and thaws; what you delete glows red and dissolves, a whole word
   at once with Ctrl+Backspace; pastes, suggestions taken with →, Tab
   completions and ↑ recalls freeze along their length; a copy sends a green
   beam across the selection. Placed by reading the screen, so full-screen

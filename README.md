@@ -43,7 +43,7 @@ doing while it does it.
 - **Every shell detected** — PowerShell 7, Windows PowerShell, cmd, Git Bash and
   your WSL distros
 - **Typing effects, made of ice** — optional: what you type freezes, what you
-  delete shatters, what you copy is scanned
+  delete dissolves, what you copy is scanned
 - **Yours to rebind and restyle** — a command palette for everything, remappable
   keys, and `theme.json` / `theme.css` that apply the moment you save
 - **Updates itself** quietly, and only installs when you quit

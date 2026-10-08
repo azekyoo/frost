@@ -3,6 +3,37 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.2.1 — 2026-10-08
+
+### Changed
+
+- **A deleted character dissolves instead of shattering.** It's drawn again
+  in red over where it was, then blurs, swells a little and fades, in one
+  smooth piece, the same way a typed one freezes and thaws. Ctrl+Backspace and
+  Ctrl+W still take the whole word at once.
+
+### Fixed
+
+- **Typing effects no longer stall partway through a line.** Claude's prompt
+  box wraps before the edge of the window, and every key after the wrap was
+  looked for in the wrong place until a Backspace reset it. A key that turns
+  up somewhere else is now found behind the cursor, and the rest follow it.
+- **A word deleted across a wrap gets its effect.** Ctrl+Backspace on a word
+  long enough to run onto the next row used to show nothing; each row's part
+  now dissolves.
+- **Copying in Claude's fullscreen mode gets the green scan.** Claude does its
+  own selecting and hands the terminal the text (OSC 52), so there was no
+  selection to scan. The copied text is now found on screen, the place the
+  mouse dragged over when it appears more than once, and it goes on the
+  clipboard too, as in Windows Terminal.
+- **Glass stays glass when you zoom.** The wallpaper blur, the grain and the
+  frost behind menus grew with Ctrl+= and shrank with Ctrl+−, so a zoomed
+  window looked like a zoomed picture. They now stay the same on screen at any
+  zoom, in every open window, not only the one zoomed from.
+- **A tab dragged off any side of the window opens in a window of its own.**
+  Only dragging it down did; off the left, the right or the top, it went back
+  where it was.
+
 ## 2.2.0 — 2026-10-07
 
 ### Added
