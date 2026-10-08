@@ -829,6 +829,7 @@ const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
 const PASTE_GLOW_MAX = 600; // characters; past that it's a dump, not an input
 const ACCEPT_ROWS = 8; // how far below the cursor a taken suggestion may run
+const ERASE_ROWS = 8; // how far above the cursor a word rubbed out may have started
 // → and End (normal and application cursor modes), Ctrl+→, Ctrl+E, Ctrl+F,
 // Tab, ↑ and ↓
 const FILL_KEYS = new Set([
@@ -843,7 +844,8 @@ function attachTypingGlow(node) {
   // the rest. Typing outruns the echo, so the cursor alone can't say where a
   // key goes — and matching letters backwards from it went wrong on a word
   // with a letter twice in it, dropping keys that had yet to come back.
-  let pending = []; // { ch, x, y, at }
+  let pending = []; // { ch, x, y, at, missed }
+  let newest = null; // the last key typed, waiting or not
   let fresh = true; // the next key starts from the cursor, not from the key before
   let erasing = null; // a delete key waiting for its echo: { y, x, cells, forward, at }
   let paste = null; // { chars, x, y, at }
@@ -860,7 +862,15 @@ function attachTypingGlow(node) {
       const buf = term.buffer.active;
       const y = buf.baseY + buf.cursorY;
       const line = buf.getLine(y);
-      if (line) erasing = { y, x: buf.cursorX, cells: lineCells(line, term.cols), forward: d === ERASE_FORWARD, at: Date.now() };
+      if (line) {
+        // a word long enough to run past the edge started on a row above: keep
+        // the rows this one wraps on from, so the cursor can go back up them
+        let top = y;
+        while (top > 0 && y - top < ERASE_ROWS && buf.getLine(top)?.isWrapped) top--;
+        const above = [];
+        for (let r = top; r < y; r++) above.push(lineCells(buf.getLine(r), term.cols));
+        erasing = { y, x: buf.cursorX, cells: lineCells(line, term.cols), top, above, forward: d === ERASE_FORWARD, at: Date.now() };
+      }
       fresh = true;
       return;
     }
@@ -889,10 +899,13 @@ function attachTypingGlow(node) {
       }
       return;
     }
-    const prev = pending[pending.length - 1];
+    // on from the last key typed, not the last still waiting: one that never
+    // showed where it was looked for would drag every key after it off too
+    const prev = pending.length ? newest : null;
     let at = fresh || !prev ? absCursor() : { x: prev.x + 1, y: prev.y };
     if (at.x >= term.cols) at = { x: at.x - term.cols, y: at.y + 1 };
-    pending.push({ ch: d, ...at, at: Date.now() });
+    newest = { ch: d, ...at, at: Date.now() };
+    pending.push(newest);
     fresh = false;
   });
   term.onWriteParsed(() => {
@@ -938,8 +951,24 @@ function attachTypingGlow(node) {
         glowCell(node, p.x, p.y - buf.viewportY, width, null, p.ch);
         return false;
       }
+      p.missed = past; // the cursor went by, and the key isn't there
       return now - p.at < GLOW_WAIT_MS;
     });
+    // The last key typed went by where it was looked for, but is just behind
+    // the cursor: the line went on somewhere one-on-from-the-key-before can't
+    // say — wrapped inside a box that stops short of the window's edge
+    // (claude's prompt does). Light it there and start again from the cursor;
+    // the keys still waiting before it were looked for in the same wrong place.
+    if (newest?.missed && pending.includes(newest)) {
+      const line = buf.getLine(cur.y);
+      let x = cur.x - 1;
+      if (line?.getCell(x)?.getWidth() === 0) x--; // the second half of a wide one
+      const cell = line?.getCell(x);
+      if (cell && cell.getChars() === newest.ch) {
+        glowCell(node, x, cur.y - buf.viewportY, cell.getWidth() || 1, null, newest.ch);
+        pending = [];
+      }
+    }
   });
 }
 
@@ -1080,6 +1109,7 @@ function glowAccepted(node, a) {
 function glowErased(node, e) {
   const buf = node.term.buffer.active;
   const y = buf.baseY + buf.cursorY;
+  if (!e.forward && y < e.y && y >= e.top) return glowErasedUp(node, e, y);
   if (y !== e.y) return false;
   const row = y - buf.viewportY;
   if (e.forward) {
@@ -1102,6 +1132,33 @@ function glowErased(node, e) {
       if (c && c.w > 0 && c.ch) glowCell(node, x, row, c.w, c.ch);
     }
   }
+  return true;
+}
+
+// The cursor went back up onto a row the line wrapped from: what was rubbed
+// out runs from the cursor to the end of its row, over any rows in between,
+// to where the cursor was. Each row's part breaks as a word of its own —
+// a block can't bend round the edge of the window.
+function glowErasedUp(node, e, y) {
+  const term = node.term;
+  const buf = term.buffer.active;
+  const rows = [...e.above, e.cells];
+  const parts = [];
+  for (let r = y; r <= e.y; r++) {
+    const from = r === y ? buf.cursorX : 0;
+    const to = r === e.y ? e.x : term.cols;
+    const gone = rows[r - e.top].slice(from, to);
+    // the blank end of a row is nothing that was rubbed out
+    while (gone.length && !gone[gone.length - 1].ch.trim()) gone.pop();
+    if (gone.some((c) => c.w > 0 && c.ch.trim())) parts.push({ r, from, gone });
+  }
+  const letters = parts.flatMap((p) => p.gone.filter((c) => c.w > 0 && c.ch.trim()));
+  if (letters.length === 1) {
+    // one Backspace from the start of a row, back over the edge: a character
+    const p = parts[0];
+    const x = p.from + p.gone.indexOf(letters[0]);
+    glowCell(node, x, p.r - buf.viewportY, letters[0].w || 1, letters[0].ch);
+  } else for (const p of parts) glowCell(node, p.from, p.r - buf.viewportY, p.gone.length, p.gone);
   return true;
 }
 
