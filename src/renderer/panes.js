@@ -1162,37 +1162,11 @@ function glowErasedUp(node, e, y) {
   return true;
 }
 
-// What a deleted character or word turns to: grains of itself. The block is
-// cut into a fine grid, each grain carrying its own scrap of the letters, and
-// they blow away up and back — the way Backspace goes — the ones at the end
-// the cursor came from first, so it comes apart in the direction it was rubbed
-// out. Moves in px, delays in ms.
-function dustGrains(cells, cw, ch) {
-  const cols = Math.min(24, Math.max(3, cells * 3));
-  const rows = 4;
-  const lead = Math.min(90, 30 * cells); // how long the last grain waits
-  const out = [];
-  for (let c = 0; c < cols; c++) {
-    for (let r = 0; r < rows; r++) {
-      const u = (c + 0.5) / cols; // 0 at the left of the block, 1 at the right
-      const v = (r + 0.5) / rows; // 0 at the top, 1 at the bottom
-      out.push({
-        clip: `inset(${(r / rows) * 100}% ${100 - ((c + 1) / cols) * 100}% ${100 - ((r + 1) / rows) * 100}% ${(c / cols) * 100}%)`,
-        dx: -cw * (0.3 + Math.random() * 0.9) + (Math.random() - 0.5) * cw * 0.6,
-        dy: -ch * (0.25 + (1 - v) * 0.5 + Math.random() * 0.45),
-        rot: (Math.random() * 2 - 1) * 70,
-        delay: (1 - u) * lead * (0.8 + Math.random() * 0.4),
-        origin: `${u * 100}% ${v * 100}%` // turns about itself, not the block
-      });
-    }
-  }
-  return out;
-}
-
 // Frost, literally. A typed character (typed) freezes: drawn again exactly
 // over itself in ice white, glowing, then thawing back into its own colour —
 // nothing moves, so nothing reads as a second copy. An erased one (erased: the
-// character that was there) crumbles: red grains of it blow away and fade.
+// character that was there) dissolves: drawn again over where it was, red-hot,
+// it blurs, swells a little and fades out — all in one piece, evenly.
 
 function glowCell(node, x, row, width, erased = null, typed = null) {
   const screen = node.term.element?.querySelector('.xterm-screen');
@@ -1219,36 +1193,24 @@ function glowCell(node, x, row, width, erased = null, typed = null) {
     g.appendChild(ice);
   } else {
     const word = Array.isArray(erased);
-    const makeShard = (clip) => {
-      const shard = document.createElement('div');
-      shard.className = word ? 'shard word' : 'shard';
-      shard.style.fontFamily = node.term.options.fontFamily;
-      shard.style.fontSize = node.term.options.fontSize + 'px';
-      shard.style.fontWeight = node.term.options.fontWeight;
-      shard.style.lineHeight = ch + 'px';
-      shard.style.clipPath = clip;
-      if (!word) shard.textContent = erased;
-      // a box per cell, so the word sits on the grid it was drawn on
-      else {
-        for (const c of erased) {
-          if (c.w === 0) continue;
-          const span = document.createElement('span');
-          span.textContent = c.ch || ' ';
-          span.style.width = (c.w || 1) * cw + 'px';
-          shard.appendChild(span);
-        }
+    const melt = document.createElement('div');
+    melt.className = word ? 'melt word' : 'melt';
+    melt.style.fontFamily = node.term.options.fontFamily;
+    melt.style.fontSize = node.term.options.fontSize + 'px';
+    melt.style.fontWeight = node.term.options.fontWeight;
+    melt.style.lineHeight = ch + 'px';
+    if (!word) melt.textContent = erased;
+    // a box per cell, so the word sits on the grid it was drawn on
+    else {
+      for (const c of erased) {
+        if (c.w === 0) continue;
+        const span = document.createElement('span');
+        span.textContent = c.ch || ' ';
+        span.style.width = (c.w || 1) * cw + 'px';
+        melt.appendChild(span);
       }
-      g.appendChild(shard);
-      return shard;
-    };
-    for (const d of dustGrains(width, cw, ch)) {
-      const shard = makeShard(d.clip);
-      shard.style.setProperty('--dx', d.dx + 'px');
-      shard.style.setProperty('--dy', d.dy + 'px');
-      shard.style.setProperty('--rot', d.rot + 'deg');
-      shard.style.animationDelay = d.delay + 'ms';
-      shard.style.transformOrigin = d.origin;
     }
+    g.appendChild(melt);
   }
   screen.appendChild(g);
   // the longest of its parts has finished by then, at any --type-glow-ms
