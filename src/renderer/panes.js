@@ -829,6 +829,7 @@ const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
 const PASTE_GLOW_MAX = 600; // characters; past that it's a dump, not an input
 const ACCEPT_ROWS = 8; // how far below the cursor a taken suggestion may run
+const ERASE_ROWS = 8; // how far above the cursor a word rubbed out may have started
 // → and End (normal and application cursor modes), Ctrl+→, Ctrl+E, Ctrl+F,
 // Tab, ↑ and ↓
 const FILL_KEYS = new Set([
@@ -843,7 +844,8 @@ function attachTypingGlow(node) {
   // the rest. Typing outruns the echo, so the cursor alone can't say where a
   // key goes — and matching letters backwards from it went wrong on a word
   // with a letter twice in it, dropping keys that had yet to come back.
-  let pending = []; // { ch, x, y, at }
+  let pending = []; // { ch, x, y, at, missed }
+  let newest = null; // the last key typed, waiting or not
   let fresh = true; // the next key starts from the cursor, not from the key before
   let erasing = null; // a delete key waiting for its echo: { y, x, cells, forward, at }
   let paste = null; // { chars, x, y, at }
@@ -860,7 +862,15 @@ function attachTypingGlow(node) {
       const buf = term.buffer.active;
       const y = buf.baseY + buf.cursorY;
       const line = buf.getLine(y);
-      if (line) erasing = { y, x: buf.cursorX, cells: lineCells(line, term.cols), forward: d === ERASE_FORWARD, at: Date.now() };
+      if (line) {
+        // a word long enough to run past the edge started on a row above: keep
+        // the rows this one wraps on from, so the cursor can go back up them
+        let top = y;
+        while (top > 0 && y - top < ERASE_ROWS && buf.getLine(top)?.isWrapped) top--;
+        const above = [];
+        for (let r = top; r < y; r++) above.push(lineCells(buf.getLine(r), term.cols));
+        erasing = { y, x: buf.cursorX, cells: lineCells(line, term.cols), top, above, forward: d === ERASE_FORWARD, at: Date.now() };
+      }
       fresh = true;
       return;
     }
@@ -889,10 +899,13 @@ function attachTypingGlow(node) {
       }
       return;
     }
-    const prev = pending[pending.length - 1];
+    // on from the last key typed, not the last still waiting: one that never
+    // showed where it was looked for would drag every key after it off too
+    const prev = pending.length ? newest : null;
     let at = fresh || !prev ? absCursor() : { x: prev.x + 1, y: prev.y };
     if (at.x >= term.cols) at = { x: at.x - term.cols, y: at.y + 1 };
-    pending.push({ ch: d, ...at, at: Date.now() });
+    newest = { ch: d, ...at, at: Date.now() };
+    pending.push(newest);
     fresh = false;
   });
   term.onWriteParsed(() => {
@@ -938,8 +951,24 @@ function attachTypingGlow(node) {
         glowCell(node, p.x, p.y - buf.viewportY, width, null, p.ch);
         return false;
       }
+      p.missed = past; // the cursor went by, and the key isn't there
       return now - p.at < GLOW_WAIT_MS;
     });
+    // The last key typed went by where it was looked for, but is just behind
+    // the cursor: the line went on somewhere one-on-from-the-key-before can't
+    // say — wrapped inside a box that stops short of the window's edge
+    // (claude's prompt does). Light it there and start again from the cursor;
+    // the keys still waiting before it were looked for in the same wrong place.
+    if (newest?.missed && pending.includes(newest)) {
+      const line = buf.getLine(cur.y);
+      let x = cur.x - 1;
+      if (line?.getCell(x)?.getWidth() === 0) x--; // the second half of a wide one
+      const cell = line?.getCell(x);
+      if (cell && cell.getChars() === newest.ch) {
+        glowCell(node, x, cur.y - buf.viewportY, cell.getWidth() || 1, null, newest.ch);
+        pending = [];
+      }
+    }
   });
 }
 
@@ -948,17 +977,10 @@ function attachTypingGlow(node) {
 // selection, cut to its rows, so a selection over several lines is swept as
 // one — and only over text, not the blank end of a row.
 function glowCopy(node) {
-  if (state.theme?.typingGlow !== true) return;
-  // one copy, however many ways it was asked for at once
-  if (Date.now() - (node.copyGlowAt || 0) < 400) return;
   const term = node.term;
   const pos = term.getSelectionPosition();
-  const screen = term.element?.querySelector('.xterm-screen');
-  if (!pos || !screen) return;
-  node.copyGlowAt = Date.now();
+  if (!pos) return;
   const buf = term.buffer.active;
-  const cw = screen.clientWidth / term.cols;
-  const ch = screen.clientHeight / term.rows;
   const rows = [];
   for (let y = pos.start.y; y <= pos.end.y; y++) {
     const row = y - buf.viewportY;
@@ -969,7 +991,134 @@ function glowCopy(node) {
     while (x1 > x0 && !(line?.getCell(x1 - 1)?.getChars() || '').trim()) x1--;
     if (x1 > x0) rows.push({ row, x0, x1 });
   }
-  if (!rows.length) return;
+  scanRows(node, rows);
+}
+
+// A program that does its own selecting (claude in fullscreen takes the mouse)
+// copies by handing the terminal the text — OSC 52 — and xterm never has a
+// selection to scan. So the text is found on screen instead, and scanned
+// there. It goes on the clipboard too, as any terminal would put it.
+function attachOscCopy(node) {
+  // where the mouse went down and came up: the same words can show more than
+  // once (pasted twice), and the copy is the one that was dragged over
+  const cellAt = (ev) => {
+    const screen = node.term.element?.querySelector('.xterm-screen');
+    if (!screen) return null;
+    const box = screen.getBoundingClientRect();
+    return {
+      x: Math.floor(((ev.clientX - box.left) / box.width) * node.term.cols),
+      row: Math.floor(((ev.clientY - box.top) / box.height) * node.term.rows)
+    };
+  };
+  node.el.addEventListener('mousedown', (ev) => (node.mouseDrag = { from: cellAt(ev), to: null }), true);
+  node.el.addEventListener('mouseup', (ev) => node.mouseDrag && (node.mouseDrag.to = cellAt(ev)), true);
+  node.term.parser.registerOscHandler(52, (data) => {
+    const b64 = data.slice(data.indexOf(';') + 1);
+    if (!b64 || b64 === '?') return true; // a read: not something we answer
+    let text;
+    try {
+      text = new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    } catch {
+      return true;
+    }
+    if (!text) return true;
+    navigator.clipboard.writeText(text);
+    const d = node.mouseDrag;
+    scanRows(node, rowsShowing(node, text, [d?.from, d?.to].filter(Boolean)));
+    return true;
+  });
+}
+
+// Where on screen the copied text is: its lines, one under the other, each
+// whole on its row or running on to the next when it wrapped. Spaces aren't
+// held to — a program lays text out its own way — so neither the text nor the
+// screen is compared with them. Where it shows more than once, the place
+// nearest the cells given (where the mouse was). Nothing, if it isn't all there.
+function rowsShowing(node, text, near = []) {
+  const term = node.term;
+  const buf = term.buffer.active;
+  const screen = [];
+  for (let r = 0; r < term.rows; r++) {
+    // each cell's place in the row, spaces left out
+    const line = buf.getLine(buf.viewportY + r);
+    let str = '';
+    const at = [];
+    for (let x = 0; x < term.cols; x++) {
+      const c = line?.getCell(x)?.getChars() || '';
+      if (!c.trim()) continue;
+      str += c;
+      for (let i = 0; i < c.length; i++) at.push(x);
+    }
+    screen.push({ str, at });
+  }
+  const wanted = text.split(/\r?\n/).map((l) => l.replace(/\s+/g, '')).filter(Boolean);
+  if (!wanted.length) return [];
+  const from = (r, start) => {
+    const rows = [];
+    let i = 0; // the line looked for
+    let rest = wanted[0];
+    let off = start; // where in the row's text it starts
+    for (; r < term.rows && i < wanted.length; r++) {
+      const s = screen[r];
+      const here = s.str.slice(off);
+      const take = here.startsWith(rest) ? rest.length : rest.startsWith(here) && here ? here.length : -1;
+      if (take < 0) return null;
+      rows.push({ row: r, x0: s.at[off], x1: s.at[off + take - 1] + 1 });
+      rest = rest.slice(take);
+      if (!rest && ++i < wanted.length) rest = wanted[i];
+      // a line goes on from the start of the next row; a new one may sit
+      // anywhere on it, past a border or a bullet
+      off = 0;
+      if (!rest) break;
+      if (rest === wanted[i] && r + 1 < term.rows) {
+        const k = screen[r + 1].str.indexOf(rest.slice(0, Math.min(rest.length, 8)));
+        if (k < 0) return null;
+        off = k;
+      }
+    }
+    return i >= wanted.length ? rows : null;
+  };
+  // how far a place is from the mouse: nothing for a cell inside it, else
+  // rows apart, then columns
+  const away = (rows) =>
+    near.reduce((sum, p) => {
+      let best = Infinity;
+      for (const r of rows) {
+        const dx = p.x < r.x0 ? r.x0 - p.x : p.x >= r.x1 ? p.x - r.x1 + 1 : 0;
+        best = Math.min(best, Math.abs(p.row - r.row) * term.cols + dx);
+      }
+      return sum + best;
+    }, 0);
+  const head = wanted[0].slice(0, Math.min(wanted[0].length, 8));
+  let found = [];
+  let score = Infinity;
+  // from the bottom up: with no mouse to go by, the newest place wins
+  for (let r = term.rows - 1; r >= 0; r--) {
+    let k = screen[r].str.lastIndexOf(head);
+    while (k >= 0) {
+      const rows = from(r, k);
+      if (rows) {
+        const d = away(rows);
+        if (d < score) [found, score] = [rows, d];
+        if (d === 0) return found;
+      }
+      k = k ? screen[r].str.lastIndexOf(head, k - 1) : -1;
+    }
+  }
+  return found;
+}
+
+// The scan itself, over rows on screen: { row, x0, x1 }
+function scanRows(node, rows) {
+  if (state.theme?.typingGlow !== true) return;
+  // one copy, however many ways it was asked for at once
+  if (Date.now() - (node.copyGlowAt || 0) < 400) return;
+  const term = node.term;
+  const screen = term.element?.querySelector('.xterm-screen');
+  if (!rows.length || !screen) return;
+  node.copyGlowAt = Date.now();
+  const cw = screen.clientWidth / term.cols;
+  const ch = screen.clientHeight / term.rows;
   const left = Math.min(...rows.map((r) => r.x0));
   const right = Math.max(...rows.map((r) => r.x1));
   const first = rows[0].row;
@@ -1080,6 +1229,7 @@ function glowAccepted(node, a) {
 function glowErased(node, e) {
   const buf = node.term.buffer.active;
   const y = buf.baseY + buf.cursorY;
+  if (!e.forward && y < e.y && y >= e.top) return glowErasedUp(node, e, y);
   if (y !== e.y) return false;
   const row = y - buf.viewportY;
   if (e.forward) {
@@ -1105,55 +1255,38 @@ function glowErased(node, e) {
   return true;
 }
 
-// A word's shards: the block cut into columns along slanted lines, each column
-// split by a crack that runs the length of the word, so the pieces fit back
-// together. Positions in % of the block; every cut is a little off true.
-function wordShards(letters) {
-  const cols = Math.min(6, Math.max(2, Math.round(letters / 2.5)));
-  const wob = (n) => n + (Math.random() * 2 - 1) * (40 / cols);
-  const top = [0];
-  const bottom = [0];
-  const crack = [50 + (Math.random() * 24 - 12)];
-  for (let i = 1; i < cols; i++) {
-    const at = (i / cols) * 100;
-    top.push(wob(at));
-    bottom.push(wob(at));
-    crack.push(50 + (Math.random() * 30 - 15));
+// The cursor went back up onto a row the line wrapped from: what was rubbed
+// out runs from the cursor to the end of its row, over any rows in between,
+// to where the cursor was. Each row's part breaks as a word of its own —
+// a block can't bend round the edge of the window.
+function glowErasedUp(node, e, y) {
+  const term = node.term;
+  const buf = term.buffer.active;
+  const rows = [...e.above, e.cells];
+  const parts = [];
+  for (let r = y; r <= e.y; r++) {
+    const from = r === y ? buf.cursorX : 0;
+    const to = r === e.y ? e.x : term.cols;
+    const gone = rows[r - e.top].slice(from, to);
+    // the blank end of a row is nothing that was rubbed out
+    while (gone.length && !gone[gone.length - 1].ch.trim()) gone.pop();
+    if (gone.some((c) => c.w > 0 && c.ch.trim())) parts.push({ r, from, gone });
   }
-  top.push(100);
-  bottom.push(100);
-  crack.push(50 + (Math.random() * 24 - 12));
-  const mid = (i) => (top[i] * (100 - crack[i]) + bottom[i] * crack[i]) / 100;
-  const out = [];
-  for (let i = 0; i < cols; i++) {
-    const center = (top[i] + top[i + 1] + bottom[i] + bottom[i + 1]) / 4;
-    out.push({
-      clip: `polygon(${top[i]}% 0, ${top[i + 1]}% 0, ${mid(i + 1)}% ${crack[i + 1]}%, ${mid(i)}% ${crack[i]}%)`,
-      center,
-      up: true
-    });
-    out.push({
-      clip: `polygon(${mid(i)}% ${crack[i]}%, ${mid(i + 1)}% ${crack[i + 1]}%, ${bottom[i + 1]}% 100%, ${bottom[i]}% 100%)`,
-      center,
-      up: false
-    });
-  }
-  return out;
+  const letters = parts.flatMap((p) => p.gone.filter((c) => c.w > 0 && c.ch.trim()));
+  if (letters.length === 1) {
+    // one Backspace from the start of a row, back over the edge: a character
+    const p = parts[0];
+    const x = p.from + p.gone.indexOf(letters[0]);
+    glowCell(node, x, p.r - buf.viewportY, letters[0].w || 1, letters[0].ch);
+  } else for (const p of parts) glowCell(node, p.from, p.r - buf.viewportY, p.gone.length, p.gone);
+  return true;
 }
 
 // Frost, literally. A typed character (typed) freezes: drawn again exactly
 // over itself in ice white, glowing, then thawing back into its own colour —
 // nothing moves, so nothing reads as a second copy. An erased one (erased: the
-// character that was there) shatters: its shards, in red, fly apart, turn and
-// fade.
-
-// Where each shard of a shattered character is cut, and where it goes: two
-// from the top thrown up and out, the heavy bottom one dropping.
-const SHARDS = [
-  { clip: 'polygon(0 0, 58% 0, 42% 52%, 0 68%)', dx: -0.55, dy: -0.45, rot: -28 },
-  { clip: 'polygon(58% 0, 100% 0, 100% 58%, 42% 52%)', dx: 0.55, dy: -0.5, rot: 24 },
-  { clip: 'polygon(0 68%, 42% 52%, 100% 58%, 100% 100%, 0 100%)', dx: 0.1, dy: 0.45, rot: 9 }
-];
+// character that was there) dissolves: drawn again over where it was, red-hot,
+// it blurs, swells a little and fades out — all in one piece, evenly.
 
 function glowCell(node, x, row, width, erased = null, typed = null) {
   const screen = node.term.element?.querySelector('.xterm-screen');
@@ -1169,7 +1302,6 @@ function glowCell(node, x, row, width, erased = null, typed = null) {
   const flash = document.createElement('div');
   flash.className = 'flash';
   g.appendChild(flash);
-  const jitter = (n) => n * (0.75 + Math.random() * 0.5);
   if (erased === null) {
     const ice = document.createElement('div');
     ice.className = 'ice';
@@ -1181,48 +1313,24 @@ function glowCell(node, x, row, width, erased = null, typed = null) {
     g.appendChild(ice);
   } else {
     const word = Array.isArray(erased);
-    const makeShard = (clip) => {
-      const shard = document.createElement('div');
-      shard.className = word ? 'shard word' : 'shard';
-      shard.style.fontFamily = node.term.options.fontFamily;
-      shard.style.fontSize = node.term.options.fontSize + 'px';
-      shard.style.lineHeight = ch + 'px';
-      shard.style.clipPath = clip;
-      if (!word) shard.textContent = erased;
-      // a box per cell, so the word sits on the grid it was drawn on
-      else {
-        for (const c of erased) {
-          if (c.w === 0) continue;
-          const span = document.createElement('span');
-          span.textContent = c.ch || ' ';
-          span.style.width = (c.w || 1) * cw + 'px';
-          shard.appendChild(span);
-        }
-      }
-      g.appendChild(shard);
-      return shard;
-    };
-    if (!word) {
-      for (const s of SHARDS) {
-        const shard = makeShard(s.clip);
-        shard.style.setProperty('--dx', jitter(s.dx * cw * 1.6) + 'px');
-        shard.style.setProperty('--dy', jitter(s.dy * ch) + 'px');
-        shard.style.setProperty('--rot', jitter(s.rot) + 'deg');
-      }
-    } else {
-      // outward from the middle of the word: the ends go furthest, the top
-      // half is thrown up, the bottom half drops
-      const span = width * cw;
-      const letters = erased.filter((c) => c.w > 0 && c.ch.trim()).length;
-      for (const s of wordShards(letters)) {
-        const shard = makeShard(s.clip);
-        const off = ((s.center - 50) / 50) * span; // -span..span from the middle
-        const side = Math.sign(off) || (Math.random() < 0.5 ? -1 : 1);
-        shard.style.setProperty('--dx', jitter(off * 0.35 + side * cw * 0.6) + 'px');
-        shard.style.setProperty('--dy', jitter(s.up ? -ch * 0.6 : ch * 0.5) + 'px');
-        shard.style.setProperty('--rot', side * jitter(s.up ? 18 : 10) * (s.up ? 1 : -1) + 'deg');
+    const melt = document.createElement('div');
+    melt.className = word ? 'melt word' : 'melt';
+    melt.style.fontFamily = node.term.options.fontFamily;
+    melt.style.fontSize = node.term.options.fontSize + 'px';
+    melt.style.fontWeight = node.term.options.fontWeight;
+    melt.style.lineHeight = ch + 'px';
+    if (!word) melt.textContent = erased;
+    // a box per cell, so the word sits on the grid it was drawn on
+    else {
+      for (const c of erased) {
+        if (c.w === 0) continue;
+        const span = document.createElement('span');
+        span.textContent = c.ch || ' ';
+        span.style.width = (c.w || 1) * cw + 'px';
+        melt.appendChild(span);
       }
     }
+    g.appendChild(melt);
   }
   screen.appendChild(g);
   // the longest of its parts has finished by then, at any --type-glow-ms
@@ -1328,6 +1436,7 @@ async function createPane(opts = {}) {
   attachLinks(node);
   attachDrop(node);
   attachTypingGlow(node);
+  attachOscCopy(node);
 
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown') return true;
