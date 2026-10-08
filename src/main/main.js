@@ -521,6 +521,15 @@ function zoomFor(key) {
 function applyZoom(w, factor) {
   if (!w || w.isDestroyed()) return;
   w.webContents.setZoomFactor(factor);
+  // Chromium zooms by origin, and every Frost window is the same page: the
+  // others have just been zoomed too, without being told. Each is told the
+  // zoom it actually has, or its glass and titlebar go on fitting the old one.
+  for (const other of BrowserWindow.getAllWindows()) tellZoom(other);
+}
+
+function tellZoom(w) {
+  if (!w || w.isDestroyed()) return;
+  const factor = w.webContents.getZoomFactor() || 1;
   // The native buttons are drawn by Windows, not by us, so they only match the
   // zoomed titlebar the renderer draws if the overlay is resized to match.
   if (!w.isFramelessMode) {
