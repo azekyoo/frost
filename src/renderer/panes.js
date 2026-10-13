@@ -802,6 +802,12 @@ async function droppedText(dt) {
 // the line as it stood when the key went down, against the line after.
 
 const GLOW_WAIT_MS = 250; // how long a key may take to come back as an echo
+// ...counted from when its row starts being redrawn, not from the key: a busy
+// program (claude, deep into a long session) can sit on a key for most of a
+// second before drawing anything, and its other output meanwhile (a spinner)
+// would otherwise run the clock out before the echo ever came. This long in
+// all, though, and the key is given up on — a password prompt never answers.
+const GLOW_MAX_WAIT_MS = 2000;
 
 // Backspace (DEL, or ^H), Ctrl+W and Alt/Ctrl+Backspace rub out behind the
 // cursor; the Delete key takes the character under it
@@ -821,6 +827,30 @@ function lineCells(line, cols) {
     });
   }
   return out;
+}
+
+// A row as it reads and as it is drawn, to tell when it has been redrawn
+function rowLook(buf, y, cols) {
+  const line = buf.getLine(y);
+  return line ? lineCells(line, cols).map((c) => c.ch + c.look).join('|') : '';
+}
+
+// Something waiting on an echo ({ y, row, at }): has its row changed since the
+// key, and when last. Each change restarts the wait — a slow program may draw
+// a few keys typed together one redraw at a time.
+function rowStirred(w, buf, cols, now) {
+  const look = rowLook(buf, w.y, cols);
+  if (look !== w.row) {
+    w.row = look;
+    w.stirred = now;
+  }
+  return w.stirred != null;
+}
+
+// True once it's no use waiting any longer for the echo
+function echoGivenUp(w, buf, cols, now, wait = GLOW_WAIT_MS) {
+  if (now - w.at > GLOW_MAX_WAIT_MS) return true;
+  return rowStirred(w, buf, cols, now) && now - w.stirred > wait;
 }
 
 // A paste: the text, wrapped in bracketed-paste markers when the program
@@ -852,6 +882,20 @@ function attachTypingGlow(node) {
   let pasteTimer = null;
   let accepting = null; // a key that may fill the line in: { x, y, cells, at }
   let acceptTimer = null;
+  // the line as it stands when a delete key goes down, to tell its echo by
+  const eraseFrom = (forward, more) => {
+    const buf = term.buffer.active;
+    const y = buf.baseY + buf.cursorY;
+    const line = buf.getLine(y);
+    if (!line) return null;
+    // a word long enough to run past the edge started on a row above: keep
+    // the rows this one wraps on from, so the cursor can go back up them
+    let top = y;
+    while (top > 0 && y - top < ERASE_ROWS && buf.getLine(top)?.isWrapped) top--;
+    const above = [];
+    for (let r = top; r < y; r++) above.push(lineCells(buf.getLine(r), term.cols));
+    return { y, x: buf.cursorX, cells: lineCells(line, term.cols), top, above, forward, more, at: Date.now(), row: rowLook(buf, y, term.cols) };
+  };
   const absCursor = () => {
     const buf = term.buffer.active;
     return { x: buf.cursorX, y: buf.baseY + buf.cursorY };
@@ -859,18 +903,11 @@ function attachTypingGlow(node) {
   term.onData((d) => {
     if (state.theme?.typingGlow !== true) return; // off unless turned on
     if (ERASE_BACK.has(d) || d === ERASE_FORWARD) {
-      const buf = term.buffer.active;
-      const y = buf.baseY + buf.cursorY;
-      const line = buf.getLine(y);
-      if (line) {
-        // a word long enough to run past the edge started on a row above: keep
-        // the rows this one wraps on from, so the cursor can go back up them
-        let top = y;
-        while (top > 0 && y - top < ERASE_ROWS && buf.getLine(top)?.isWrapped) top--;
-        const above = [];
-        for (let r = top; r < y; r++) above.push(lineCells(buf.getLine(r), term.cols));
-        erasing = { y, x: buf.cursorX, cells: lineCells(line, term.cols), top, above, forward: d === ERASE_FORWARD, at: Date.now() };
-      }
+      const forward = d === ERASE_FORWARD;
+      // pressed again before the last one came back: the line hasn't changed
+      // yet to be looked at — count it, and look once the last one is in
+      if (erasing && erasing.stirred == null && erasing.forward === forward) erasing.more++;
+      else erasing = eraseFrom(forward, 0);
       fresh = true;
       return;
     }
@@ -878,7 +915,10 @@ function attachTypingGlow(node) {
     const isPaste = d.startsWith(PASTE_START) || ([...d].length > 1 && !d.startsWith('\x1b'));
     if (isPaste) {
       const chars = [...text].filter((c) => c.trim());
-      if (chars.length && chars.length <= PASTE_GLOW_MAX) paste = { chars, ...absCursor(), at: Date.now() };
+      if (chars.length && chars.length <= PASTE_GLOW_MAX) {
+        const at = absCursor();
+        paste = { chars, ...at, at: Date.now(), row: rowLook(term.buffer.active, at.y, term.cols) };
+      }
       fresh = true;
       return;
     }
@@ -895,7 +935,7 @@ function attachTypingGlow(node) {
         // runs on past the edge of the window
         const rows = [];
         for (let y = at.y; y < Math.min(buf.length, at.y + ACCEPT_ROWS); y++) rows.push(lineCells(buf.getLine(y), term.cols));
-        accepting = { ...at, rows, at: Date.now() };
+        accepting = { ...at, rows, at: Date.now(), row: rowLook(buf, at.y, term.cols) };
       }
       return;
     }
@@ -904,27 +944,33 @@ function attachTypingGlow(node) {
     const prev = pending.length ? newest : null;
     let at = fresh || !prev ? absCursor() : { x: prev.x + 1, y: prev.y };
     if (at.x >= term.cols) at = { x: at.x - term.cols, y: at.y + 1 };
-    newest = { ch: d, ...at, at: Date.now() };
+    newest = { ch: d, ...at, at: Date.now(), row: rowLook(term.buffer.active, at.y, term.cols) };
     pending.push(newest);
     fresh = false;
   });
   term.onWriteParsed(() => {
+    const now = Date.now();
+    const buf = term.buffer.active;
     if (erasing) {
-      if (Date.now() - erasing.at > GLOW_WAIT_MS) erasing = null;
-      else if (glowErased(node, erasing)) erasing = null;
+      if (glowErased(node, erasing)) erasing = erasing.more ? eraseFrom(erasing.forward, erasing.more - 1) : null;
+      else if (echoGivenUp(erasing, buf, term.cols, now)) erasing = null;
     }
     if (paste) {
-      // a paste echoes in several writes: wait for the last
-      clearTimeout(pasteTimer);
-      const p = paste;
-      pasteTimer = setTimeout(() => {
-        if (paste === p) paste = null;
-        glowPasted(node, p);
-      }, 70);
+      if (now - paste.at > GLOW_MAX_WAIT_MS) paste = null;
+      // a paste echoes in several writes: wait for the last of those that
+      // change its row — any other output (a spinner) would put it off forever
+      else if (rowStirred(paste, buf, term.cols, now) && paste.stirred === now) {
+        clearTimeout(pasteTimer);
+        const p = paste;
+        pasteTimer = setTimeout(() => {
+          if (paste === p) paste = null;
+          glowPasted(node, p);
+        }, 70);
+      }
     }
     if (accepting) {
-      if (Date.now() - accepting.at > 400) accepting = null;
-      else {
+      if (echoGivenUp(accepting, buf, term.cols, now, 400)) accepting = null;
+      else if (accepting.stirred === now) {
         // the line is redrawn in more than one write too
         clearTimeout(acceptTimer);
         const a = accepting;
@@ -935,8 +981,6 @@ function attachTypingGlow(node) {
       }
     }
     if (!pending.length) return;
-    const now = Date.now();
-    const buf = term.buffer.active;
     const cur = absCursor();
     let shift = 0; // a wide character landed: everything after it moves one on
     pending = pending.filter((p) => {
@@ -952,7 +996,7 @@ function attachTypingGlow(node) {
         return false;
       }
       p.missed = past; // the cursor went by, and the key isn't there
-      return now - p.at < GLOW_WAIT_MS;
+      return !echoGivenUp(p, buf, term.cols, now);
     });
     // The last key typed went by where it was looked for, but is just behind
     // the cursor: the line went on somewhere one-on-from-the-key-before can't
