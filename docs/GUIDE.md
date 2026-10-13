@@ -173,7 +173,7 @@ running and supervising Claude Code agents with live status and diff watching.
     300 lines, and lines a program broke at the window's edge are joined back.
     From a shell in a normal tab, it goes to the agent working in that folder.
     What the command printed is sent as it is, so mind secrets in it
-  - right-click an agent to mark it unread, copy its resume command or folder,
+  - right-click an agent to mark it unread, copy its session ID or folder,
     open the folder, or end the session
   - **it tells you when it needs you** — a Windows notification and a taskbar
     flash when an agent goes blocked or finishes, raised only while Frost is in
@@ -313,7 +313,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | Drag a tab | Sideways reorders; onto another window hands it over; anywhere else opens it in a new window |
 | Double-click a tab | Rename it (empty restores `directory · branch`) |
 | Right-click a tab | Rename, duplicate, move to a new window, close |
-| Right-click an agent | Mark unread, copy resume command or folder, open folder, end session |
+| Right-click an agent | Mark unread, copy session ID or folder, open folder, end session |
 
 Every one of them is remappable in `config/keybindings.json`:
 

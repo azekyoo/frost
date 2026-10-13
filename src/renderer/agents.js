@@ -839,9 +839,9 @@ function openAgentMenu(tab, agent, x, y) {
         }
       },
       {
-        label: 'Copy resume command',
+        label: 'Copy session ID',
         disabled: !agent.sessionId,
-        run: () => copyText(`claude --resume ${agent.sessionId}`, 'resume command')
+        run: () => copyText(agent.sessionId, 'session ID')
       },
       {
         label: 'Copy folder path',
