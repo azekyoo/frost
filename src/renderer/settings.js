@@ -62,6 +62,24 @@ function toggleSettings() {
 
 document.getElementById('btn-settings').addEventListener('click', toggleSettings);
 document.getElementById('btn-settings-close').addEventListener('click', toggleSettings);
+
+// Esc closes the panel. Caught on the way down, before the terminal behind it
+// sees the key: a pane that still has the focus would otherwise get the Esc
+// too, and in claude that interrupts the agent. Anything layered above the
+// panel (a question, the palette, Peek) answers Esc first.
+window.addEventListener(
+  'keydown',
+  (ev) => {
+    if (ev.key !== 'Escape' || ev.ctrlKey || ev.altKey || ev.shiftKey || ev.metaKey) return;
+    if (!el.settings.classList.contains('open')) return;
+    if (document.querySelector('#modal.open, #palette.open, #peek.open')) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    toggleSettings();
+    activePane()?.term.focus();
+  },
+  true
+);
 const btnNewTab = document.getElementById('btn-newtab');
 btnNewTab.addEventListener('click', () => newTab());
 btnNewTab.addEventListener('contextmenu', (ev) => {
