@@ -1273,7 +1273,7 @@ body.frameless #win-controls {
   gap: 5px;
   border: none;
   background: transparent;
-  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  color: color-mix(in srgb, var(--fg) 92%, transparent);
   font-family: var(--ui-font);
   font-size: 10.5px;
   font-weight: 500;
@@ -1303,9 +1303,14 @@ body.frameless #win-controls {
   color: var(--fg);
 }
 
+/* unavailable, and plainly so next to the others */
 .cmd-bar button:disabled {
-  opacity: 0.4;
+  opacity: 0.32;
   cursor: default;
+}
+
+.cmd-bar button:disabled svg {
+  opacity: 0.6;
 }
 
 /* ---------- agent mode ---------- */

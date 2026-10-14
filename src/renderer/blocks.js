@@ -24,11 +24,13 @@ function blockAt(node, row) {
   return null;
 }
 
-// at a prompt with nothing running: typing a command now runs it
+// at a prompt with nothing running: typing a command now runs it. Output
+// can't tell: Start-Sleep prints nothing while it runs. So Enter is what starts
+// a command, and the next prompt is what ends it.
 function shellIdle(node) {
   const marks = liveMarks(node);
   const last = marks[marks.length - 1];
-  return !!last && last.exit === null && !runningOutput(node, marks);
+  return !!last && last.exit === null && !node.shellBusy && !runningOutput(node, marks);
 }
 
 const BLOCK_BAR = `
@@ -72,6 +74,19 @@ function attachCommandBlocks(node) {
   // the rows move under a resting pointer when the view scrolls
   node.term.onScroll(() => b.block && blockUpdate(b));
   node.term.onResize(() => blockHide(b));
+  node.term.onData((data) => {
+    if (!data.includes('\r')) return;
+    node.shellBusy = true;
+    if (b.block) blockUpdate(b);
+  });
+  // a command finishing changes what Run can do, under a pointer that hasn't
+  // moved. Registered after the marks' handler, so it runs first and passes
+  // on: the update waits until the mark has been recorded.
+  node.term.parser.registerOscHandler(133, (data) => {
+    if (String(data).startsWith('A')) node.shellBusy = false;
+    if (b.block) setTimeout(() => b.block && blockUpdate(b));
+    return false;
+  });
   // the terminal keeps the focus and its selection: the bar is a tool, not a field
   bar.addEventListener('mousedown', (ev) => ev.preventDefault());
   bar.addEventListener('click', (ev) => {
@@ -155,6 +170,7 @@ function blockAct(b, act) {
     // from a prompt Frost can't read, the text may still carry part of it:
     // typed out for a look rather than run blind
     api.ptyInput(node.ptyId, out.clean ? out.command + '\r' : out.command);
+    if (out.clean) node.shellBusy = true;
     node.term.scrollToBottom();
     node.term.focus();
     blockHide(b);
