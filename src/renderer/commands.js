@@ -230,6 +230,17 @@ cmd('view.clear', 'Clear buffer', () => {
 });
 cmd('command.previous', 'Jump to previous command', () => jumpToMark(activePane(), -1));
 cmd('command.next', 'Jump to next command', () => jumpToMark(activePane(), 1));
+// a toggle, so the key that opened it is also the way out
+cmd('view.browseFiles', 'Peek: browse files in this folder', () => {
+  if (peek.root?.classList.contains('open')) return closePeek();
+  const tab = state.activeTab;
+  // In the agent tab, the agent's own folder: a pane running claude reported
+  // its folder at the last shell prompt, which for a new session is wherever
+  // the shell started, before it moved into the repo.
+  const dock = tab?.kind === 'agents' && tab.dockShown && !tab.els.dock.hidden && tab.dockTyping ? tab.dockShown : null;
+  const agentDir = tab?.kind === 'agents' && !dock ? globalAgents.get(tab.selected)?.cwd : null;
+  peekBrowse(agentDir || activePane()?.cwd || tab?.diffCwd);
+});
 cmd('command.copyOutput', "Copy the last command's output", () => {
   const node = activePane();
   if (!node) return;
@@ -310,6 +321,7 @@ const DEFAULT_BINDINGS = [
   { keys: 'ctrl+0', command: 'view.zoomReset' },
   { keys: 'ctrl+,', command: 'app.settings' },
   { keys: 'ctrl+f', command: 'view.search' },
+  { keys: 'ctrl+shift+e', command: 'view.browseFiles' },
   { keys: 'ctrl+shift+k', command: 'view.clear' },
   { keys: 'ctrl+shift+up', command: 'command.previous' },
   { keys: 'ctrl+shift+down', command: 'command.next' },

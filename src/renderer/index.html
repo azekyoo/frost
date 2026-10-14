@@ -399,6 +399,11 @@
   <script src="../../node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js"></script>
   <script src="../../node_modules/@xterm/addon-search/lib/addon-search.js"></script>
   <script src="../../node_modules/@xterm/addon-serialize/lib/addon-serialize.js"></script>
+  <script src="../../node_modules/@highlightjs/cdn-assets/highlight.min.js"></script>
+  <script src="../../node_modules/@highlightjs/cdn-assets/languages/powershell.min.js"></script>
+  <script src="../../node_modules/@highlightjs/cdn-assets/languages/dockerfile.min.js"></script>
+  <script src="../../node_modules/marked/lib/marked.umd.js"></script>
+  <script src="../../node_modules/dompurify/dist/purify.min.js"></script>
   <!-- One scope, loaded in dependency order: core first, boot last. Plain
        scripts rather than modules — the terminal, its panes and its tabs are one
        live object graph, and the tools in tools/ drive a real window by
@@ -410,6 +415,7 @@
   <script src="profiles.js"></script>
   <script src="agents.js"></script>
   <script src="diff.js"></script>
+  <script src="peek.js"></script>
   <script src="commands.js"></script>
   <script src="palette.js"></script>
   <script src="settings.js"></script>

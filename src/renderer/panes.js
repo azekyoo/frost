@@ -453,11 +453,11 @@ function attachLinks(node) {
             text: raw,
             activate(ev) {
               if (!ev.ctrlKey) return;
-              api
-                .openPath({ cwd: node.cwd, target: loc.path, line: loc.line, column: loc.column })
-                .then((res) => {
-                  if (res?.error && !res.opened) toast(res.error, { error: true });
-                });
+              const opts = { cwd: node.cwd, target: loc.path, line: loc.line, column: loc.column };
+              // Ctrl+click looks without leaving Frost; Shift added goes
+              // straight to the editor, for when the point is to change it
+              if (ev.shiftKey) openOutside(opts);
+              else peekPath(opts);
             }
           });
         }

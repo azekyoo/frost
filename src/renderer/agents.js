@@ -334,6 +334,9 @@ function buildAgentLayout(tab) {
           <button class="diff-open-tab" title="Open a shell in this session's folder, under the diff">
             <svg viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" /><path d="m4.75 6.25 2 1.75-2 1.75M8.5 10h2.75" /></svg><span>Shell</span>
           </button>
+          <button class="diff-open-editor" title="Browse this session's repo in Peek (Ctrl+Shift+E)">
+            <svg viewBox="0 0 16 16"><path d="m5.5 4.5-3.25 3.5 3.25 3.5M10.5 4.5l3.25 3.5-3.25 3.5" /></svg><span>Files</span>
+          </button>
           <button class="diff-fold" title="Collapse or expand every file">
             <svg viewBox="0 0 16 16"><path d="m5 3 3 3 3-3M5 13l3-3 3 3" /></svg><span>Fold</span>
           </button>
@@ -406,6 +409,12 @@ function buildAgentLayout(tab) {
     // the selected agent, not diffCwd: that one outlives an agent that has gone
     const agent = globalAgents.get(tab.selected);
     if (agent?.cwd && tab.centerLeaves.has(agent.leaf)) openDockShell(tab, agent.leaf, agent.cwd);
+    else toast('Select an agent first', { error: true });
+  });
+  layout.querySelector('.diff-open-editor').addEventListener('click', () => {
+    // diffCwd as a fallback: the repo is still worth browsing once its agent ends
+    const dir = globalAgents.get(tab.selected)?.cwd || tab.diffCwd;
+    if (dir) peekBrowse(dir);
     else toast('Select an agent first', { error: true });
   });
   layout.querySelector('.dock-close').addEventListener('click', () => {

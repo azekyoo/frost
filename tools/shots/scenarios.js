@@ -206,6 +206,21 @@ module.exports = [
     })()`
   },
   {
+    name: 'screenshot-peek',
+    photo: 'aurora',
+    wallpaper: 'night',
+    // Peek over a pane, opened on a file with uncommitted work so the change
+    // marks, the tree's badges and the minimap all have something to show
+    setup: `(async () => {
+      ${RUN}
+      await type('git diff --stat');
+      await type('git status --short');
+      const pane = await ready();
+      await peekPath({ cwd: pane.cwd, target: 'src/index.js', line: 28 });
+      await pause(700);
+    })()`
+  },
+  {
     name: 'screenshot-options',
     photo: 'desert-arch',
     wallpaper: 'desert',

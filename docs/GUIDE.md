@@ -58,10 +58,36 @@ running and supervising Claude Code agents with live status and diff watching.
   a new window and close; the last two are in the command palette too
 - **Ctrl+click a path or a URL** — `src/search.js:45:12` from a stack trace, a
   grep hit, a `File "app.py", line 118` traceback or a bare `README.md` opens in
-  your editor at that line; links open in your browser. Candidates are only
-  underlined once they're confirmed to exist on disk, so prose doesn't light up.
-  Nothing found in terminal output is ever passed through a shell, and only
-  `http`, `https` and `mailto` are ever opened
+  **Peek** at that line (below); `Ctrl+Shift+click` sends it to your editor
+  instead. Videos, images, PDFs and Office files open in the app Windows has for
+  them; links open in your browser. Candidates are only underlined once they're
+  confirmed to exist on disk, so prose doesn't light up. Nothing found in
+  terminal output is ever passed through a shell, and only `http`, `https` and
+  `mailto` are ever opened
+- **Peek: look at a file without leaving Frost** — a read-only viewer over the
+  pane, for the look you wanted rather than a trip to an editor:
+  - the file highlighted in your terminal's own palette, scrolled to the line you
+    clicked, with what's uncommitted marked as an editor's gutter marks it —
+    added and changed lines green, a red notch where lines were removed (hover
+    it for how many) — and a minimap of the whole file down the right, changes
+    and all; click or drag it to move through the file
+  - the repo beside it: every file git would show you, `M` / `U` / `A` / `D`
+    on what's changed and a dot on a folded folder with changes inside. The path
+    of the open file runs along the top. **Folder…** browses any other folder;
+    outside a repo, folders are listed as you unfold them, so a home folder
+    opens as fast as a project
+  - `Ctrl+P` searches the repo's files and folders by name; `Ctrl+F` finds in
+    the file with the same bar and the same **Aa** / **ab** / **.*** options as
+    the terminal's, matches ticked on the minimap
+  - Markdown opens rendered — code blocks highlighted, relative images shown,
+    links to other files opening them in Peek — with **Source** a click away.
+    What a README contains is sanitised before it is drawn: no scripts, forms or
+    styles, since this window can type into your terminals
+  - it follows the file: when an agent writes to it, Peek redraws in place,
+    without moving you
+  - `Esc` closes one thing at a time — the find bar, then the file search, then
+    Peek. `Ctrl+Shift+E` opens Peek on the current pane's folder (the agent's
+    repo in the agent tab) and closes it again
 - **Asks before pasting several lines** — text with line breaks in it is typed
   at the shell as if you had typed it, and a line ending in a newline runs. A
   clipboard picked up from a web page or a chat window gets one question, with
@@ -159,6 +185,8 @@ running and supervising Claude Code agents with live status and diff watching.
     the agent's prompt as one message — file, line, the code quoted, your
     comment — without submitting it, so you can read it over and press Enter
     yourself. Notes are kept per agent, and survive the diff redrawing
+  - **Files** opens Peek on the session's repo, and a line number in the
+    diff opens that line in it (`Shift+click` for your editor)
   - **Shell** docks a terminal under the diff, in the session's folder, for
     running the tests while the agent works. Each session keeps its own: switch
     sessions and the dock follows, and the shell you left comes back as it was —
@@ -188,6 +216,8 @@ running and supervising Claude Code agents with live status and diff watching.
   settings if you push enough output to want it
 
 ![Agent mode — live status, terminal, a review comment being written on the diff, and the session's docked shell](../assets/screenshot-agent.png)
+
+![Peek over a pane — the repo's tree with its changed files, the code with uncommitted lines marked green, and the minimap](../assets/screenshot-peek.png)
 
 ## Install
 
@@ -302,13 +332,16 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Alt+Shift+Z` | Zoom the pane over its tab, and back |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom the whole UI in / out / reset — remembered per monitor |
 | `Ctrl+F` | Search buffer (`Alt+C` case, `Alt+W` whole word, `Alt+R` regex) |
+| `Ctrl+Shift+E` | Peek: browse the current folder's files, and close it again |
 | `Ctrl+Shift+K` | Clear buffer |
 | `Ctrl+Shift+↑` / `↓` | Jump to previous / next command |
 | `Ctrl+Shift+O` | Copy that command's output, without selecting it |
 | `Ctrl+Shift+S` | Send that command's output — or the selection — to the agent |
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
-| `Ctrl+click` | Open a file path in your editor, or a URL in your browser |
+| `Ctrl+click` | Open a file path in Peek, or a URL in your browser |
+| `Ctrl+Shift+click` | Open a file path in your editor |
+| In Peek: `Ctrl+P` / `Ctrl+F` / `Esc` | Search files / find in file / close one layer |
 | Right-click | Copy selection, else paste |
 | Drag a tab | Sideways reorders; onto another window hands it over; anywhere else opens it in a new window |
 | Double-click a tab | Rename it (empty restores `directory · branch`) |
