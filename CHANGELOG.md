@@ -3,6 +3,55 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.3.0 — 2026-10-14
+
+### Added
+
+- **Peek: look at a file without leaving Frost.** Ctrl+click a path in a pane,
+  or a line number in the diff panel, and the file opens over your terminal at
+  that line instead of in your editor. Read-only on purpose: Ctrl+Shift+click
+  or **Open in editor** still go to the editor.
+  - The code is highlighted in your terminal's own colours, with what's
+    uncommitted marked the way an editor's gutter marks it: added and changed
+    lines green, a red notch where lines were taken out. A minimap of the whole
+    file runs down the right, changes included; click or drag it to move.
+  - The repo sits beside it: every file git would show you, with `M`, `U`, `A`
+    and `D` on what changed and a dot on folded folders with changes inside.
+    The open file's path runs along the top, and **Folder…** browses any other
+    folder. Outside a repo, folders are listed as you open them, so a home
+    folder opens as fast as a project.
+  - Ctrl+P finds a file or folder by name; Ctrl+F finds in the file, with the
+    same match case, whole word and regex options as the terminal's search.
+  - Markdown opens rendered, with **Source** a click away. What a README
+    contains is cleaned before it is drawn, since this window can type into
+    your terminals.
+  - When an agent writes to the file you're looking at, Peek redraws it in
+    place without moving you.
+  - Esc closes one thing at a time: the find bar, then the file search, then
+    Peek.
+- **Files**, beside Shell in the diff panel, opens Peek on the session's repo.
+  Ctrl+Shift+E does the same from anywhere — the current pane's folder, or the
+  agent's repo in the agent tab — and closes it again.
+
+### Changed
+
+- **Videos, images, PDFs, Office files and archives open in their own app.**
+  Ctrl+click on one used to open it in your code editor; it now goes to
+  whatever Windows has set for that kind of file.
+- **Right-click an agent → Copy session ID** copies just the ID, in place of
+  the whole resume command.
+
+### Fixed
+
+- **Typing effects keep up with a program that is slow to echo.** Deep into a
+  long Claude session the screen can take most of a second to show a key, and
+  effects used to give up waiting for it. Each key is now waited for from the
+  moment its row last changed, up to two seconds, a paste's effect is no longer
+  crowded out by a spinner drawing elsewhere, and Backspaces pressed in a row
+  each get theirs.
+- **Esc closes Settings.** It's taken before the terminal behind the panel can
+  see it, so a Claude session in that pane isn't interrupted by it.
+
 ## 2.2.1 — 2026-10-08
 
 ### Changed
