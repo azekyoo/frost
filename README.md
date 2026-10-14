@@ -18,7 +18,7 @@
 
 ---
 
-![Frost in 30 seconds — the glass backdrop, split panes, the command palette and agent mode](assets/frost-promo.webp)
+![A tour of Frost — the glass backdrop, split panes, the command palette, agent mode and Peek](assets/frost-promo.webp)
 
 ## Why Frost
 
