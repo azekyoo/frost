@@ -38,8 +38,8 @@ doing while it does it.
 - **Knows your commands** — failed and successful commands are marked in the
   scrollbar, `Ctrl+Shift+↑/↓` jumps between them, `Ctrl+Shift+O` copies one
   command's output
-- **Ctrl+click a path** from a stack trace or grep result to open it in your
-  editor at that line
+- **Ctrl+click a path** from a stack trace or grep result to peek at it at that
+  line — without leaving Frost ([Peek](#peek))
 - **Every shell detected** — PowerShell 7, Windows PowerShell, cmd, Git Bash and
   your WSL distros
 - **Typing effects, made of ice** — optional: what you type freezes, what you
@@ -65,6 +65,23 @@ Run `claude` in any tab and it becomes an agent with live status — working,
 - **Send it what broke** — a failed command in that shell, its output, or
   whatever you've selected goes to the agent in one click (`Ctrl+Shift+S`)
 - **Resume any past session** in one click, or start a new one in any folder
+- **Files** opens the session's repo in [Peek](#peek)
+
+## Peek
+
+A file viewer built into Frost, for when you only want to look. `Ctrl+click` a
+path — or press `Ctrl+Shift+E` — and the file opens over your terminal:
+
+![Peek — the repo's tree with its changed files, the code with uncommitted lines marked green, and the minimap](assets/screenshot-peek.png)
+
+- **What changed, where** — uncommitted lines marked green and red, a minimap of
+  the whole file, and the repo's tree with every changed file badged
+- **Find anything** — `Ctrl+P` for a file by name, `Ctrl+F` inside it
+- **Markdown, rendered** — READMEs and docs read as they're meant to
+- **Live** — when an agent writes to the file you're looking at, Peek updates
+  as it happens
+- Read-only on purpose: `Ctrl+Shift+click` or **Open in editor** when it's time
+  to change something
 
 ## Install
 
