@@ -1196,6 +1196,118 @@ body.frameless #win-controls {
   color: var(--danger);
 }
 
+/* ---------- command blocks ---------- */
+
+/* the hovered command and its output, outlined: a stripe down its left edge in
+   the colour of how it ended, and a faint wash over the rows it owns */
+.cmd-band {
+  --band: var(--accent);
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--band) 5%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--band) 75%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--band) 16%, transparent);
+  opacity: 0;
+  transition: opacity 0.12s var(--ease), top 0.1s var(--ease), height 0.1s var(--ease);
+}
+
+.cmd-band.failed {
+  --band: var(--danger);
+}
+
+/* an edge the view has cut off isn't the block's edge: left open */
+.cmd-band.cut-top {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.cmd-band.cut-bottom {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.cmd-band.on {
+  opacity: 1;
+}
+
+.cmd-bar {
+  position: absolute;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--ice-sheen), var(--ice-strong);
+  backdrop-filter: var(--ice-blur);
+  box-shadow: var(--ice-edge), var(--ice-lift);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 0.12s var(--ease), transform 0.16s var(--ease-out), top 0.1s var(--ease);
+}
+
+.cmd-bar.on {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.cmd-exit {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 0 6px 0 5px;
+  color: var(--st-done);
+  font-variant-numeric: tabular-nums;
+}
+
+.cmd-exit.failed {
+  color: var(--danger);
+}
+
+.cmd-bar button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  font-family: var(--ui-font);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1;
+  padding: 5px 8px 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s var(--ease), color 0.1s var(--ease);
+}
+
+.cmd-bar button[hidden] {
+  display: none;
+}
+
+.cmd-bar button svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cmd-bar button:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--fg);
+}
+
+.cmd-bar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ---------- agent mode ---------- */
 
 .agents-layout {

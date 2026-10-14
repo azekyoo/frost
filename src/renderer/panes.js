@@ -185,14 +185,17 @@ function liveMarks(node) {
 }
 
 // The last finished command, wherever the screen is scrolled to: it is the one
-// that just ran, and the one a Send or a copy means.
-function commandRegion(node) {
+// that just ran, and the one a Send or a copy means. Or the given mark's, for a
+// command block picked out of the scrollback.
+function commandRegion(node, mark) {
   const term = node?.term;
   if (!term) return null;
   const marks = liveMarks(node);
   if (marks.length < 2) return null;
   const buf = term.buffer.active;
-  const index = marks.length - 2; // the last one that has finished
+  const index = mark ? marks.indexOf(mark) : marks.length - 2; // the last one that has finished
+  // the last mark is the prompt still waiting: nothing after it to end it
+  if (index < 0 || index > marks.length - 2) return null;
 
   // up to the next prompt — the first empty one after it, when there were any
   const own = marks[index].end;
@@ -283,8 +286,14 @@ function commandOutput(node) {
     const running = runningOutput(node, marks);
     if (running) return running;
   }
-  const region = commandRegion(node);
-  if (!region) return null;
+  return markOutput(node, commandRegion(node));
+}
+
+// One finished command's text, as commandOutput gives it: what was typed, what
+// it printed, how it ended.
+function markOutput(node, region) {
+  const term = node?.term;
+  if (!term || !region) return null;
   const promptRows = bufferText(term, region.mark.marker.line, region.start - 1);
   let output = bufferText(term, region.start, region.end);
   let command = promptRows.join(' ').trim();
@@ -292,9 +301,12 @@ function commandOutput(node) {
     command = output[0];
     output = output.slice(1);
   }
+  // a prompt of our own hooks' shape: what is left of it is only what was typed.
+  // Any other prompt (oh-my-posh, starship) is still in the command text.
+  const clean = /^(PS [^>]*>|\$ )/.test(command);
   command = command.replace(/^PS [^>]*>\s*/, '').replace(/^\$ /, '').trim();
   while (output.length && !output[output.length - 1]) output.pop();
-  return { command, output, exit: region.mark.exit };
+  return { command, output, exit: region.mark.exit, clean };
 }
 
 function selectCommandOutput(node) {
@@ -1477,6 +1489,7 @@ async function createPane(opts = {}) {
   attachPaneSearch(node);
   attachCwdTracking(node);
   attachCommandMarks(node);
+  attachCommandBlocks(node);
   attachLinks(node);
   attachDrop(node);
   attachTypingGlow(node);

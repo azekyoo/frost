@@ -1063,7 +1063,8 @@ function revealAgent(agent) {
   }
 }
 
-function sendOutputToAgent(node) {
+// picked: one command block's output, sent instead of the last command's
+function sendOutputToAgent(node, picked) {
   if (!node) return;
   const agent = agentForPane(node);
   if (!agent?.leaf?.term) {
@@ -1073,7 +1074,7 @@ function sendOutputToAgent(node) {
     toast(why, { error: true });
     return;
   }
-  const out = commandOutput(node);
+  const out = picked || commandOutput(node);
   if (!out) {
     const why = liveMarks(node).length ? 'No finished command to send yet' : 'No command marks yet — this shell has not reported one';
     toast(why, { error: true });

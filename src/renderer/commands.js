@@ -277,6 +277,12 @@ cmd('view.typingEffects', 'Toggle typing effects (freeze, shatter, copy scan)', 
   api.themeSave(state.theme);
   toast(state.theme.typingGlow ? 'Typing effects on — type something' : 'Typing effects off');
 });
+cmd('view.commandBlocks', 'Toggle command blocks (hover a command: copy, run again, send)', () => {
+  if (!state.theme) return;
+  state.theme.commandBlocks = state.theme.commandBlocks === false;
+  api.themeSave(state.theme);
+  toast(state.theme.commandBlocks ? 'Command blocks on — hover a command' : 'Command blocks off');
+});
 // Bound here rather than left to a menu: the application menu is gone, because
 // its accelerators took Ctrl+R, Ctrl+W and Ctrl+Q away from the shell.
 cmd('view.devtools', 'Toggle developer tools', () => api.winDevtools());
