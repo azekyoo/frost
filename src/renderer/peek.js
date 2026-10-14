@@ -24,6 +24,7 @@ const peek = {
   mode: 'source', // markdown only: 'preview' | 'source'
   tree: null, // { root, git, files, status, top }
   openDirs: new Map(), // tree root (lowercased) -> Set of expanded folder paths
+  lastFile: new Map(), // tree root (lowercased) -> absolute path last shown there
   returnTo: null
 };
 
@@ -54,11 +55,16 @@ async function peekPath(opts) {
     peekStartIndex(peek.tree);
   } else if (peek.tree.lazy) {
     // a file found by search may sit in folders not listed yet
-    const rel = res.path.slice(peek.tree.root.replace(/[\\/]+$/, '').length + 1).replace(/\\/g, '/');
-    await peekLoadPath(rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '');
+    await peekLoadFolderOf(res.path);
   }
   showPeek(opts, res);
   if (sameRepo) peekRefreshTree();
+}
+
+// a lazy tree lists folders on demand: the ones down to this file, listed
+async function peekLoadFolderOf(abs) {
+  const rel = abs.slice(peek.tree.root.replace(/[\\/]+$/, '').length + 1).replace(/\\/g, '/');
+  await peekLoadPath(rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '');
 }
 
 // The tree re-listed in place: new files, fresh badges, scroll kept. A lazy
@@ -87,7 +93,13 @@ async function peekBrowse(dir) {
   const tree = await api.peekTree(dir);
   if (!tree?.files) return toast(tree?.error || 'Could not list ' + dir, { error: true });
   peek.tree = peekBuildTree(tree);
-  showPeek(null, null);
+  // back where it was left: the file last shown in this repo, if still readable
+  const last = peek.lastFile.get(peekNorm(peek.tree.root));
+  const res = last && (await api.readPath({ cwd: peekDirname(last), target: last }));
+  if (typeof res?.text === 'string') {
+    if (peek.tree.lazy) await peekLoadFolderOf(res.path);
+    showPeek({ cwd: peekDirname(res.path), target: res.path }, res);
+  } else showPeek(null, null);
   peekStartIndex(peek.tree);
 }
 
@@ -979,6 +991,8 @@ function showPeek(opts, res) {
   // a CR left in would be drawn as a trailing space on every line
   peek.text = (res?.text || '').replace(/\r\n?/g, '\n');
   peek.marks = res?.marks || null;
+  if (peek.file && peek.tree && peekInside(peek.file, peek.tree.root))
+    peek.lastFile.set(peekNorm(peek.tree.root), peek.file);
   // markdown opens rendered, unless a line was asked for: that is the source
   peek.mode = opts?.line ? 'source' : 'preview';
 
