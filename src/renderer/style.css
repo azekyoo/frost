@@ -3178,6 +3178,13 @@ body.ligatures .xterm-rows span {
   padding-left: 4px;
 }
 
+/* The browser gives <code> its own monospace font. Mixed with the pre's, every
+   line box grows a little past the line height, and the gutter, the line band
+   and the change marks drift further from the code the lower they are. */
+.peek-code code {
+  font: inherit;
+}
+
 .peek-band {
   position: absolute;
   left: 0;
