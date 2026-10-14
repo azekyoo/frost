@@ -177,10 +177,12 @@ function diffLineRow(tab, file, entry, span) {
   const cwd = file.cwd || tab.diffCwd;
   if (entry.newNo && cwd && file.status !== 'deleted') {
     newNo.classList.add('linkable');
-    newNo.title = `Open ${file.path}:${entry.newNo}`;
+    newNo.title = `Peek ${file.path}:${entry.newNo} (Shift+click: editor)`;
     newNo.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      api.openPath({ cwd, target: file.path, line: entry.newNo });
+      const opts = { cwd, target: file.path, line: entry.newNo };
+      if (ev.shiftKey) openOutside(opts);
+      else peekPath(opts);
     });
   }
   const add = document.createElement('button');
@@ -566,12 +568,12 @@ function renderUntracked(tab, untracked, cwd = tab.diffCwd, id = '\0untracked') 
     text.textContent = f;
     row.appendChild(text);
     if (cwd) {
-      row.title = `Open ${f}`;
-      row.addEventListener('click', () =>
-        api.openPath({ cwd, target: f }).then((res) => {
-          if (res?.error && !res.opened) toast(res.error, { error: true });
-        })
-      );
+      row.title = `Peek ${f} (Shift+click: editor)`;
+      row.addEventListener('click', (ev) => {
+        const opts = { cwd, target: f };
+        if (ev.shiftKey) openOutside(opts);
+        else peekPath(opts);
+      });
     }
     body.appendChild(row);
   }
