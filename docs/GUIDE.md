@@ -113,6 +113,19 @@ running and supervising Claude Code agents with live status and diff watching.
   ends of it. Scrolled back, it takes the command you're looking at rather than
   the last one you ran; wrapped lines come back as the single lines they were
   printed as, so what you paste is what the program wrote
+- **Command blocks** — rest the mouse on any command in the scrollback and it
+  is outlined with everything it printed, a stripe down its edge green or red
+  for how it ended, and a small bar at its top right: **✓** or **✕** and the
+  exit code, **Command** to copy what you typed (without the prompt), **Output**
+  to copy only what it printed, **Run** to run it again, and **Send** to hand
+  the command and its output to the agent working in that folder (shown only
+  when there is one). **Run** is greyed out while something is still running in
+  that shell, so it never types into a program; after a prompt Frost can't read
+  (oh-my-posh, starship), it types the command without pressing Enter, for you
+  to check first. Scrolled halfway through a long output, the bar stays at the
+  top of what you can see of it. Works in every shell with Frost's prompt hooks
+  — not cmd, WSL or inside ssh — and stays out of full-screen programs.
+  **Toggle command blocks** in the palette turns it off
 - **Tells you when a long command finishes** — if a command ran longer than your
   threshold and Frost is in the background, you get a notification and a taskbar
   flash. Timed from the same prompt hook that drives tab titles, so there's no

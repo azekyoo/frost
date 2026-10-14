@@ -38,6 +38,8 @@ doing while it does it.
 - **Knows your commands** — failed and successful commands are marked in the
   scrollbar, `Ctrl+Shift+↑/↓` jumps between them, `Ctrl+Shift+O` copies one
   command's output
+- **Command blocks** — hover any command you ran to copy it, copy just its
+  output, run it again, or send it to the agent
 - **Ctrl+click a path** from a stack trace or grep result to peek at it at that
   line — without leaving Frost ([Peek](#peek))
 - **Every shell detected** — PowerShell 7, Windows PowerShell, cmd, Git Bash and
