@@ -3,6 +3,34 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.4.0 — 2026-10-14
+
+### Added
+
+- **Command blocks: act on any command in the scrollback.** Rest the mouse on
+  a command you ran and it's outlined with everything it printed, a stripe down
+  its edge green or red for how it ended, and a small bar at its top right:
+  - **✓** or **✕** and the exit code.
+  - **Command** copies what you typed, without the prompt; **Output** copies
+    only what it printed.
+  - **Run** runs it again. It's greyed out while something is still running in
+    that shell, even a command that prints nothing, so it never types into a
+    program. After a prompt Frost can't read (oh-my-posh, starship) it types the
+    command without pressing Enter, for you to check first.
+  - **Send** hands the command and its output to the agent working in that
+    folder, when there is one.
+
+  Scrolled halfway through a long output, the bar stays at the top of what you
+  can see of it. Works in every shell with Frost's prompt hooks; on by default,
+  **Toggle command blocks** in the palette turns it off.
+
+### Changed
+
+- **Peek remembers the file you were reading.** Closing Peek and opening it
+  again on the same repo shows that file again instead of an empty view.
+  Opening it from a path in the terminal or a line in the diff still goes
+  straight to what you clicked.
+
 ## 2.3.0 — 2026-10-14
 
 ### Added
