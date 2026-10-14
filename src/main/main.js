@@ -3445,6 +3445,13 @@ ipcMain.handle('paths:resolve', (_e, { cwd, candidates }) => {
   return out;
 });
 
+const OS_APP_EXT = new Set([
+  '.mp4', '.mov', '.mkv', '.avi', '.webm', '.wmv', '.m4v',
+  '.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.ico', '.heic',
+  '.pdf', '.docx', '.xlsx', '.pptx', '.zip', '.7z',
+]);
+
 ipcMain.handle('paths:open', async (_e, { cwd, target, line, column }) => {
   const abs = resolveTarget(cwd, target);
   if (!abs) {
@@ -3459,6 +3466,12 @@ ipcMain.handle('paths:open', async (_e, { cwd, target, line, column }) => {
       }
     } catch {}
     return { error: 'not found: ' + target };
+  }
+  // media and documents mean nothing in a code editor: the app Windows has
+  // registered for them (a player, a viewer) is what the click is asking for
+  if (OS_APP_EXT.has(path.extname(abs).toLowerCase())) {
+    const err = await shell.openPath(abs);
+    return err ? { error: err } : { opened: 'shell' };
   }
   const editor = resolveEditor();
   if (!editor) {
