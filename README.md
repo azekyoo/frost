@@ -41,7 +41,8 @@ doing while it does it.
 - **Command blocks** — hover any command you ran to copy it, copy just its
   output, run it again, or send it to the agent
 - **Ctrl+click a path** from a stack trace or grep result to peek at it at that
-  line — without leaving Frost ([Peek](#peek))
+  line — without leaving Frost ([Peek](#peek)). A folder opens its tree, and
+  resting the mouse on an image path shows the picture
 - **Every shell detected** — PowerShell 7, Windows PowerShell, cmd, Git Bash and
   your WSL distros
 - **Typing effects, made of ice** — optional: what you type freezes, what you

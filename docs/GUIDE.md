@@ -63,7 +63,20 @@ running and supervising Claude Code agents with live status and diff watching.
   them; links open in your browser. Candidates are only underlined once they're
   confirmed to exist on disk, so prose doesn't light up. Nothing found in
   terminal output is ever passed through a shell, and only `http`, `https` and
-  `mailto` are ever opened
+  `mailto` are ever opened. What counts as a path:
+  - a path with spaces in it (`C:\Program Files\…`), one wrapped onto the next
+    row, and one with a colon glued after it (`panes.js:`)
+  - a bare file name that isn't in the shell's folder — `logo.png`, as an agent
+    says it — when exactly one file in the repo has that name
+  - a folder where the shell is (`assets`, `src/renderer`): Ctrl+click opens
+    Peek on its repo with that folder unfolded, `Ctrl+Shift+click` opens it in
+    Explorer. Files without an extension (`LICENSE`, `Makefile`) count too
+  - a name `ls` cut short to fit its column (`CHANGEL…`): the one file it
+    starts, or, when several do (`packag…`), Peek's file search for them
+- **Hover an image path to see it** — rest the mouse on `shot.png` in any output
+  and the picture appears in a small card beside it, with its size and
+  dimensions; animated GIF and WebP play. While the mouse is on a path, the
+  command block around it waits
 - **Peek: look at a file without leaving Frost** — a read-only viewer over the
   pane, for the look you wanted rather than a trip to an editor:
   - the file highlighted in your terminal's own palette, scrolled to the line you
@@ -75,7 +88,9 @@ running and supervising Claude Code agents with live status and diff watching.
     on what's changed and a dot on a folded folder with changes inside. The path
     of the open file runs along the top. **Folder…** browses any other folder;
     outside a repo, folders are listed as you unfold them, so a home folder
-    opens as fast as a project
+    opens as fast as a project. Each tab — each session, in the agent tab —
+    remembers the folder it browsed to and the file it had open there, and
+    **↩** beside **Folder…** goes back to its own folder
   - `Ctrl+P` searches the repo's files and folders by name; `Ctrl+F` finds in
     the file with the same bar and the same **Aa** / **ab** / **.*** options as
     the terminal's, matches ticked on the minimap
@@ -124,7 +139,10 @@ running and supervising Claude Code agents with live status and diff watching.
   (oh-my-posh, starship), it types the command without pressing Enter, for you
   to check first. Scrolled halfway through a long output, the bar stays at the
   top of what you can see of it. Works in every shell with Frost's prompt hooks
-  — not cmd, WSL or inside ssh — and stays out of full-screen programs.
+  (not cmd or WSL) and stays out of full-screen programs. Inside ssh, or a shell
+  started from one, commands are found by their prompts instead: no exit code
+  there, and **Run** only while the remote side sits at an empty prompt.
+  Clearing the screen (`cls`, `clear`, Ctrl+L) clears the blocks with it.
   **Toggle command blocks** in the palette turns it off
 - **Tells you when a long command finishes** — if a command ran longer than your
   threshold and Frost is in the background, you get a notification and a taskbar
@@ -352,7 +370,7 @@ key it currently answers to — that, not this table, is the authoritative list.
 | `Ctrl+Shift+S` | Send that command's output — or the selection — to the agent |
 | `Ctrl+,` | Settings panel |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
-| `Ctrl+click` | Open a file path in Peek, or a URL in your browser |
+| `Ctrl+click` | Open a file path in Peek (a folder: its tree), or a URL in your browser |
 | `Ctrl+Shift+click` | Open a file path in your editor |
 | In Peek: `Ctrl+P` / `Ctrl+F` / `Esc` | Search files / find in file / close one layer |
 | Right-click | Copy selection, else paste |

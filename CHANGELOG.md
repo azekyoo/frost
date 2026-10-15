@@ -3,6 +3,53 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.5.0 — 2026-10-15
+
+### Added
+
+- **Hover an image path to see it.** Rest the mouse on `shot.png` anywhere in a
+  pane, an agent's reply included, and the picture appears in a small card
+  beside it with its name, dimensions and size. Animated GIF and WebP play;
+  files over 20 MB show their size only. Ctrl+click still opens the image in
+  its Windows app.
+- **Ctrl+click a folder to browse it in Peek.** `assets` in an `ls`, or
+  `src/renderer` in a message, opens Peek on its repo with that folder unfolded
+  and picked out; Ctrl+Shift+click opens it in Explorer. Files without an
+  extension (`LICENSE`, `Makefile`) are clickable now too.
+- **Peek remembers where each tab was.** Every tab, and every session in the
+  agent tab, keeps its own browsed folder and the file it had open there, so
+  reopening Peek goes back to them. When Peek is somewhere else, **↩** beside
+  **Folder…** returns to the tab's own folder.
+- **Command blocks inside ssh.** Commands run on the far side of ssh, or in any
+  shell Frost's hooks aren't in, are found by their prompts and get a block
+  each. Their exit code isn't known, and **Run** only types while the remote
+  side sits at an empty prompt.
+
+### Changed
+
+- **More paths are clickable:**
+  - paths with spaces in them (`C:\Program Files\…`, `Frost (source)`)
+  - a path wrapped onto the next row, by the terminal or by Claude
+  - a colon glued after a path (`panes.js:`)
+  - a bare file name that isn't in the shell's folder, when exactly one file in
+    the repo has that name (an agent saying "I created logo.png")
+  - a name `ls` cut short to fit its column (`CHANGEL…`): the one file it
+    starts, or, when several do (`packag…`), Peek's file search for them
+- **Claude in a Frost pane is told how to print paths** — backticked, absolute,
+  nothing glued after — so the paths in its replies stay clickable.
+- Peek's buttons are glass keys with icons, like the diff panel's.
+- While the mouse is on a path, the command block around it waits, so the image
+  card and the block's bar don't fight for the same spot.
+
+### Fixed
+
+- After `cls`, `clear` or Ctrl+L, a new command's output was split into
+  commands that never ran, and **Run** on one of them typed a line of output.
+- In a column listing filled to the window's edge (`ls` in a narrow pane), the
+  names on the next row weren't clickable.
+- Picking a file in Peek's tree no longer forgets which folder Peek was opened
+  for.
+
 ## 2.4.0 — 2026-10-14
 
 ### Added
