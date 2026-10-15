@@ -1927,6 +1927,27 @@ function sessionIdHook(agentId) {
 // need you, but also a minute into any idle wait ("Claude is waiting for your
 // input"). That one is not blocked — the turn is over — so it leaves the status
 // alone rather than flipping a done agent to blocked.
+// What Claude should know about the terminal it is printing into. Ctrl+click
+// turns a path into a Peek, but only one that reaches the screen intact:
+// markdown eats a backslash before punctuation outside backticks, and a colon
+// glued to the end makes a name no file has. Kept short, every session pays
+// for it.
+const FROST_CONTEXT =
+  'This terminal is Frost. The user can Ctrl+click a file path in your output to open it in ' +
+  "Frost's viewer. For that to work, write every file path you show as a full absolute path " +
+  'inside backticks, followed by a space or the end of the line, never by a colon or other ' +
+  'punctuation glued to it. Outside backticks, markdown drops a backslash before punctuation ' +
+  '(\\.claude shows as .claude), and a glued character makes a name no file has.\n';
+
+// SessionStart prints are read by Claude as context. Read from a file rather
+// than inlined, so the text needs no escaping for the shell running the hook.
+function contextHook() {
+  const file = path.join(STATUS_DIR, 'frost-context.txt');
+  if (!fs.existsSync(file)) fs.writeFileSync(file, FROST_CONTEXT);
+  const fwd = file.replace(/\\/g, '/');
+  return `node -e "process.stdout.write(require('fs').readFileSync('${fwd}','utf8'))"`;
+}
+
 function blockedHook(statusFile) {
   return (
     `node -e "let d='';process.stdin.on('data',(c)=>d+=c).on('end',()=>{let j={};try{j=JSON.parse(d)}catch(e){}` +
@@ -2337,7 +2358,15 @@ function hookSettingsFile(agentId) {
       // Which Claude Code session this pane is running, so the sessions list can
       // show it as live instead of offering to resume it a second time. Fires
       // again on /clear and on resume, which is when the id changes.
-      SessionStart: [{ hooks: [{ type: 'command', command: sessionIdHook(agentId) }] }],
+      // Also tells Claude how to print paths so they stay clickable here.
+      SessionStart: [
+        {
+          hooks: [
+            { type: 'command', command: sessionIdHook(agentId) },
+            { type: 'command', command: contextHook() }
+          ]
+        }
+      ],
       // A file edit or shell command reaching outside the agent's folder, so
       // another repo's changes can join its diff. Before rather than after:
       // the hook waits for that repo to be snapshotted, and the first change is
