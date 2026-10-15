@@ -121,7 +121,14 @@ function attachCommandMarks(node) {
     const [kind, arg] = String(data).split(';');
 
     if (kind === 'A') {
-      const marker = node.term.registerMarker(0);
+      // Ctrl+L: ConPTY passes the redrawn prompt's A through before it paints
+      // the cleared screen, so the cursor is still on the old row when it
+      // comes — a blank one now. The prompt itself lands at the top.
+      const buf = node.term.buffer.active;
+      const blank = !buf.getLine(buf.baseY + buf.cursorY)?.translateToString(true).trim();
+      const offset = node.clearedScreen && blank ? -buf.cursorY : 0;
+      node.clearedScreen = false;
+      const marker = node.term.registerMarker(offset);
       if (!marker) return true;
       // a prompt that never got a D had nothing run at it — Enter on an empty
       // line, Ctrl+C on a half-typed one. It's no command, and kept as one it
@@ -147,6 +154,7 @@ function attachCommandMarks(node) {
     }
 
     if (kind === 'D') {
+      node.clearedScreen = false; // a command ran: the next prompt is where it says
       // D closes the command typed at the previous prompt, which is the mark
       // made just before it
       const mark = node.marks[node.marks.length - 1];
@@ -165,6 +173,44 @@ function attachCommandMarks(node) {
     }
 
     return false; // B, C and anything else aren't ours to claim
+  });
+
+  // Clearing the screen (cls, clear, Ctrl+L) blanks the rows but leaves their
+  // markers where they were, so the next command's output is written over old
+  // marks — and each one reads as a command starting mid-output. The marks on
+  // the rows a clear erases go with it. A command still running (cls itself,
+  // or a program redrawing its screen) keeps its mark, moved to where the
+  // cleared screen starts, since everything printed from there on is its own.
+  node.term.parser.registerCsiHandler({ final: 'J' }, (params) => {
+    const buf = node.term.buffer.active;
+    if (buf.type !== 'normal') return false; // a full-screen program's own screen
+    const mode = params[0] || 0;
+    const cursor = buf.baseY + buf.cursorY;
+    const cleared = (line) =>
+      mode === 0 ? line > cursor || (line === cursor && buf.cursorX === 0)
+      : mode === 1 ? line >= buf.baseY && line <= cursor
+      : mode === 2 ? line >= buf.baseY
+      : true; // 3: the scrollback too
+    const running = node.marks[node.marks.length - 1];
+    const moves = running && running.exit === null && !running.marker.isDisposed && cleared(running.marker.line);
+    node.marks = node.marks.filter((m) => {
+      if (m === running && running.exit === null) return true;
+      if (m.marker.isDisposed || !cleared(m.marker.line)) return true;
+      m.decoration?.dispose();
+      m.marker.dispose();
+      m.end?.dispose();
+      return false;
+    });
+    if (mode >= 2) node.clearedScreen = true;
+    if (moves) {
+      // offset from the cursor's row: the cursor's own row for a clear below
+      // it, the top of the screen for the rest
+      const marker = node.term.registerMarker(mode === 0 ? 0 : -buf.cursorY);
+      running.marker.dispose();
+      if (marker) running.marker = marker;
+      else node.marks.pop();
+    }
+    return false; // the terminal still does the clearing
   });
 }
 

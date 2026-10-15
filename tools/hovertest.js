@@ -1,9 +1,5 @@
-// Checks that a path wrapped onto a second row is still read as one path:
-// soft wraps the terminal made, and hard wraps a program made itself.
-//
-// The assertions are about what is actually on screen — the rectangles the panes
-// occupy — rather than the numbers in the layout tree, since the tree agreeing
-// with itself proves nothing about what the user sees.
+// Checks that resting the pointer on an image path in a command shows its
+// picture, and that the command block around it waits until the pointer leaves.
 const { app } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
