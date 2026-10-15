@@ -164,6 +164,27 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     r = await w.eval(line(['日本 C:/a.png'], 1));
     check('a wide character takes two cells', r.map[3].x === 6, JSON.stringify(r.map[3]));
 
+    // Punctuation glued after a path is prose, a line number is not
+    const trims = await w.eval(
+      `['panes.js:', '\`panes.js\`:', 'a.js:12:', 'a.js:12', '(a.js),', 'a.js.'].map(trimCandidate)`
+    );
+    check(
+      'a colon after a path is dropped, a line number kept',
+      JSON.stringify(trims) === JSON.stringify(['panes.js', 'panes.js', 'a.js:12', 'a.js:12', 'a.js', 'a.js']),
+      JSON.stringify(trims)
+    );
+
+    // A bare name not in the shell's folder is found by name in its repo
+    const repo = JSON.stringify(ROOT);
+    const found = await w.eval(
+      `api.resolvePaths(${repo}, ['icon-48.png', 'panes.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json'])`
+    );
+    check('a bare name found once in the repo is a link', /assets[\\/]icon-48\.png$/.test(found['icon-48.png'] || ''), found['icon-48.png']);
+    check('for any kind of file', /src[\\/]renderer[\\/]panes\.js$/.test(found['panes.js'] || ''), found['panes.js']);
+    check('a name the repo has twice is not', !found['screenshot-hero.png'], found['screenshot-hero.png']);
+    check('nor one it does not have', !found['no-such-file.png']);
+    check('the shell folder still comes first', /frost[\\/]package\.json$/.test(found['package.json'] || ''), found['package.json']);
+
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {
     console.error('ERROR:', e.message);

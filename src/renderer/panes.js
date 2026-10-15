@@ -376,9 +376,11 @@ function attachCwdTracking(node) {
 
 // Trailing punctuation is almost always prose, not part of the name — but a
 // closing bracket can be either (`foo[0].js`), so only strip pairs we opened.
+// A colon too: "panes.js: the link code" — a line number after one is kept,
+// since only a colon at the very end goes.
 function trimCandidate(token) {
   let out = token.replace(/^[('"`\[<{]+/, '');
-  out = out.replace(/[)'"`\]>},;.]+$/, (tail) => (/^\.\w+$/.test(tail) ? tail : ''));
+  out = out.replace(/[)'"`\]>},;.:]+$/, (tail) => (/^\.\w+$/.test(tail) ? tail : ''));
   return out;
 }
 
@@ -630,16 +632,19 @@ function attachLinks(node) {
           const last = map[end - 1];
           // the line may span rows; only links on the row asked about go back
           if (start.y > y || last.y < y) continue;
+          // where the path was found, which for a bare name may be a folder
+          // of the repo other than the shell's: opening goes there directly
+          const target = resolved[loc.path];
           const isImage = IMAGE_PATH.test(loc.path);
           links.push({
             range: { start, end: last },
             text: raw,
-            hover: isImage ? (ev) => showImageCard(node, loc.path, ev.clientX, ev.clientY) : undefined,
+            hover: isImage ? (ev) => showImageCard(node, target, ev.clientX, ev.clientY) : undefined,
             leave: isImage ? hideImageCard : undefined,
             activate(ev) {
               if (!ev.ctrlKey) return;
               hideImageCard();
-              const opts = { cwd: node.cwd, target: loc.path, line: loc.line, column: loc.column };
+              const opts = { cwd: node.cwd, target, line: loc.line, column: loc.column };
               // Ctrl+click looks without leaving Frost; Shift added goes
               // straight to the editor, for when the point is to change it
               if (ev.shiftKey) openOutside(opts);

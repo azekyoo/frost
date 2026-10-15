@@ -3465,12 +3465,79 @@ ipcMain.handle('image:fromClipboard', () => {
   }
 });
 
-ipcMain.handle('paths:resolve', (_e, { cwd, candidates }) => {
-  const out = {};
-  for (const candidate of Array.isArray(candidates) ? candidates.slice(0, 64) : []) {
-    const abs = resolveTarget(cwd, candidate);
-    if (abs) out[candidate] = abs;
+// A bare file name ("I created logo.png") that isn't in the shell's folder is
+// looked up by name across the repo the folder is in: an agent names the files
+// it made without their folder as often as with it. One match is a link; two
+// or more is no link, since a guess would open the wrong file.
+//
+// The repo's file list (git's, so gitignored output is left out) is kept per
+// repo and rebuilt when a name misses — at most every few seconds, so a file
+// written a moment ago is found without every miss running git again.
+const NAME_INDEX_TTL = 3000;
+const NAME_INDEX_MAX = 300000;
+const nameIndexes = new Map(); // repo root (lowercased) -> { names, at, pending }
+const repoRoots = new Map(); // folder (lowercased) -> repo root, or '' outside git
+
+async function repoRootOf(dir) {
+  const key = dir.toLowerCase();
+  if (!repoRoots.has(key)) {
+    const top = await gitRun(dir, ['rev-parse', '--show-toplevel']);
+    repoRoots.set(key, top.ok ? path.normalize(top.stdout.trim()) : '');
   }
+  return repoRoots.get(key);
+}
+
+function buildNameIndex(root) {
+  const entry = nameIndexes.get(root.toLowerCase()) || { names: new Map(), at: 0, pending: null };
+  nameIndexes.set(root.toLowerCase(), entry);
+  if (!entry.pending) {
+    entry.pending = gitRun(root, [...UTF8_PATHS, 'ls-files', '--cached', '--others', '--exclude-standard', '-z']).then((ls) => {
+      const names = new Map();
+      for (const rel of ls.stdout.split('\0').slice(0, NAME_INDEX_MAX)) {
+        if (!rel) continue;
+        const name = rel.slice(rel.lastIndexOf('/') + 1).toLowerCase();
+        const list = names.get(name);
+        list ? list.push(rel) : names.set(name, [rel]);
+      }
+      entry.names = names;
+      entry.at = Date.now();
+      entry.pending = null;
+      return entry;
+    });
+  }
+  return entry.pending;
+}
+
+async function findInRepo(cwd, name) {
+  if (/[\\/]/.test(name) || /[\0<>|"*?&^%`$:]/.test(name)) return null;
+  const base = cwd && fs.existsSync(cwd) ? cwd : null;
+  const root = base && (await repoRootOf(base));
+  if (!root) return null;
+  let entry = nameIndexes.get(root.toLowerCase());
+  if (!entry || !entry.at) entry = await buildNameIndex(root);
+  let hits = entry.names.get(name.toLowerCase());
+  if (!hits && Date.now() - entry.at > NAME_INDEX_TTL) {
+    entry = await buildNameIndex(root);
+    hits = entry.names.get(name.toLowerCase());
+  }
+  if (!hits || hits.length !== 1) return null;
+  const abs = path.join(root, hits[0]);
+  try {
+    return fs.statSync(abs).isFile() ? abs : null;
+  } catch {
+    return null; // deleted since the list was taken
+  }
+}
+
+ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
+  const out = {};
+  const list = Array.isArray(candidates) ? candidates.slice(0, 64) : [];
+  await Promise.all(
+    list.map(async (candidate) => {
+      const abs = resolveTarget(cwd, candidate) || (await findInRepo(cwd, candidate));
+      if (abs) out[candidate] = abs;
+    })
+  );
   return out;
 });
 
