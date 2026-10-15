@@ -3546,22 +3546,44 @@ function resolveCut(cwd, candidate) {
   }
 }
 
+// A folder named in output ("assets", "src/renderer") — only where it stands,
+// never searched for: a word naming some folder deep in the repo is prose.
+function resolveFolder(cwd, candidate) {
+  if (!candidate || candidate.length > 400 || /[\0<>|"*?&^%`$]/.test(candidate)) return null;
+  const base = cwd && fs.existsSync(cwd) ? cwd : startDir();
+  const abs = path.resolve(base, candidate.replace(/^~(?=[\\/])/, app.getPath('home')));
+  try {
+    return fs.statSync(abs).isDirectory() ? abs : null;
+  } catch {
+    return null;
+  }
+}
+
+// Files under `paths`, folders under `dirs`, each keyed by the text asked about.
 ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
-  const out = {};
+  const paths = {};
+  const dirs = {};
   const list = Array.isArray(candidates) ? candidates.slice(0, 64) : [];
   await Promise.all(
     list.map(async (candidate) => {
       if (typeof candidate !== 'string') return;
       if (candidate.endsWith('…')) {
         const abs = resolveCut(cwd, candidate);
-        if (abs) out[candidate] = abs;
+        if (abs) paths[candidate] = abs;
         return;
       }
-      const abs = resolveTarget(cwd, candidate) || (await findInRepo(cwd, candidate));
-      if (abs) out[candidate] = abs;
+      // the repo is searched by name only for something named like a file:
+      // every word of prose would otherwise send git through the repo
+      const named = /\.[A-Za-z]\w{0,9}$/.test(candidate);
+      const abs = resolveTarget(cwd, candidate) || (named ? await findInRepo(cwd, candidate) : null);
+      if (abs) paths[candidate] = abs;
+      else {
+        const dir = resolveFolder(cwd, candidate);
+        if (dir) dirs[candidate] = dir;
+      }
     })
   );
-  return out;
+  return { paths, dirs };
 });
 
 // The picture behind an image path hovered in a terminal. Sent as a data URL

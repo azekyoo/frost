@@ -582,6 +582,19 @@ function peekEscape() {
   closePeek();
 }
 
+// A folder Ctrl+clicked in a terminal: its repo's tree, with the folder unfolded
+// and in view. A folder outside any repo is the tree's own root.
+async function peekFolder(dir) {
+  await peekBrowse(dir);
+  if (!peek.tree || !peek.root?.classList.contains('open')) return;
+  const root = peek.tree.root.replace(/[\\/]+$/, '');
+  if (!peekInside(dir, root)) return;
+  const rel = dir.replace(/[\\/]+$/, '').slice(root.length + 1).replace(/\\/g, '/');
+  await peekReveal(rel);
+  const row = [...peek.root.querySelectorAll('.peek-tree .peek-row.dir')].find((r) => r.dataset.path === rel);
+  if (row) peekSelectRow(row);
+}
+
 // Shows a folder found by search in its place: search cleared, the folder and
 // its parents unfolded, scrolled to.
 async function peekReveal(dirPath) {

@@ -193,7 +193,7 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     await runCommand('cls');
     await w.eval(`(() => {
       const t = activePane().term;
-      const row1 = 'CHANGEL…  LICENSE'.padEnd(t.cols - 'package.js…'.length) + 'package.js…';
+      const row1 = 'CHANGEL…  LICENSE  nowhere'.padEnd(t.cols - 'package.js…'.length) + 'package.js…';
       t.write('\\r\\n' + row1 + '\\r\\nREADME.md\\r\\n');
       return true;
     })()`);
@@ -221,7 +221,32 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     check('a name on the row after a full one is a link', (await isLink('README.md')) === true);
     check('a name cut short is a link to the one it starts', (await isLink('CHANGEL…')) === true);
     check('and at the very edge too', (await isLink('package.js…')) === true);
-    check('a word that is no file is not', (await isLink('LICENSE')) === false);
+    check('a file without an extension is a link', (await isLink('LICENSE')) === true);
+    check('a word that is no file is not', (await isLink('nowhere')) === false);
+
+    // A folder in the listing: Ctrl+click opens Peek on its repo, the folder
+    // unfolded and picked out
+    await w.eval(`(() => { activePane().term.write('assets  docs\\r\\n'); return true })()`);
+    await sleep(300);
+    check('a folder is a link', (await isLink('assets')) === true);
+    const at = await w.eval(`(() => {
+      const t = activePane().term, buf = t.buffer.active;
+      for (let r = buf.length - 1; r >= 0; r--) {
+        if (!buf.getLine(r).translateToString(true).startsWith('assets  docs')) continue;
+        const box = t.element.querySelector('.xterm-screen').getBoundingClientRect();
+        return { x: box.left + 2.5 * (box.width / t.cols), y: box.top + (r - buf.viewportY + 0.5) * (box.height / t.rows) };
+      }
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await w.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers: 2 });
+    }
+    await sleep(1500);
+    const peekState = await w.eval(`({
+      open: !!document.querySelector('#peek.open'),
+      picked: document.querySelector('#peek .peek-tree .peek-row.dir.selected')?.dataset.path || null
+    })`);
+    check('Ctrl+click on it opens Peek', peekState.open);
+    check('with that folder picked out in the tree', peekState.picked === 'assets', JSON.stringify(peekState));
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

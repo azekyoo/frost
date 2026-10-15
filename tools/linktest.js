@@ -172,14 +172,21 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
 
     // A bare name not in the shell's folder is found by name in its repo
     const repo = JSON.stringify(ROOT);
-    const found = await w.eval(
-      `api.resolvePaths(${repo}, ['icon-48.png', 'panes.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json'])`
+    const res = await w.eval(
+      `api.resolvePaths(${repo}, ['icon-48.png', 'panes.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json', 'assets', 'src/renderer', 'renderer', 'the'])`
     );
+    const found = res.paths;
     check('a bare name found once in the repo is a link', /assets[\\/]icon-48\.png$/.test(found['icon-48.png'] || ''), found['icon-48.png']);
     check('for any kind of file', /src[\\/]renderer[\\/]panes\.js$/.test(found['panes.js'] || ''), found['panes.js']);
     check('a name the repo has twice is not', !found['screenshot-hero.png'], found['screenshot-hero.png']);
     check('nor one it does not have', !found['no-such-file.png']);
     check('the shell folder still comes first', /frost[\\/]package\.json$/.test(found['package.json'] || ''), found['package.json']);
+
+    // folders, where the shell is; never searched for by name
+    check('a folder in the shell folder is a link', /frost[\\/]assets$/.test(res.dirs['assets'] || ''), res.dirs['assets']);
+    check('a path to a folder too', /src[\\/]renderer$/.test(res.dirs['src/renderer'] || ''), res.dirs['src/renderer']);
+    check('a folder elsewhere in the repo is not', !res.dirs['renderer']);
+    check('nor a word of prose', !res.dirs['the'] && !res.paths['the']);
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

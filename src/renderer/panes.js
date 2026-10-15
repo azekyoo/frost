@@ -664,8 +664,11 @@ function attachLinks(node) {
               continue;
             }
             const loc = splitLocation(trimmed);
-            if (!looksLikePath(loc.path)) continue;
-            consider(trimmed, map[index], map[index + trimmed.length - 1], loc);
+            // a bare word may still be a folder (ls lists them so); only one
+            // that exists right where the shell is becomes a link
+            const folder = /^[\w.@+-]{2,}[\\/]?$/.test(trimmed);
+            if (!looksLikePath(loc.path) && !folder) continue;
+            consider(trimmed, map[index], map[index + trimmed.length - 1], folder && !looksLikePath(loc.path) ? { path: trimmed, line: 0, column: 1 } : loc);
           }
         });
       };
@@ -686,7 +689,8 @@ function attachLinks(node) {
       api.resolvePaths(node.cwd, [...new Set(found.map((f) => f.loc.path))]).then((resolved) => {
         // longest first, so a path with spaces claims its words before any of
         // them can be a link of its own
-        const hits = found.filter((f) => resolved[f.loc.path]).sort((a, b) => b.raw.length - a.raw.length);
+        const where = (p) => resolved.paths[p] || resolved.dirs[p];
+        const hits = found.filter((f) => where(f.loc.path)).sort((a, b) => b.raw.length - a.raw.length);
         const cell = (c) => c.y * 100000 + c.x;
         const taken = [];
         const links = [];
@@ -699,8 +703,9 @@ function attachLinks(node) {
           if (start.y > y || last.y < y) continue;
           // where the path was found, which for a bare name may be a folder
           // of the repo other than the shell's: opening goes there directly
-          const target = resolved[loc.path];
-          const isImage = IMAGE_PATH.test(target);
+          const target = where(loc.path);
+          const isDir = !resolved.paths[loc.path];
+          const isImage = !isDir && IMAGE_PATH.test(target);
           links.push({
             range: { start, end: last },
             text: raw,
@@ -720,8 +725,10 @@ function attachLinks(node) {
               hideImageCard();
               const opts = { cwd: node.cwd, target, line: loc.line, column: loc.column };
               // Ctrl+click looks without leaving Frost; Shift added goes
-              // straight to the editor, for when the point is to change it
+              // straight to the editor (Explorer, for a folder), for when the
+              // point is to change it
               if (ev.shiftKey) openOutside(opts);
+              else if (isDir) peekFolder(target);
               else peekPath(opts);
             }
           });
