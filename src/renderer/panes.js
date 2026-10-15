@@ -689,7 +689,7 @@ function attachLinks(node) {
       api.resolvePaths(node.cwd, [...new Set(found.map((f) => f.loc.path))]).then((resolved) => {
         // longest first, so a path with spaces claims its words before any of
         // them can be a link of its own
-        const where = (p) => resolved.paths[p] || resolved.dirs[p];
+        const where = (p) => resolved.paths[p] || resolved.dirs[p] || resolved.cuts[p];
         const hits = found.filter((f) => where(f.loc.path)).sort((a, b) => b.raw.length - a.raw.length);
         const cell = (c) => c.y * 100000 + c.x;
         const taken = [];
@@ -704,8 +704,9 @@ function attachLinks(node) {
           // where the path was found, which for a bare name may be a folder
           // of the repo other than the shell's: opening goes there directly
           const target = where(loc.path);
-          const isDir = !resolved.paths[loc.path];
-          const isImage = !isDir && IMAGE_PATH.test(target);
+          const isCut = !!resolved.cuts[loc.path];
+          const isDir = !isCut && !resolved.paths[loc.path];
+          const isImage = !isDir && !isCut && IMAGE_PATH.test(target);
           links.push({
             range: { start, end: last },
             text: raw,
@@ -728,8 +729,9 @@ function attachLinks(node) {
               // straight to the editor (Explorer, for a folder), for when the
               // point is to change it
               if (ev.shiftKey) openOutside(opts);
-              else if (isDir) peekFolder(target);
-              else peekPath(opts);
+              else if (isCut) peekCutName(target, loc.path.slice(0, -1), node.cwd);
+              else if (isDir) peekFolder(target, node.cwd);
+              else peekPath(opts, node.cwd);
             }
           });
         }

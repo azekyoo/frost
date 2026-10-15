@@ -24,7 +24,15 @@ const peek = {
   mode: 'source', // markdown only: 'preview' | 'source'
   tree: null, // { root, git, files, status, top }
   openDirs: new Map(), // tree root (lowercased) -> Set of expanded folder paths
-  lastFile: new Map(), // tree root (lowercased) -> absolute path last shown there
+  // per tab or session (see homeKey), per tree root (lowercased): the file
+  // last shown there
+  lastFile: new Map(),
+  // The folder Peek was opened for (the session's, the shell's), and whose it
+  // is: a normal tab's, or an agent session's. Each remembers the folder it
+  // browsed to with Folder…, so reopening goes back there; a button leads home.
+  home: null,
+  homeKey: null,
+  browsedFrom: new Map(), // tab, or 'session:<id>' -> folder browsed to
   returnTo: null
 };
 
@@ -40,8 +48,14 @@ function openOutside(opts) {
   });
 }
 
-async function peekPath(opts) {
+// `home` only from a terminal: there it is the shell's folder. A file picked in
+// Peek's own tree keeps the home it had.
+async function peekPath(opts, home) {
   const res = await api.readPath(opts);
+  if (home !== undefined && typeof res?.text === 'string') {
+    peek.home = home || null;
+    peek.homeKey = peekKeyFor(state.activeTab);
+  }
   // not something to show here (media, binary, a folder git lists as one
   // untracked entry): paths:open sends it on, and says so if it's missing
   if (typeof res?.text !== 'string') return openOutside(opts);
@@ -87,20 +101,82 @@ function peekSelectRow(row) {
   row.classList.add('selected');
 }
 
-// The palette's way in, and the folder button's: a tree with nothing open yet.
-async function peekBrowse(dir) {
-  if (!dir) return toast('No folder here to browse', { error: true });
+// The Files button's way in, and Ctrl+Shift+E's: the folder they are for, or
+// the one last browsed to from it with Folder…
+async function peekBrowseHome(home, tab = state.activeTab) {
+  if (!home) return toast('No folder here to browse', { error: true });
+  peek.home = home;
+  peek.homeKey = peekKeyFor(tab);
+  const away = peek.browsedFrom.get(peek.homeKey);
+  // a folder since deleted or unplugged is forgotten, and home shown instead
+  if (away && (await peekBrowse(away, { quiet: true }))) return;
+  peek.browsedFrom.delete(peek.homeKey);
+  return peekBrowse(home);
+}
+
+// The files last shown, by repo, for whoever's Peek this is: two tabs in one
+// repo each come back to their own.
+function peekLastFiles() {
+  const key = peek.homeKey || 'none';
+  if (!peek.lastFile.has(key)) peek.lastFile.set(key, new Map());
+  return peek.lastFile.get(key);
+}
+
+// A name cut short that more than one file starts with (packag…): the
+// folder's tree, searched for that start, to pick from.
+async function peekCutName(dir, start, home) {
+  peek.home = home || null;
+  peek.homeKey = peekKeyFor(state.activeTab);
+  if (!(await peekBrowse(dir))) return;
+  peek.filter.input.value = start;
+  peek.filter.input.dispatchEvent(new Event('input'));
+  peek.filter.input.focus();
+}
+
+// Whose Peek it is: in the agent tab, the session selected there, so two
+// sessions in one repo browse apart; elsewhere the tab itself.
+function peekKeyFor(tab) {
+  if (tab?.kind !== 'agents') return tab || null;
+  const agent = globalAgents.get(tab.selected);
+  return agent ? 'session:' + (agent.sessionId || agent.id) : tab;
+}
+
+// The way back home shows only while the tree is somewhere else: a home inside
+// the tree's root (a repo's subfolder) is home.
+function peekSyncHome() {
+  const btn = peek.root?.querySelector('.peek-home');
+  if (!btn) return;
+  const root = peek.tree?.root;
+  const away = !!(peek.home && root && peekNorm(peek.home) !== peekNorm(root) && !peekInside(peek.home, root));
+  btn.hidden = !away;
+  if (!away) return;
+  const name = peek.home.replace(/[\\/]+$/, '').replace(/^.*[\\/]/, '');
+  btn.querySelector('span').textContent = name;
+  btn.title = 'Back to ' + peek.home;
+}
+
+// A tree with nothing open yet, or the file last shown in it. False when the
+// folder couldn't be listed.
+async function peekBrowse(dir, { quiet = false } = {}) {
+  if (!dir) {
+    toast('No folder here to browse', { error: true });
+    return false;
+  }
   const tree = await api.peekTree(dir);
-  if (!tree?.files) return toast(tree?.error || 'Could not list ' + dir, { error: true });
+  if (!tree?.files) {
+    if (!quiet) toast(tree?.error || 'Could not list ' + dir, { error: true });
+    return false;
+  }
   peek.tree = peekBuildTree(tree);
   // back where it was left: the file last shown in this repo, if still readable
-  const last = peek.lastFile.get(peekNorm(peek.tree.root));
+  const last = peekLastFiles().get(peekNorm(peek.tree.root));
   const res = last && (await api.readPath({ cwd: peekDirname(last), target: last }));
   if (typeof res?.text === 'string') {
     if (peek.tree.lazy) await peekLoadFolderOf(res.path);
     showPeek({ cwd: peekDirname(res.path), target: res.path }, res);
   } else showPeek(null, null);
   peekStartIndex(peek.tree);
+  return true;
 }
 
 function peekBuild() {
@@ -110,14 +186,23 @@ function peekBuild() {
     <div class="peek-box">
       <header class="peek-head">
         <b class="peek-root"></b>
-        <button class="peek-btn peek-pick" type="button" title="Open another folder">Folder&hellip;</button>
+        <button class="peek-btn peek-pick" type="button" title="Open another folder">
+          <svg viewBox="0 0 16 16"><path d="M1.75 4.25a1.5 1.5 0 0 1 1.5-1.5h2.6l1.5 1.75h5.4a1.5 1.5 0 0 1 1.5 1.5v5.75a1.5 1.5 0 0 1-1.5 1.5h-9.5a1.5 1.5 0 0 1-1.5-1.5z" /></svg><span>Folder&hellip;</span>
+        </button>
+        <button class="peek-btn peek-home" type="button" hidden>
+          <svg viewBox="0 0 16 16"><path d="M6.25 4 2.75 7.5 6.25 11M3 7.5h6.75a3.5 3.5 0 0 1 0 7H8.5" /></svg><span></span>
+        </button>
         <span class="peek-crumbs"></span>
         <div class="peek-modes" hidden>
           <button class="peek-mode" type="button" data-mode="preview">Preview</button>
           <button class="peek-mode" type="button" data-mode="source">Source</button>
         </div>
-        <button class="peek-btn peek-editor" type="button" title="Open in editor (Ctrl+Shift+click)">Open in editor</button>
-        <button class="peek-btn peek-close" type="button" title="Close (Esc)">&#x2715;</button>
+        <button class="peek-btn peek-editor" type="button" title="Open in editor (Ctrl+Shift+click)">
+          <svg viewBox="0 0 16 16"><path d="M9.25 2.75h4v4M13.25 2.75 7.5 8.5M11.25 9.5v2.75a1 1 0 0 1-1 1h-6.5a1 1 0 0 1-1-1v-6.5a1 1 0 0 1 1-1H6.5" /></svg><span>Open in editor</span>
+        </button>
+        <button class="peek-btn peek-close" type="button" title="Close (Esc)">
+          <svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8" /></svg>
+        </button>
       </header>
       <div class="peek-main">
         <aside class="peek-side">
@@ -156,7 +241,17 @@ function peekBuild() {
   });
   root.querySelector('.peek-pick').addEventListener('click', async () => {
     const dir = await api.pickDir();
-    if (dir) peekBrowse(dir);
+    if (!dir) return;
+    if (peek.home && peek.homeKey) {
+      if (peekNorm(dir) === peekNorm(peek.home)) peek.browsedFrom.delete(peek.homeKey);
+      else peek.browsedFrom.set(peek.homeKey, dir);
+    }
+    peekBrowse(dir);
+  });
+  root.querySelector('.peek-home').addEventListener('click', () => {
+    if (!peek.home) return;
+    if (peek.homeKey) peek.browsedFrom.delete(peek.homeKey);
+    peekBrowse(peek.home);
   });
   root.querySelectorAll('.peek-mode').forEach((b) =>
     b.addEventListener('click', () => {
@@ -584,7 +679,9 @@ function peekEscape() {
 
 // A folder Ctrl+clicked in a terminal: its repo's tree, with the folder unfolded
 // and in view. A folder outside any repo is the tree's own root.
-async function peekFolder(dir) {
+async function peekFolder(dir, home) {
+  peek.home = home || null;
+  peek.homeKey = peekKeyFor(state.activeTab);
   await peekBrowse(dir);
   if (!peek.tree || !peek.root?.classList.contains('open')) return;
   const root = peek.tree.root.replace(/[\\/]+$/, '');
@@ -1005,7 +1102,7 @@ function showPeek(opts, res) {
   peek.text = (res?.text || '').replace(/\r\n?/g, '\n');
   peek.marks = res?.marks || null;
   if (peek.file && peek.tree && peekInside(peek.file, peek.tree.root))
-    peek.lastFile.set(peekNorm(peek.tree.root), peek.file);
+    peekLastFiles().set(peekNorm(peek.tree.root), peek.file);
   // markdown opens rendered, unless a line was asked for: that is the source
   peek.mode = opts?.line ? 'source' : 'preview';
 
@@ -1016,6 +1113,7 @@ function showPeek(opts, res) {
   api.peekWatch(peek.file);
   peekRenderTree();
   peekRenderFile();
+  peekSyncHome();
   root.querySelector('.peek-body').focus({ preventScroll: true });
 }
 

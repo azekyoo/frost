@@ -239,7 +239,7 @@ cmd('view.browseFiles', 'Peek: browse files in this folder', () => {
   // the shell started, before it moved into the repo.
   const dock = tab?.kind === 'agents' && tab.dockShown && !tab.els.dock.hidden && tab.dockTyping ? tab.dockShown : null;
   const agentDir = tab?.kind === 'agents' && !dock ? globalAgents.get(tab.selected)?.cwd : null;
-  peekBrowse(agentDir || activePane()?.cwd || tab?.diffCwd);
+  peekBrowseHome(agentDir || activePane()?.cwd || tab?.diffCwd, tab);
 });
 cmd('command.copyOutput', "Copy the last command's output", () => {
   const node = activePane();

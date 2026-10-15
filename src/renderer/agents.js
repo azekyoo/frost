@@ -414,7 +414,7 @@ function buildAgentLayout(tab) {
   layout.querySelector('.diff-open-editor').addEventListener('click', () => {
     // diffCwd as a fallback: the repo is still worth browsing once its agent ends
     const dir = globalAgents.get(tab.selected)?.cwd || tab.diffCwd;
-    if (dir) peekBrowse(dir);
+    if (dir) peekBrowseHome(dir, tab);
     else toast('Select an agent first', { error: true });
   });
   layout.querySelector('.dock-close').addEventListener('click', () => {

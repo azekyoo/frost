@@ -183,8 +183,13 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     await mouse(spot.x + 300, spot.y);
     await sleep(80);
     await mouse(spot.x + 301, spot.y);
-    await sleep(700);
-    const after = await w.eval(`[!!document.querySelector('#image-card.show'), !!activePane().el.querySelector('.cmd-bar.on')]`);
+    // the block waits for the pointer to rest, and a busy test machine is slow
+    let after = [];
+    for (let i = 0; i < 20; i++) {
+      await sleep(100);
+      after = await w.eval(`[!!document.querySelector('#image-card.show'), !!activePane().el.querySelector('.cmd-bar.on')]`);
+      if (!after[0] && after[1]) break;
+    }
     check('moving off the path closes the card', !after[0]);
     check('and offers the block again', after[1]);
 
@@ -247,6 +252,92 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     })`);
     check('Ctrl+click on it opens Peek', peekState.open);
     check('with that folder picked out in the tree', peekState.picked === 'assets', JSON.stringify(peekState));
+
+    // a cut name two files start with: Peek searching the folder for them
+    await w.eval(`(() => { closePeek(); activePane().term.write('packag…  x\\r\\n'); return true })()`);
+    await sleep(300);
+    check('a cut name several files start with is a link', (await isLink('packag…')) === true);
+    const cut = await w.eval(`(() => {
+      const t = activePane().term, buf = t.buffer.active;
+      for (let r = buf.length - 1; r >= 0; r--) {
+        if (!buf.getLine(r).translateToString(true).startsWith('packag…')) continue;
+        const box = t.element.querySelector('.xterm-screen').getBoundingClientRect();
+        return { x: box.left + 2.5 * (box.width / t.cols), y: box.top + (r - buf.viewportY + 0.5) * (box.height / t.rows) };
+      }
+    })()`);
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await w.send('Input.dispatchMouseEvent', { type, x: cut.x, y: cut.y, button: 'left', clickCount: 1, modifiers: 2 });
+    }
+    await sleep(1500);
+    const search = await w.eval(`({
+      open: !!document.querySelector('#peek.open'),
+      query: document.querySelector('#peek .peek-filter').value,
+      results: [...document.querySelectorAll('#peek .peek-tree .peek-row.result')].map((r) => r.textContent.trim()).slice(0, 4)
+    })`);
+    check('Ctrl+click searches the folder for the files it could be', search.open && search.query === 'packag', JSON.stringify(search));
+    await w.eval('(() => { closePeek(); return true })()');
+
+    // Peek remembers a folder browsed to with Folder…, and has a way home
+    const away = path.join(TMP, 'elsewhere');
+    fs.mkdirSync(away, { recursive: true });
+    fs.writeFileSync(path.join(away, 'note.txt'), 'hi');
+    const home = JSON.stringify(ROOT);
+    const peekNow = `({
+      root: peek.tree?.root,
+      home: !document.querySelector('#peek .peek-home').hidden,
+      label: document.querySelector('#peek .peek-home').textContent.trim()
+    })`;
+    await w.eval(`(async () => { closePeek(); await peekBrowseHome(${home}); return true })()`);
+    let p = await w.eval(peekNow);
+    check('Peek opened for its folder shows no way home', !p.home, JSON.stringify(p));
+    // what Folder… does once a folder is picked
+    await w.eval(`(async () => {
+      peek.browsedFrom.set(peek.homeKey, ${JSON.stringify(away)});
+      await peekBrowse(${JSON.stringify(away)});
+      return true;
+    })()`);
+    p = await w.eval(peekNow);
+    check('browsed elsewhere, the way home shows', p.home && p.label.endsWith('frost'), JSON.stringify(p));
+    // a file picked in the tree there, the way the tree does it
+    await w.eval(`(async () => { await peekPath({ cwd: peek.tree.root, target: 'note.txt' }); return true })()`);
+    p = await w.eval(peekNow);
+    check('picking a file there keeps the way home', p.home, JSON.stringify(p));
+    await w.eval(`(async () => { closePeek(); await peekBrowseHome(${home}); return true })()`);
+    p = await w.eval(peekNow);
+    check('reopened, it is back in the folder browsed to', /elsewhere$/.test(p.root || ''), JSON.stringify(p));
+    const file = await w.eval('peek.file');
+    check('with the file last open there', /note\.txt$/.test(file || ''), file);
+    // another tab in the same folder has a memory of its own
+    await w.eval(`(async () => { closePeek(); await newTab({ cwd: ${home} }); await peekBrowseHome(${home}); return true })()`);
+    p = await w.eval(peekNow);
+    check('another tab in the same folder opens at home', /frost$/i.test(p.root || '') && !p.home, JSON.stringify(p));
+    await w.eval(`(async () => { closePeek(); activateTab(state.tabs[0]); await peekBrowseHome(${home}); return true })()`);
+    p = await w.eval(peekNow);
+    check('and the first tab is still where it browsed to', /elsewhere$/.test(p.root || ''), JSON.stringify(p));
+    // the second tab opens a file in the repo; the first tab, back home there,
+    // doesn't get it
+    await w.eval(`(async () => {
+      closePeek(); activateTab(state.tabs[1]);
+      await peekBrowseHome(${home});
+      await peekPath({ cwd: peek.tree.root, target: 'package.json' });
+      closePeek(); activateTab(state.tabs[0]);
+      await peekBrowseHome(${home});
+      return true;
+    })()`);
+    await w.eval(`(() => { document.querySelector('#peek .peek-home').click(); return true })()`);
+    await sleep(1500);
+    const firstTabFile = await w.eval('peek.file');
+    check("a file opened in another tab isn't this tab's", !/package\.json$/.test(firstTabFile || ''), firstTabFile);
+    p = await w.eval(peekNow);
+    check('the way home goes home', /frost$/i.test(p.root || '') && !p.home, JSON.stringify(p));
+    await w.eval(`(async () => { closePeek(); await peekBrowseHome(${home}); return true })()`);
+    p = await w.eval(peekNow);
+    check('and home is where it reopens after', /frost$/i.test(p.root || ''), JSON.stringify(p));
+    // a remembered folder that has gone since: home instead, without a fuss
+    await w.eval(`(async () => { peek.browsedFrom.set(peekKeyFor(state.activeTab), ${JSON.stringify(away + '-gone')}); closePeek(); await peekBrowseHome(${home}); return true })()`);
+    p = await w.eval(peekNow);
+    check('a remembered folder since gone falls back home', /frost$/i.test(p.root || ''), JSON.stringify(p));
+    await w.eval('(() => { closePeek(); return true })()');
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

@@ -173,7 +173,7 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     // A bare name not in the shell's folder is found by name in its repo
     const repo = JSON.stringify(ROOT);
     const res = await w.eval(
-      `api.resolvePaths(${repo}, ['icon-48.png', 'panes.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json', 'assets', 'src/renderer', 'renderer', 'the'])`
+      `api.resolvePaths(${repo}, ['icon-48.png', 'panes.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json', 'assets', 'src/renderer', 'renderer', 'the', 'CHANGEL…', 'packag…'])`
     );
     const found = res.paths;
     check('a bare name found once in the repo is a link', /assets[\\/]icon-48\.png$/.test(found['icon-48.png'] || ''), found['icon-48.png']);
@@ -187,6 +187,10 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     check('a path to a folder too', /src[\\/]renderer$/.test(res.dirs['src/renderer'] || ''), res.dirs['src/renderer']);
     check('a folder elsewhere in the repo is not', !res.dirs['renderer']);
     check('nor a word of prose', !res.dirs['the'] && !res.paths['the']);
+
+    // names cut short: one file that starts so is that file, several the folder
+    check('a cut name one file starts with is that file', /CHANGELOG\.md$/.test(found['CHANGEL…'] || ''), found['CHANGEL…']);
+    check('one several start with is their folder, to search', /frost$/i.test(res.cuts['packag…'] || '') && !found['packag…'], res.cuts['packag…']);
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

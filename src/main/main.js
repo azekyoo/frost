@@ -3530,8 +3530,8 @@ async function findInRepo(cwd, name) {
 }
 
 // A name a listing cut short to fit its column ("CHANGEL…"): the one file in
-// the folder whose name starts that way. Two that do is no link, as a guess
-// would open the wrong one.
+// the folder whose name starts that way. With several ("packag…") there is no
+// guessing which: { dir } instead, for the folder to be searched for them.
 function resolveCut(cwd, candidate) {
   if (!candidate.endsWith('…') || /[\0<>|"*?&^%`$\\/]/.test(candidate)) return null;
   const start = candidate.slice(0, -1).toLowerCase();
@@ -3540,7 +3540,8 @@ function resolveCut(cwd, candidate) {
     const hits = fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((d) => d.isFile() && d.name.toLowerCase().startsWith(start));
-    return hits.length === 1 ? path.join(dir, hits[0].name) : null;
+    if (hits.length === 1) return path.join(dir, hits[0].name);
+    return hits.length > 1 ? { dir } : null;
   } catch {
     return null;
   }
@@ -3559,17 +3560,20 @@ function resolveFolder(cwd, candidate) {
   }
 }
 
-// Files under `paths`, folders under `dirs`, each keyed by the text asked about.
+// Files under `paths`, folders under `dirs`, names cut short that several files
+// start with under `cuts` (their folder), each keyed by the text asked about.
 ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
   const paths = {};
   const dirs = {};
+  const cuts = {};
   const list = Array.isArray(candidates) ? candidates.slice(0, 64) : [];
   await Promise.all(
     list.map(async (candidate) => {
       if (typeof candidate !== 'string') return;
       if (candidate.endsWith('…')) {
-        const abs = resolveCut(cwd, candidate);
-        if (abs) paths[candidate] = abs;
+        const hit = resolveCut(cwd, candidate);
+        if (typeof hit === 'string') paths[candidate] = hit;
+        else if (hit) cuts[candidate] = hit.dir;
         return;
       }
       // the repo is searched by name only for something named like a file:
@@ -3583,7 +3587,7 @@ ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
       }
     })
   );
-  return { paths, dirs };
+  return { paths, dirs, cuts };
 });
 
 // The picture behind an image path hovered in a terminal. Sent as a data URL
