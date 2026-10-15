@@ -3529,11 +3529,34 @@ async function findInRepo(cwd, name) {
   }
 }
 
+// A name a listing cut short to fit its column ("CHANGEL…"): the one file in
+// the folder whose name starts that way. Two that do is no link, as a guess
+// would open the wrong one.
+function resolveCut(cwd, candidate) {
+  if (!candidate.endsWith('…') || /[\0<>|"*?&^%`$\\/]/.test(candidate)) return null;
+  const start = candidate.slice(0, -1).toLowerCase();
+  const dir = cwd && fs.existsSync(cwd) ? cwd : startDir();
+  try {
+    const hits = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((d) => d.isFile() && d.name.toLowerCase().startsWith(start));
+    return hits.length === 1 ? path.join(dir, hits[0].name) : null;
+  } catch {
+    return null;
+  }
+}
+
 ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
   const out = {};
   const list = Array.isArray(candidates) ? candidates.slice(0, 64) : [];
   await Promise.all(
     list.map(async (candidate) => {
+      if (typeof candidate !== 'string') return;
+      if (candidate.endsWith('…')) {
+        const abs = resolveCut(cwd, candidate);
+        if (abs) out[candidate] = abs;
+        return;
+      }
       const abs = resolveTarget(cwd, candidate) || (await findInRepo(cwd, candidate));
       if (abs) out[candidate] = abs;
     })

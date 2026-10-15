@@ -131,10 +131,12 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
 
     // A real command in the real shell, so it is a command block as well
     const runCommand = async (line) => {
-      const before = await w.eval('(activePane().marks || []).length');
+      // a new prompt's mark, not a count of them: a clear takes marks away
+      const lastId = '(activePane().marks.at(-1)?.marker.id ?? -1)';
+      const before = await w.eval(lastId);
       await w.eval(`(() => { api.ptyInput(activePane().ptyId, ${JSON.stringify(line + '\r')}); return true })()`);
       const until = Date.now() + 20000;
-      while ((await w.eval('(activePane().marks || []).length')) <= before) {
+      while ((await w.eval(lastId)) === before) {
         if (Date.now() > until) throw new Error('the shell never finished: ' + line);
         await sleep(250);
       }
@@ -185,6 +187,41 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     const after = await w.eval(`[!!document.querySelector('#image-card.show'), !!activePane().el.querySelector('.cmd-bar.on')]`);
     check('moving off the path closes the card', !after[0]);
     check('and offers the block again', after[1]);
+
+    // A column listing (PowerShell's ls, narrow): names cut short with …, and
+    // a row filled right to the edge, which is not a wrapped line
+    await runCommand('cls');
+    await w.eval(`(() => {
+      const t = activePane().term;
+      const row1 = 'CHANGEL…  LICENSE'.padEnd(t.cols - 'package.js…'.length) + 'package.js…';
+      t.write('\\r\\n' + row1 + '\\r\\nREADME.md\\r\\n');
+      return true;
+    })()`);
+    await sleep(400);
+    const isLink = async (word) => {
+      const spot = await w.eval(`(() => {
+        const t = activePane().term, buf = t.buffer.active;
+        for (let r = buf.length - 1; r >= 0; r--) {
+          const s = buf.getLine(r).translateToString(true);
+          const i = s.indexOf(${JSON.stringify(word)});
+          if (i < 0) continue;
+          const box = t.element.querySelector('.xterm-screen').getBoundingClientRect();
+          const cw = box.width / t.cols, ch = box.height / t.rows;
+          return { x: box.left + (i + 1.5) * cw, y: box.top + (r - buf.viewportY + 0.5) * ch };
+        }
+        return null;
+      })()`);
+      if (!spot) return 'not on screen';
+      await mouse(spot.x, spot.y + 300);
+      await sleep(150);
+      await mouse(spot.x, spot.y);
+      await sleep(700);
+      return w.eval(`!!activePane().term.element.querySelector('.xterm-cursor-pointer') || activePane().term.element.classList.contains('xterm-cursor-pointer')`);
+    };
+    check('a name on the row after a full one is a link', (await isLink('README.md')) === true);
+    check('a name cut short is a link to the one it starts', (await isLink('CHANGEL…')) === true);
+    check('and at the very edge too', (await isLink('package.js…')) === true);
+    check('a word that is no file is not', (await isLink('LICENSE')) === false);
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

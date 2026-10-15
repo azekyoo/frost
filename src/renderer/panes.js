@@ -624,64 +624,83 @@ function attachLinks(node) {
 
   term.registerLinkProvider({
     provideLinks(y, callback) {
-      const { text, map } = logicalLine(term, y);
-      if (!text) return callback(undefined);
-
-      // Python tracebacks put the line number in a separate word
-      const py = /File "([^"]+)", line (\d+)/.exec(text);
       const found = [];
       const seen = new Set();
-      const consider = (raw, index, loc) => {
-        const key = index + ':' + raw.length;
+      const consider = (raw, start, last, loc) => {
+        const key = `${start.y}:${start.x}:${last.y}:${last.x}`;
         if (!raw || seen.has(key)) return;
         seen.add(key);
-        found.push({ raw, index, loc });
+        found.push({ raw, start, last, loc });
       };
 
-      // The traceback match spans the quoted path, so tokens inside it are
-      // skipped — two overlapping links on the same text renders as a mess.
-      let covered = null;
-      if (py) {
-        consider(py[0], py.index, { path: py[1], line: +py[2], column: 1 });
-        covered = [py.index, py.index + py[0].length];
-      }
-      const words = [...text.matchAll(/[^\s]+/g)].map((w) => ({ index: w.index, end: w.index + w[0].length }));
-      words.forEach((w, i) => {
-        if (covered && w.index >= covered[0] && w.index < covered[1]) return;
-        // A folder name can have spaces in it (Program Files, Frost (source)),
-        // and splitting on them leaves halves no file has. So a word that
-        // starts a drive path is also tried with the next few words on; the
-        // disk decides, and the longest that exists wins below.
-        const drive = /^[('"`\[<{]*[A-Za-z]:[\\/]/.test(text.slice(w.index, w.end));
-        for (let k = i; k < Math.min(words.length, i + (drive ? 5 : 1)); k++) {
-          const span = text.slice(w.index, words[k].end);
-          const trimmed = trimCandidate(span);
-          if (!trimmed) continue;
-          const loc = splitLocation(trimmed);
-          if (!looksLikePath(loc.path)) continue;
-          consider(trimmed, w.index + span.indexOf(trimmed), loc);
+      const collect = ({ text, map }) => {
+        if (!text) return;
+        // Python tracebacks put the line number in a separate word
+        const py = /File "([^"]+)", line (\d+)/.exec(text);
+        // The traceback match spans the quoted path, so tokens inside it are
+        // skipped — two overlapping links on the same text renders as a mess.
+        let covered = null;
+        if (py) {
+          consider(py[0], map[py.index], map[py.index + py[0].length - 1], { path: py[1], line: +py[2], column: 1 });
+          covered = [py.index, py.index + py[0].length];
         }
-      });
+        const words = [...text.matchAll(/[^\s]+/g)].map((w) => ({ index: w.index, end: w.index + w[0].length }));
+        words.forEach((w, i) => {
+          if (covered && w.index >= covered[0] && w.index < covered[1]) return;
+          // A folder name can have spaces in it (Program Files, Frost (source)),
+          // and splitting on them leaves halves no file has. So a word that
+          // starts a drive path is also tried with the next few words on; the
+          // disk decides, and the longest that exists wins below.
+          const drive = /^[('"`\[<{]*[A-Za-z]:[\\/]/.test(text.slice(w.index, w.end));
+          for (let k = i; k < Math.min(words.length, i + (drive ? 5 : 1)); k++) {
+            const span = text.slice(w.index, words[k].end);
+            const trimmed = trimCandidate(span);
+            if (!trimmed) continue;
+            const index = w.index + span.indexOf(trimmed);
+            // a name cut short to fit a column (PowerShell's ls: CHANGEL…) is
+            // looked for as the start of a name, in the folder listed
+            if (/^[^\\/…]{2,}…$/.test(trimmed)) {
+              consider(trimmed, map[index], map[index + trimmed.length - 1], { path: trimmed, line: 0, column: 1 });
+              continue;
+            }
+            const loc = splitLocation(trimmed);
+            if (!looksLikePath(loc.path)) continue;
+            consider(trimmed, map[index], map[index + trimmed.length - 1], loc);
+          }
+        });
+      };
+
+      // The line as a whole, for a path wrapped onto the next row — and this
+      // row alone, since a row that merely ends at the edge (a column listing
+      // filled to the width) isn't wrapped, and joined it glues two names into
+      // one no file has. Both are tried; the disk decides.
+      const whole = logicalLine(term, y);
+      collect(whole);
+      if (whole.map.length && (whole.map[0].y !== y || whole.map[whole.map.length - 1].y !== y)) {
+        const r = rowCells(term, y - 1);
+        const text = r.text.replace(/\s+$/, '');
+        collect({ text, map: r.xs.slice(0, text.length).map((x) => ({ x: x + 1, y })) });
+      }
       if (!found.length) return callback(undefined);
 
       api.resolvePaths(node.cwd, [...new Set(found.map((f) => f.loc.path))]).then((resolved) => {
         // longest first, so a path with spaces claims its words before any of
         // them can be a link of its own
         const hits = found.filter((f) => resolved[f.loc.path]).sort((a, b) => b.raw.length - a.raw.length);
+        const cell = (c) => c.y * 100000 + c.x;
         const taken = [];
         const links = [];
-        for (const { raw, index, loc } of hits) {
-          const end = index + raw.length;
-          if (taken.some(([s, e]) => index < e && end > s)) continue;
-          taken.push([index, end]);
-          const start = map[index];
-          const last = map[end - 1];
+        for (const { raw, start, last, loc } of hits) {
+          const s0 = cell(start);
+          const e0 = cell(last);
+          if (taken.some(([s, e]) => s0 <= e && e0 >= s)) continue;
+          taken.push([s0, e0]);
           // the line may span rows; only links on the row asked about go back
           if (start.y > y || last.y < y) continue;
           // where the path was found, which for a bare name may be a folder
           // of the repo other than the shell's: opening goes there directly
           const target = resolved[loc.path];
-          const isImage = IMAGE_PATH.test(loc.path);
+          const isImage = IMAGE_PATH.test(target);
           links.push({
             range: { start, end: last },
             text: raw,
