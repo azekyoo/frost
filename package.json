@@ -22,7 +22,8 @@
     "test:resume": "electron tools/resumetest.js",
     "test:exit": "electron tools/exittest.js",
     "test:glow": "electron tools/glowtest.js",
-    "test:links": "electron tools/linktest.js"
+    "test:links": "electron tools/linktest.js",
+    "test:hover": "electron tools/hovertest.js"
   },
   "license": "MIT",
   "author": "azekyoo",

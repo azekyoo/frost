@@ -105,12 +105,15 @@ function attachCommandBlocks(node) {
   bar.innerHTML = BLOCK_BAR;
   node.el.append(band, bar);
   const b = { node, band, bar, block: null, pointer: null, timer: null };
+  // a link (a path) under the pointer goes first; panes.js calls this when one
+  // is entered, since links are found after the move that reaches them
+  node.holdBlock = () => blockHide(b);
 
   node.el.addEventListener('mousemove', (ev) => {
     if (bar.contains(ev.target)) return;
     b.pointer = { x: ev.clientX, y: ev.clientY };
     // a button held is a selection being dragged: the bar would be in its way
-    if (ev.buttons) return blockHide(b);
+    if (ev.buttons || node.onLink) return blockHide(b);
     // once offered it follows the pointer at once; the first offer waits
     clearTimeout(b.timer);
     if (b.block) blockUpdate(b);

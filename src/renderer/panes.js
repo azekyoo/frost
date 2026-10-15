@@ -639,8 +639,17 @@ function attachLinks(node) {
           links.push({
             range: { start, end: last },
             text: raw,
-            hover: isImage ? (ev) => showImageCard(node, target, ev.clientX, ev.clientY) : undefined,
-            leave: isImage ? hideImageCard : undefined,
+            // a path under the pointer is what it is pointing at, more than
+            // the command around it: the block holds off until it moves off
+            hover(ev) {
+              node.onLink = true;
+              node.holdBlock?.();
+              if (isImage) showImageCard(node, target, ev.clientX, ev.clientY);
+            },
+            leave() {
+              node.onLink = false;
+              if (isImage) hideImageCard();
+            },
             activate(ev) {
               if (!ev.ctrlKey) return;
               hideImageCard();
