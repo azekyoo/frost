@@ -14,15 +14,64 @@ const blocksOn = () => state.theme?.commandBlocks !== false;
 // from its prompt to the next one, or to the first empty prompt after it.
 function blockAt(node, row) {
   const marks = liveMarks(node);
-  for (let i = 0; i < marks.length - 1; i++) {
+  for (let i = 0; i < marks.length; i++) {
     const mark = marks[i];
-    if (mark.exit === null) continue;
+    const last = i === marks.length - 1;
     const start = mark.marker.line;
-    const stop = mark.end && !mark.end.isDisposed ? mark.end.line : marks[i + 1].marker.line;
-    if (row >= start && row < stop) return { mark, start, stop };
+    const stop = last
+      ? node.term.buffer.active.length
+      : mark.end && !mark.end.isDisposed
+        ? mark.end.line
+        : marks[i + 1].marker.line;
+    if (row < start || row >= stop) continue;
+    const inner = foreignBlockAt(node, mark, start, stop, row);
+    if (inner) return inner;
+    // the last mark is a prompt still waiting, or a command still running
+    return mark.exit === null ? null : { mark, start, stop };
   }
   return null;
 }
+
+// A shell Frost's hooks aren't in (the far end of ssh, most often) marks
+// nothing, so to the marks its whole session is one command. Inside it, the
+// commands are found by their prompts instead, each running to the next one.
+// How they exited isn't known.
+function foreignBlockAt(node, mark, start, stop, row) {
+  const buf = node.term.buffer.active;
+  let from = start + 1;
+  while (from < stop && buf.getLine(from)?.isWrapped) from++;
+  const lines = bufferLines(node.term, from, stop - 1);
+  const prompts = [];
+  lines.forEach((l, i) => {
+    const m = FOREIGN_PROMPT.exec(l.text);
+    if (m) prompts.push({ i, row: l.row, host: m[1] || '', command: m[2].trim() });
+  });
+  for (let p = 0; p < prompts.length; p++) {
+    const cur = prompts[p];
+    const next = prompts[p + 1];
+    // in a session still going, the last prompt is waiting or still running
+    if (!cur.command || (!next && mark.exit === null)) continue;
+    const end = next ? next.row : stop;
+    if (row < cur.row || row >= end) continue;
+    const output = lines.slice(cur.i + 1, next ? next.i : lines.length).map((l) => l.text);
+    while (output.length && !output[output.length - 1]) output.pop();
+    const foreign = { command: cur.command, output, exit: null, host: cur.host || null, clean: true };
+    return { mark, start: cur.row, stop: end, foreign };
+  }
+  return null;
+}
+
+// the far end sitting at an empty prompt, inside the session still running
+// here: what is typed now runs there
+function foreignIdle(node, block) {
+  const marks = liveMarks(node);
+  if (block.mark !== marks[marks.length - 1]) return false;
+  const buf = node.term.buffer.active;
+  const m = FOREIGN_PROMPT.exec(buf.getLine(buf.baseY + buf.cursorY)?.translateToString(true) || '');
+  return !!m && !m[2].trim();
+}
+
+const blockIdle = (node, block) => (block.foreign ? foreignIdle(node, block) : shellIdle(node));
 
 // at a prompt with nothing running: typing a command now runs it. Output
 // can't tell: Start-Sleep prints nothing while it runs. So Enter is what starts
@@ -123,7 +172,7 @@ function blockUpdate(b) {
   const r1 = Math.min(found.stop - top, term.rows);
   const ox = box.left - pane.left;
   const oy = box.top - pane.top;
-  const failed = found.mark.exit !== 0;
+  const failed = !found.foreign && found.mark.exit !== 0;
   Object.assign(b.band.style, {
     left: ox - 6 + 'px',
     width: box.width + 12 + 'px',
@@ -144,8 +193,9 @@ function blockUpdate(b) {
   exit.textContent = failed ? `✕ ${found.mark.exit}` : '✓';
   exit.classList.toggle('failed', failed);
   exit.title = failed ? `Exited with code ${found.mark.exit}` : 'Succeeded';
+  exit.hidden = !!found.foreign;
   const run = bar.querySelector('[data-act="run"]');
-  run.disabled = !shellIdle(node);
+  run.disabled = !blockIdle(node, found);
   run.title = run.disabled ? 'Something is still running in this shell' : 'Run it again';
   bar.querySelector('[data-act="send"]').hidden = !agentForPane(node);
   bar.classList.add('on');
@@ -153,7 +203,7 @@ function blockUpdate(b) {
 
 function blockAct(b, act) {
   const { node, block } = b;
-  const out = markOutput(node, commandRegion(node, block.mark));
+  const out = block.foreign || markOutput(node, commandRegion(node, block.mark));
   if (!out) return toast('That command is no longer in the scrollback', { error: true });
 
   if (act === 'command') {
@@ -166,11 +216,11 @@ function blockAct(b, act) {
     toast(`Output copied — ${out.output.length} line${out.output.length === 1 ? '' : 's'}`);
   } else if (act === 'run') {
     if (!out.command) return toast('Nothing was typed at that prompt', { error: true });
-    if (!shellIdle(node)) return toast('Something is still running in this shell', { error: true });
+    if (!blockIdle(node, block)) return toast('Something is still running in this shell', { error: true });
     // from a prompt Frost can't read, the text may still carry part of it:
     // typed out for a look rather than run blind
     api.ptyInput(node.ptyId, out.clean ? out.command + '\r' : out.command);
-    if (out.clean) node.shellBusy = true;
+    if (out.clean && !block.foreign) node.shellBusy = true;
     node.term.scrollToBottom();
     node.term.focus();
     blockHide(b);

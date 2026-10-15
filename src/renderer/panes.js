@@ -219,6 +219,11 @@ function commandRegion(node, mark) {
 // newline instead. A row filled to its last column is taken as one of those:
 // a line that happens to end exactly at the edge is rarer than one cut there.
 function bufferText(term, start, end) {
+  return bufferLines(term, start, end).map((l) => l.text);
+}
+
+// The same, each line with the row it starts on.
+function bufferLines(term, start, end) {
   const buf = term.buffer.active;
   const out = [];
   let joinNext = false;
@@ -226,12 +231,13 @@ function bufferText(term, start, end) {
     const line = buf.getLine(i);
     if (!line) continue;
     const text = line.translateToString(true);
-    if ((line.isWrapped || joinNext) && out.length) out[out.length - 1] += text;
-    else out.push(text);
+    if ((line.isWrapped || joinNext) && out.length) out[out.length - 1].text += text;
+    else out.push({ row: i, text });
     const last = line.getCell(term.cols - 1)?.getChars() || '';
     joinNext = last !== '' && last !== ' ';
   }
-  return out.map((l) => l.replace(/\s+$/, ''));
+  for (const l of out) l.text = l.text.replace(/\s+$/, '');
+  return out;
 }
 
 // A prompt drawn by a shell Frost's hooks aren't in — the far end of an ssh
