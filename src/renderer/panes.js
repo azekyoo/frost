@@ -432,8 +432,9 @@ function attachLinks(node) {
       const found = [];
       const seen = new Set();
       const consider = (raw, index, loc) => {
-        if (!raw || seen.has(index)) return;
-        seen.add(index);
+        const key = index + ':' + raw.length;
+        if (!raw || seen.has(key)) return;
+        seen.add(key);
         found.push({ raw, index, loc });
       };
 
@@ -444,22 +445,35 @@ function attachLinks(node) {
         consider(py[0], py.index, { path: py[1], line: +py[2], column: 1 });
         covered = [py.index, py.index + py[0].length];
       }
-      const token = /[^\s]+/g;
-      let m;
-      while ((m = token.exec(text))) {
-        if (covered && m.index >= covered[0] && m.index < covered[1]) continue;
-        const trimmed = trimCandidate(m[0]);
-        if (!trimmed) continue;
-        const loc = splitLocation(trimmed);
-        if (!looksLikePath(loc.path)) continue;
-        consider(trimmed, m.index + m[0].indexOf(trimmed), loc);
-      }
+      const words = [...text.matchAll(/[^\s]+/g)].map((w) => ({ index: w.index, end: w.index + w[0].length }));
+      words.forEach((w, i) => {
+        if (covered && w.index >= covered[0] && w.index < covered[1]) return;
+        // A folder name can have spaces in it (Program Files, Frost (source)),
+        // and splitting on them leaves halves no file has. So a word that
+        // starts a drive path is also tried with the next few words on; the
+        // disk decides, and the longest that exists wins below.
+        const drive = /^[('"`\[<{]*[A-Za-z]:[\\/]/.test(text.slice(w.index, w.end));
+        for (let k = i; k < Math.min(words.length, i + (drive ? 5 : 1)); k++) {
+          const span = text.slice(w.index, words[k].end);
+          const trimmed = trimCandidate(span);
+          if (!trimmed) continue;
+          const loc = splitLocation(trimmed);
+          if (!looksLikePath(loc.path)) continue;
+          consider(trimmed, w.index + span.indexOf(trimmed), loc);
+        }
+      });
       if (!found.length) return callback(undefined);
 
       api.resolvePaths(node.cwd, [...new Set(found.map((f) => f.loc.path))]).then((resolved) => {
+        // longest first, so a path with spaces claims its words before any of
+        // them can be a link of its own
+        const hits = found.filter((f) => resolved[f.loc.path]).sort((a, b) => b.raw.length - a.raw.length);
+        const taken = [];
         const links = [];
-        for (const { raw, index, loc } of found) {
-          if (!resolved[loc.path]) continue;
+        for (const { raw, index, loc } of hits) {
+          const end = index + raw.length;
+          if (taken.some(([s, e]) => index < e && end > s)) continue;
+          taken.push([index, end]);
           links.push({
             range: { start: { x: index + 1, y }, end: { x: index + raw.length, y } },
             text: raw,
