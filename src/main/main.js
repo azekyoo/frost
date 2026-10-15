@@ -3474,6 +3474,29 @@ ipcMain.handle('paths:resolve', (_e, { cwd, candidates }) => {
   return out;
 });
 
+// The picture behind an image path hovered in a terminal. Sent as a data URL
+// because the window's CSP allows no other image source — and drawn by an
+// <img>, so an SVG shows as a picture and none of its script runs.
+const PREVIEW_MIME = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.avif': 'image/avif',
+  '.svg': 'image/svg+xml'
+};
+const PREVIEW_MAX = 20 * 1024 * 1024;
+
+ipcMain.handle('image:preview', (_e, { cwd, target }) => {
+  const abs = resolveTarget(cwd, target);
+  const mime = abs && PREVIEW_MIME[path.extname(abs).toLowerCase()];
+  if (!mime) return null;
+  try {
+    const bytes = fs.statSync(abs).size;
+    if (bytes > PREVIEW_MAX) return { path: abs, bytes, tooBig: true };
+    return { path: abs, bytes, src: `data:${mime};base64,` + fs.readFileSync(abs).toString('base64') };
+  } catch {
+    return null;
+  }
+});
+
 const OS_APP_EXT = new Set([
   '.mp4', '.mov', '.mkv', '.avi', '.webm', '.wmv', '.m4v',
   '.mp3', '.wav', '.flac', '.ogg', '.m4a', '.aac',

@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('api', {
   imageFromClipboard: () => ipcRenderer.invoke('image:fromClipboard'),
   resolvePaths: (cwd, candidates) => ipcRenderer.invoke('paths:resolve', { cwd, candidates }),
   openPath: (opts) => ipcRenderer.invoke('paths:open', opts),
+  imagePreview: (opts) => ipcRenderer.invoke('image:preview', opts),
   readPath: (opts) => ipcRenderer.invoke('paths:read', opts),
   peekTree: (dir) => ipcRenderer.invoke('peek:tree', { dir }),
   peekDir: (root, rel) => ipcRenderer.invoke('peek:dir', { root, rel }),

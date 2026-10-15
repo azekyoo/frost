@@ -716,6 +716,63 @@ body.frameless #win-controls {
   font-size: 11px;
 }
 
+/* an image path under the pointer, shown as the picture it names */
+#image-card {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 300;
+  padding: 6px;
+  background: var(--ice-sheen), var(--ice-strong);
+  backdrop-filter: var(--ice-blur);
+  border-radius: 10px;
+  box-shadow: var(--ice-edge), 0 16px 40px -10px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  opacity: 0;
+  translate: 0 3px;
+  transition: opacity 0.12s var(--ease), translate 0.12s var(--ease);
+}
+
+#image-card.show {
+  opacity: 1;
+  translate: none;
+}
+
+/* a checkerboard behind, so a transparent icon shows its real edges */
+#image-card .image-card-pic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  min-height: 72px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: repeating-conic-gradient(rgba(255, 255, 255, 0.07) 0 25%, rgba(0, 0, 0, 0.12) 0 50%) 0 0 / 16px 16px;
+}
+
+#image-card img {
+  display: block;
+  max-width: 320px;
+  max-height: 240px;
+}
+
+#image-card img.pixel {
+  width: 96px;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+#image-card .image-card-foot {
+  max-width: 320px;
+  padding: 5px 4px 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+  font-family: var(--font);
+  font-size: 11px;
+}
+
 /* ---------- content / panes ---------- */
 
 #content {
