@@ -1,0 +1,63 @@
+/* The few measurements every design shares, loaded after all of them.
+
+   The design tiles are clicked to change design, so the tile under the
+   pointer must not move when the design under it changes: everything that
+   decides where the tiles sit — the settings header's height, the panel's
+   inner padding, the Design group's padding and heading, the tiles' own
+   boxes — is pinned here to Frost's measurements. Designs still restyle all
+   of it (colour, rims, radius, glow, the heading's face); they just cannot
+   resize it.
+
+   `body:is([data-design], :not([data-design]))` matches every body, Frost's
+   included, at the same weight as a design's own `body[data-design='…']`
+   selectors, and this file comes last, so it wins those ties. */
+
+/* Frost's own: 16 + a 28px close button + 12 + its 1px rule. A design's
+   larger button or title overflows the 28px line box rather than growing it. */
+body:is([data-design], :not([data-design])) .settings-header {
+  height: 57px;
+  padding-top: 16px;
+  padding-bottom: 12px;
+}
+
+body:is([data-design], :not([data-design])) .settings-body {
+  padding-top: 12px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+body:is([data-design], :not([data-design])) .design-group {
+  padding: 13px 13px 14px;
+  gap: 12px;
+}
+
+/* a fixed line box, whatever size or face a design gives the heading */
+body:is([data-design], :not([data-design])) .design-group h3 {
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  line-height: 14px;
+}
+
+body:is([data-design], :not([data-design])) .design-tiles {
+  gap: 8px;
+}
+
+body:is([data-design], :not([data-design])) .design-tile {
+  padding: 6px 6px 8px;
+  gap: 7px;
+  margin: 0;
+}
+
+body:is([data-design], :not([data-design])) .design-tile .design-swatch {
+  height: 54px;
+  margin: 0;
+}
+
+body:is([data-design], :not([data-design])) .design-tile > span:last-child {
+  height: 16px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

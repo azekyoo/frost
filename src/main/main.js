@@ -76,6 +76,9 @@ const DEFAULT_KEYS = {
 };
 
 const DEFAULT_THEME = {
+  // The look of everything around the terminal: 'frost', 'liquid', 'aurora' or
+  // 'graphite'. Pure CSS (src/renderer/designs/), so it switches live.
+  design: 'frost',
   material: 'glass',
   colorMode: 'dark',
   glassBlur: 33,

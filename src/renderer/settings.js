@@ -28,7 +28,6 @@ const s = {
   tintColor: document.getElementById('s-tint-color'),
   tintAlpha: document.getElementById('s-tint-alpha'),
   tintAlphaVal: document.getElementById('s-tint-alpha-val'),
-  accent: document.getElementById('s-accent'),
   fontFamily: document.getElementById('s-font-family'),
   fontSize: document.getElementById('s-font-size'),
   fontSizeVal: document.getElementById('s-font-size-val'),
@@ -185,7 +184,7 @@ function syncSettingsUI() {
   s.tintColor.value = tint.hex;
   s.tintAlpha.value = Math.round(tint.alpha * 100);
   s.tintAlphaVal.textContent = Math.round(tint.alpha * 100) + '%';
-  s.accent.value = t.accent || '#7aa2f7';
+  syncAccent(t);
   const fam = (t.font?.family || '').split(',')[0].replace(/"/g, '').trim();
   if (fam && ![...s.fontFamily.options].some((o) => o.value === fam)) {
     const o = document.createElement('option');
@@ -213,7 +212,64 @@ function syncSettingsUI() {
   s.updateCheck.checked = t.update?.check !== false;
   s.updateDownload.checked = t.update?.download !== false;
   s.updateDownload.disabled = !s.updateCheck.checked;
+  const design = DESIGNS.includes(t.design) ? t.design : 'frost';
+  for (const tile of designTiles) tile.classList.toggle('active', tile.dataset.design === design);
   syncing = false;
+}
+
+// ---------- accent ----------
+// One per design. Frost's is theme.accent; each of the others is unset until
+// picked here, which is what lets it show its own colour until then. Kept out
+// of `s`, so a change elsewhere in the panel never copies the colour on show
+// into a design that was only displaying its default.
+
+const FROST_ACCENT = '#80a8ff'; // DEFAULT_THEME.accent in main.js
+const accentInput = document.getElementById('s-accent');
+const accentReset = document.getElementById('s-accent-reset');
+
+function activeDesign(t) {
+  return DESIGNS.includes(t.design) ? t.design : 'frost';
+}
+
+function syncAccent(t) {
+  const design = activeDesign(t);
+  const own = design === 'frost' ? t.accent : t.accents?.[design];
+  // with nothing picked, the design's signature, read off the page it styles
+  const shown = own || getComputedStyle(document.body).getPropertyValue('--accent').trim();
+  accentInput.value = /^#[0-9a-f]{6}$/i.test(shown) ? shown : FROST_ACCENT;
+  accentReset.hidden = design === 'frost' ? !own || own.toLowerCase() === FROST_ACCENT : !own;
+}
+
+accentInput.addEventListener('input', () => {
+  const t = state.theme;
+  if (syncing || !t) return;
+  const design = activeDesign(t);
+  if (design === 'frost') t.accent = accentInput.value;
+  else t.accents = { ...(t.accents || {}), [design]: accentInput.value };
+  applyTheme(t, undefined);
+  saveTheme();
+});
+
+accentReset.addEventListener('click', () => {
+  const t = state.theme;
+  if (!t) return;
+  const design = activeDesign(t);
+  if (design === 'frost') t.accent = FROST_ACCENT;
+  else if (t.accents) delete t.accents[design];
+  applyTheme(t, undefined);
+  saveTheme();
+});
+
+// The design tiles sit outside `s`: a click is the whole change, with no value
+// to read back off a control.
+const designTiles = [...document.querySelectorAll('.design-tile')];
+for (const tile of designTiles) {
+  tile.addEventListener('click', () => {
+    if (!state.theme || state.theme.design === tile.dataset.design) return;
+    state.theme.design = tile.dataset.design;
+    applyTheme(state.theme, undefined);
+    saveTheme();
+  });
 }
 
 const saveTheme = debounce(() => {
@@ -248,7 +304,6 @@ function onSettingChange() {
   t.startDir = s.startDir.value.trim();
   t.editor = s.editor.value.trim();
   t.tint = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  t.accent = s.accent.value;
   t.font = t.font || {};
   if (s.fontFamily.value) t.font.family = `"${s.fontFamily.value}", Consolas, monospace`;
   t.font.size = +s.fontSize.value;

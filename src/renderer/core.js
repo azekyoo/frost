@@ -213,6 +213,10 @@ function scrollbackFor(theme) {
   return Math.min(SCROLLBACK_MAX, Math.max(SCROLLBACK_MIN, Math.round(asked)));
 }
 
+// The designs Settings offers, in the order it shows them; 'frost' is the
+// default and the only one without a stylesheet of its own.
+const DESIGNS = ['frost', 'liquid', 'aurora', 'graphite'];
+
 function applyTheme(theme, css) {
   if (!theme) return;
   state.theme = theme;
@@ -239,6 +243,22 @@ function applyTheme(theme, css) {
   // chosen just exposes a see-through window and makes the change look applied
   // when nothing has been applied at all.
   document.body.classList.toggle('glass', glassState.active);
+  // Frost is the stylesheet itself; any other design is a layer over it, keyed
+  // to this attribute, so a switch is instant and needs nothing rebuilt.
+  const design = DESIGNS.includes(theme.design) ? theme.design : 'frost';
+  if (design === 'frost') delete document.body.dataset.design;
+  else document.body.dataset.design = design;
+  // Each of the other designs keeps an accent of its own, unset until picked:
+  // set on the body, it sits over the design's signature colour, and taking it
+  // away falls straight back to that. Frost's is theme.accent, on the root.
+  const own = design === 'frost' ? null : theme.accents?.[design];
+  if (/^#[0-9a-f]{6}$/i.test(own || '')) {
+    document.body.style.setProperty('--accent', own);
+    document.body.dataset.customAccent = '';
+  } else {
+    document.body.style.removeProperty('--accent');
+    delete document.body.dataset.customAccent;
+  }
   if (typeof css === 'string') el.customCss.textContent = css;
 
   for (const node of panesByPty.values()) {

@@ -1659,6 +1659,14 @@ body.frameless #win-controls {
 }
 
 
+/* hooks the other designs show; Frost says the state with the dot and the
+   meta line, and has no counts */
+.agent-state,
+.rail-count,
+#design-fx {
+  display: none;
+}
+
 .agent-meta {
   grid-column: 2;
   font-size: 10.5px;
@@ -3008,6 +3016,161 @@ body.frameless #win-controls {
    !important because the value is set inline, on every span, every frame. */
 body.ligatures .xterm-rows span {
   letter-spacing: 0 !important;
+}
+
+/* puts the design's own accent back; only there once one has been picked */
+.accent-reset {
+  border: none;
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: var(--surface-2);
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.accent-reset:hover {
+  background: var(--surface-3);
+  color: var(--fg);
+}
+
+.accent-reset[hidden] {
+  display: none;
+}
+
+/* ---------- design picker ---------- */
+/* One tile per design, each with a small swatch drawn in that design's own
+   colours whatever design is on, so the choice can be seen before it is made. */
+
+.design-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.design-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 6px 6px 8px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), box-shadow 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.design-tile > span:last-child {
+  padding: 0 4px;
+}
+
+.design-tile:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.design-tile.active {
+  color: var(--fg);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 14px -4px var(--accent-glow);
+}
+
+/* a window in miniature: a titlebar strip, a lit tab, a screen */
+.design-swatch {
+  position: relative;
+  display: block;
+  height: 54px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #3a2a63, #12304d 60%, #0d2236);
+}
+
+.design-swatch::before,
+.design-swatch::after {
+  content: '';
+  position: absolute;
+}
+
+/* the lit tab */
+.design-swatch::before {
+  left: 8px;
+  top: 7px;
+  width: 30px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+/* the screen */
+.design-swatch::after {
+  left: 6px;
+  right: 6px;
+  top: 21px;
+  bottom: 6px;
+  border-radius: 4px;
+}
+
+.design-tile[data-design='frost'] .design-swatch::before {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 -2px 0 #80a8ff;
+}
+
+.design-tile[data-design='frost'] .design-swatch::after {
+  background: rgba(10, 12, 20, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.design-tile[data-design='liquid'] .design-swatch::before {
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.25));
+}
+
+.design-tile[data-design='liquid'] .design-swatch::after {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.design-tile[data-design='aurora'] .design-swatch {
+  background: radial-gradient(60% 80% at 10% 10%, rgba(94, 234, 212, 0.45), transparent),
+    radial-gradient(60% 80% at 95% 100%, rgba(167, 139, 250, 0.55), transparent), #080a18;
+}
+
+.design-tile[data-design='aurora'] .design-swatch::before {
+  height: 2px;
+  top: 14px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #5eead4, #a78bfa);
+  box-shadow: 0 0 6px rgba(150, 170, 255, 0.9);
+}
+
+.design-tile[data-design='aurora'] .design-swatch::after {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(160, 180, 255, 0.2);
+}
+
+.design-tile[data-design='graphite'] .design-swatch {
+  background: #1b1b1e;
+}
+
+.design-tile[data-design='graphite'] .design-swatch::before {
+  top: 12px;
+  height: 9px;
+  border-radius: 3px 3px 0 0;
+  background: #0f0f11;
+  box-shadow: inset 2px 0 0 #ff6a2b;
+}
+
+.design-tile[data-design='graphite'] .design-swatch::after {
+  border-radius: 0 4px 4px 4px;
+  background: #0f0f11;
+  box-shadow: inset 0 0 0 1px rgba(255, 106, 43, 0.35);
 }
 
 /* ---------- scrollbars ---------- */

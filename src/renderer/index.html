@@ -6,6 +6,13 @@
   <title>Frost</title>
   <link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css" />
   <link rel="stylesheet" href="style.css" />
+  <!-- the other designs: each is scoped to body[data-design="…"] and does
+       nothing until picked in Settings -->
+  <link rel="stylesheet" href="designs/liquid.css" />
+  <link rel="stylesheet" href="designs/aurora.css" />
+  <link rel="stylesheet" href="designs/graphite.css" />
+  <!-- after every design: pins the measurements they all share -->
+  <link rel="stylesheet" href="designs/layout-lock.css" />
   <style id="custom-css"></style>
 </head>
 <body>
@@ -14,6 +21,9 @@
   </div>
   <div id="glass-bg"></div>
   <div id="glass-tint"></div>
+  <!-- light a design paints behind the whole window (Aurora's blooms); empty
+       and hidden in Frost -->
+  <div id="design-fx"></div>
   <div id="titlebar">
     <div id="tabstrip"></div>
     <!-- One capsule: the + and the shell picker are the same action, asked two
@@ -49,6 +59,22 @@
       <button id="btn-settings-close" title="Close"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>
     </div>
     <div class="settings-body">
+      <div class="group design-group">
+        <h3>Design</h3>
+        <div class="design-tiles">
+          <button type="button" class="design-tile" data-design="frost"><span class="design-swatch"></span><span>Frost</span></button>
+          <button type="button" class="design-tile" data-design="liquid"><span class="design-swatch"></span><span>Liquid Glass</span></button>
+          <button type="button" class="design-tile" data-design="aurora"><span class="design-swatch"></span><span>Aurora Night</span></button>
+          <button type="button" class="design-tile" data-design="graphite"><span class="design-swatch"></span><span>Graphite Studio</span></button>
+        </div>
+        <p class="hint">
+          The look of everything around the terminal, switched live. Tint, blur,
+          font and the terminal's own colours stay yours in every design. Each
+          design remembers its own accent: the picker below changes the one in
+          use, and Reset puts its own colour back.
+        </p>
+      </div>
+
       <div class="group">
         <h3>Backdrop</h3>
 
@@ -89,7 +115,7 @@
             <input type="color" id="s-tint-color" />
           </label>
           <label class="field">
-            <span>Accent</span>
+            <span>Accent <button type="button" id="s-accent-reset" class="accent-reset" hidden>Reset</button></span>
             <input type="color" id="s-accent" />
           </label>
         </div>

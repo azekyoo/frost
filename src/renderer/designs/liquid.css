@@ -1,0 +1,1456 @@
+/* ==========================================================================
+   Liquid Glass
+   Bright frosted glass with thick, shiny rims: every control a capsule or a
+   circle, every panel a slab of glass with light caught along its top edge.
+   A layer over style.css, live only while body[data-design='liquid'].
+   ========================================================================== */
+
+body[data-design='liquid'] {
+  /* its own blue: the design is the colour as much as the shape */
+  --accent: #4ea1ff;
+  --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-mid: color-mix(in srgb, var(--accent) 50%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 60%, transparent);
+
+  /* the accent's family: lighter and darker tones of it for the glass
+     gradients, a pale tint for text, a deep one for shadows. Signature values
+     here; recomputed from a custom accent at the end of this file. */
+  --lq-a-hi: #74b8ff;
+  --lq-a-hi2: #8ac4ff;
+  --lq-a-lo: #2f7bff;
+  --lq-a-lo2: #448bff;
+  --lq-a-tint: #bfe0ff;
+  --lq-a-deep: #002878;
+
+  --hairline: rgba(255, 255, 255, 0.14);
+  --hairline-strong: rgba(255, 255, 255, 0.22);
+  --surface-1: rgba(255, 255, 255, 0.07);
+  --surface-2: rgba(255, 255, 255, 0.13);
+  --surface-3: rgba(255, 255, 255, 0.2);
+
+  /* The material: lighter and clearer than Frost's smoke, with a rim that is
+     bright along the top, softer down the sides and lit again at the foot —
+     the way a thick pane of glass catches a room's light on both edges. */
+  --ice: rgba(46, 52, 78, 0.5);
+  --ice-strong: rgba(36, 42, 66, 0.66);
+  --ice-blur: blur(calc(34px / var(--ui-zoom, 1))) saturate(1.9);
+  --ice-edge: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+  --ice-lift: 0 26px 60px -16px rgba(0, 0, 0, 0.55), 0 4px 14px -4px rgba(0, 0, 0, 0.3);
+  --ice-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0.06));
+
+  /* a lifted piece: brighter glass, its rim lit */
+  --raised: linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14));
+  --raised-edge: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 6px 16px -6px rgba(0, 0, 0, 0.4);
+
+  /* the glass key every button is cut from */
+  --lq-key: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.07));
+  --lq-key-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12));
+  --lq-rim: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset 0 -6px 12px -8px rgba(255, 255, 255, 0.28);
+  --lq-key-lift: 0 8px 20px -10px rgba(0, 0, 0, 0.5);
+  /* the blue key: the one action in a group worth pressing */
+  --lq-primary: linear-gradient(180deg, var(--lq-a-hi), var(--lq-a-lo));
+  --lq-primary-hover: linear-gradient(180deg, var(--lq-a-hi2), var(--lq-a-lo2));
+  --lq-primary-rim: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 -8px 14px -10px rgba(255, 255, 255, 0.6),
+    0 10px 24px -10px var(--lq-a-lo);
+  /* a screen: the darker glass a terminal or code is read off */
+  --lq-screen: rgba(10, 14, 30, 0.42);
+  --lq-screen-rim: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    inset 0 2px 30px rgba(0, 0, 0, 0.22);
+  /* a well: a recess in the glass for inputs and tracks */
+  --lq-well: rgba(0, 0, 0, 0.2);
+  --lq-well-rim: inset 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* ---------- window ---------- */
+
+/* the edge is a bright rim of glass, not a thin line */
+body[data-design='liquid'].glass::after {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+body[data-design='liquid'].glass.win-focused::after {
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+body[data-design='liquid'].glass::before {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45) 25%, rgba(255, 255, 255, 0.7) 50%,
+      rgba(255, 255, 255, 0.45) 75%, transparent);
+}
+
+/* ---------- titlebar ---------- */
+
+/* The row sits low in the bar: a rimmed capsule centred in 44px is only 6px
+   from the window's edge, which reads as touching it. Dropped to the foot,
+   it has 10px of air above and the panels' own gap below. */
+body[data-design='liquid'] #titlebar {
+  gap: 8px;
+  padding-left: 12px;
+  align-items: flex-end;
+  padding-bottom: 2px;
+}
+
+/* the window buttons still fill the bar's full height */
+body[data-design='liquid'] #win-controls {
+  align-self: stretch;
+  margin-bottom: -2px;
+}
+
+body[data-design='liquid'] #titlebar::after {
+  display: none;
+}
+
+/* Every tab sits in one floating capsule of glass; the lit tab is a brighter
+   pill inside it. */
+/* 32px in the 44px bar: clear air above and below, so the capsule floats
+   rather than resting on the window's top edge */
+body[data-design='liquid'] #tabstrip {
+  height: 32px;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 999px;
+  background: var(--lq-key);
+  backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: var(--lq-rim), var(--lq-key-lift);
+}
+
+body[data-design='liquid'] .tab {
+  height: 26px;
+  min-width: 132px;
+  padding: 0 4px 0 14px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body[data-design='liquid'] .tab + .tab::before {
+  display: none;
+}
+
+body[data-design='liquid'] .tab:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+body[data-design='liquid'] .tab.active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.16));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 0 0 1px rgba(255, 255, 255, 0.32),
+    inset 0 -6px 10px -8px rgba(255, 255, 255, 0.5), 0 4px 12px -4px rgba(0, 0, 0, 0.4);
+  color: #fff;
+}
+
+/* the pill itself says which tab is lit; no strip of light under it */
+body[data-design='liquid'] .tab.active::after {
+  display: none;
+}
+
+body[data-design='liquid'] .tab .title {
+  line-height: 26px;
+  font-size: 13px;
+}
+
+body[data-design='liquid'] .tab.active .title {
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+body[data-design='liquid'] .tab .close {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+body[data-design='liquid'] .tab .close:hover {
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+body[data-design='liquid'] .tab .tab-zoom {
+  border-radius: 999px;
+  padding: 0 6px;
+  color: #fff;
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+body[data-design='liquid'] .tab-rename {
+  height: 24px;
+  border-radius: 999px;
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  padding: 0 10px;
+}
+
+/* the +▾ pair: one capsule, always visible */
+body[data-design='liquid'] .tb-group {
+  height: 32px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--lq-key);
+  backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: var(--lq-rim), var(--lq-key-lift);
+}
+
+body[data-design='liquid'] .tb-group:hover {
+  background: var(--lq-key-hover);
+  box-shadow: var(--lq-rim), var(--lq-key-lift);
+}
+
+/* the round glass keys */
+body[data-design='liquid'] #btn-newtab,
+body[data-design='liquid'] #btn-newtab-menu,
+body[data-design='liquid'] #btn-agents,
+body[data-design='liquid'] #btn-settings {
+  height: 28px;
+  color: #fff;
+}
+
+body[data-design='liquid'] #btn-newtab {
+  width: 34px;
+  border-radius: 999px 6px 6px 999px;
+}
+
+body[data-design='liquid'] #btn-newtab-menu {
+  width: 24px;
+  border-radius: 6px 999px 999px 6px;
+}
+
+body[data-design='liquid'] #btn-newtab:hover,
+body[data-design='liquid'] #btn-newtab-menu:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+body[data-design='liquid'] #btn-agents,
+body[data-design='liquid'] #btn-settings {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--lq-key);
+  backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: var(--lq-rim), var(--lq-key-lift);
+}
+
+body[data-design='liquid'] #btn-agents:hover,
+body[data-design='liquid'] #btn-settings:hover {
+  background: var(--lq-key-hover);
+  color: #fff;
+}
+
+body[data-design='liquid'] #btn-agents {
+  color: var(--lq-a-tint);
+}
+
+body[data-design='liquid'] #btn-agents svg {
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+}
+
+body[data-design='liquid'] #btn-settings {
+  margin-right: 6px;
+}
+
+/* lit while its panel is out */
+body[data-design='liquid']:has(#settings.open) #btn-settings {
+  background: var(--lq-primary);
+  box-shadow: var(--lq-primary-rim);
+}
+
+/* window buttons: soft glass, the close one a red drop */
+body[data-design='liquid'] #win-controls button {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+body[data-design='liquid'] #win-controls button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+body[data-design='liquid'] #btn-close:hover {
+  background: linear-gradient(180deg, #ff6b6b, #e5383b) !important;
+}
+
+/* ---------- panes ---------- */
+
+body[data-design='liquid'] #content {
+  padding: 8px 12px 12px;
+}
+
+body[data-design='liquid'] .split.row > .divider {
+  width: 12px;
+}
+
+body[data-design='liquid'] .split.col > .divider {
+  height: 12px;
+}
+
+/* Every terminal is read off a slab of darker glass, rimmed with light: very
+   round, the user's corner radius plus the design's own. */
+body[data-design='liquid'] .pane {
+  border-radius: calc(var(--radius) + 10px);
+  background: var(--lq-screen);
+  box-shadow: var(--lq-screen-rim);
+  border-color: transparent;
+}
+
+body[data-design='liquid'] .split .pane,
+body[data-design='liquid'] .agents-center .pane {
+  background: var(--lq-screen);
+  border-color: transparent;
+}
+
+body[data-design='liquid'] .split .pane.focused,
+body[data-design='liquid'] .agents-center .pane.focused {
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: var(--lq-screen-rim), 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 30px -6px var(--accent-glow);
+}
+
+body[data-design='liquid'] .tab-content > .pane.focused {
+  border-color: transparent;
+  box-shadow: var(--lq-screen-rim);
+}
+
+body[data-design='liquid'] .pane.drop-over {
+  border-color: rgba(255, 255, 255, 0.6) !important;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: var(--lq-screen-rim), 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), 0 0 30px -6px var(--accent-glow) !important;
+}
+
+/* a drag grip: a little bar of glass */
+body[data-design='liquid'] .divider::after {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+body[data-design='liquid'] .split.row > .divider::after {
+  width: 4px;
+}
+
+body[data-design='liquid'] .split.col > .divider::after {
+  height: 4px;
+}
+
+body[data-design='liquid'] .divider:hover::after,
+body[data-design='liquid'] .divider.dragging::after {
+  background: linear-gradient(180deg, #fff, var(--accent));
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* ---------- buffer search ---------- */
+
+body[data-design='liquid'] .pane-search {
+  border-radius: 999px;
+  padding: 4px;
+  background: var(--ice-sheen), var(--ice-strong);
+  box-shadow: var(--ice-edge), var(--ice-lift);
+}
+
+body[data-design='liquid'] .pane-search-input {
+  border-radius: 999px;
+  height: 28px;
+  border: none;
+  background-color: var(--lq-well);
+  box-shadow: var(--lq-well-rim);
+  padding: 0 10px 0 28px;
+}
+
+body[data-design='liquid'] .pane-search-input:focus {
+  box-shadow: var(--lq-well-rim), 0 0 0 2px var(--accent-mid), 0 0 14px -2px var(--accent-glow);
+}
+
+body[data-design='liquid'] .pane-search button {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
+body[data-design='liquid'] .pane-search button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+body[data-design='liquid'] .pane-search button.pane-search-toggle.on {
+  border-color: transparent;
+  background: var(--lq-primary);
+  box-shadow: var(--lq-primary-rim);
+  color: #fff;
+}
+
+/* ---------- command blocks ---------- */
+
+body[data-design='liquid'] .cmd-band {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--band) 8%, rgba(255, 255, 255, 0.03));
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--band) 85%, transparent),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14), 0 0 20px -8px color-mix(in srgb, var(--band) 60%, transparent);
+}
+
+body[data-design='liquid'] .cmd-bar {
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--ice-sheen), var(--ice-strong);
+  box-shadow: var(--ice-edge), var(--ice-lift);
+}
+
+body[data-design='liquid'] .cmd-bar button {
+  border-radius: 999px;
+  padding: 5px 10px 5px 8px;
+}
+
+body[data-design='liquid'] .cmd-bar button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+body[data-design='liquid'] .cmd-exit {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--st-done) 18%, transparent);
+}
+
+body[data-design='liquid'] .cmd-exit.failed {
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+}
+
+/* ---------- menus, tooltips, image card ---------- */
+
+body[data-design='liquid'] .menu {
+  padding: 6px;
+  border-radius: 20px;
+  background: var(--ice-sheen), var(--ice-strong);
+}
+
+body[data-design='liquid'] .menu-item {
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #fff;
+}
+
+body[data-design='liquid'] .menu-item:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+body[data-design='liquid'] .menu-item:disabled {
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-design='liquid'] .menu-sep {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* keycaps: little glass pills */
+body[data-design='liquid'] .menu-item em,
+body[data-design='liquid'] .palette-item em {
+  border-radius: 999px;
+  padding: 3px 8px 4px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+body[data-design='liquid'] #tooltip {
+  border-radius: 14px;
+  padding: 7px 12px 8px;
+  background: var(--ice-sheen), var(--ice-strong);
+  color: #fff;
+}
+
+body[data-design='liquid'] #image-card {
+  border-radius: 18px;
+  padding: 7px;
+  background: var(--ice-sheen), var(--ice-strong);
+}
+
+body[data-design='liquid'] #image-card .image-card-pic {
+  border-radius: 12px;
+}
+
+/* ---------- agent mode ---------- */
+
+body[data-design='liquid'] .agents-layout {
+  gap: 0;
+}
+
+body[data-design='liquid'] .agents-gutter::after,
+body[data-design='liquid'] .agents-dock-gutter::after {
+  border-radius: 999px;
+}
+
+body[data-design='liquid'] .agents-gutter:hover::after,
+body[data-design='liquid'] .agents-gutter.dragging::after,
+body[data-design='liquid'] .agents-dock-gutter:hover::after,
+body[data-design='liquid'] .agents-dock-gutter.dragging::after {
+  background: linear-gradient(180deg, #fff, var(--accent));
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+/* the side panels are slabs of the bright glass */
+body[data-design='liquid'] .agents-rail,
+body[data-design='liquid'] .agents-diff,
+body[data-design='liquid'] .agents-dock {
+  border-radius: calc(var(--radius) + 10px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.06));
+  backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: var(--lq-rim), 0 18px 40px -20px rgba(0, 0, 0, 0.55);
+  color: #fff;
+}
+
+body[data-design='liquid'] .agents-rail {
+  padding: 14px;
+  gap: 6px;
+}
+
+body[data-design='liquid'] .rail-section + .rail-section {
+  border-top-color: rgba(255, 255, 255, 0.14);
+  padding-top: 14px;
+}
+
+body[data-design='liquid'] .rail-head h4,
+body[data-design='liquid'] .diff-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--ui-font-display);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.005em;
+  color: #fff;
+}
+
+body[data-design='liquid'] .rail-count {
+  display: inline-block;
+  min-width: 20px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  font-family: var(--ui-font);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+body[data-design='liquid'] .rail-count:empty {
+  display: none;
+}
+
+/* the rail's one primary action: the blue glass pill */
+body[data-design='liquid'] .rail-new {
+  height: 42px;
+  padding: 0 14px;
+  margin-bottom: 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--lq-primary);
+  box-shadow: var(--lq-primary-rim);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--lq-a-deep) 35%, transparent);
+}
+
+body[data-design='liquid'] .rail-new:hover {
+  background: var(--lq-primary-hover);
+  border-color: transparent;
+  box-shadow: var(--lq-primary-rim), 0 0 22px -6px var(--lq-a-lo);
+}
+
+body[data-design='liquid'] .rail-refresh {
+  border: none;
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--lq-key);
+  box-shadow: var(--lq-rim);
+  color: #fff;
+}
+
+body[data-design='liquid'] .rail-refresh:hover {
+  background: var(--lq-key-hover);
+  color: #fff;
+}
+
+body[data-design='liquid'] .agents-list,
+body[data-design='liquid'] .sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+body[data-design='liquid'] .sessions-list {
+  gap: 2px;
+}
+
+/* Each agent is a card of glass: name, its state on a chip, where it runs
+   beneath. The one on screen is the brighter, lifted card. */
+body[data-design='liquid'] .agent-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  row-gap: 4px;
+  padding: 11px 12px;
+  border-radius: 16px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+body[data-design='liquid'] .agent-row:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+body[data-design='liquid'] .agent-row.selected {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+    0 8px 20px -10px rgba(0, 0, 0, 0.5);
+}
+
+body[data-design='liquid'] .agent-row.selected::before {
+  display: none;
+}
+
+body[data-design='liquid'] .agent-name {
+  font-weight: 600;
+}
+
+body[data-design='liquid'] .agent-dot {
+  width: 9px;
+  height: 9px;
+}
+
+body[data-design='liquid'] .agent-state {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+body[data-design='liquid'] .agent-row[data-status='working'] .agent-state {
+  color: #d6e9ff;
+  background: rgba(88, 166, 255, 0.32);
+}
+
+body[data-design='liquid'] .agent-row[data-status='blocked'] .agent-state {
+  color: #ffe2bd;
+  background: rgba(255, 160, 70, 0.34);
+}
+
+body[data-design='liquid'] .agent-row[data-status='done'] .agent-state {
+  color: #c9f7d4;
+  background: rgba(63, 185, 80, 0.32);
+}
+
+body[data-design='liquid'] .agent-row[data-status='idle'] .agent-state,
+body[data-design='liquid'] .agent-row[data-status='exited'] .agent-state {
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+body[data-design='liquid'] .agent-meta {
+  grid-column: 2 / -1;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* the chip says the state, so the meta line no longer has to */
+body[data-design='liquid'] .meta-st {
+  display: none;
+}
+
+/* closed sessions: plain rows under the cards, so the live ones stand out */
+body[data-design='liquid'] .agent-row.dormant {
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-design='liquid'] .agent-row.dormant:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+body[data-design='liquid'] .agents-layout .hint {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+body[data-design='liquid'] .agents-empty {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+body[data-design='liquid'] .agents-empty::before {
+  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  line-height: 52px;
+  color: #fff;
+  background: var(--lq-primary);
+  box-shadow: var(--lq-primary-rim), 0 0 34px -6px var(--lq-a-lo);
+  text-shadow: 0 1px 2px color-mix(in srgb, var(--lq-a-deep) 40%, transparent);
+}
+
+body[data-design='liquid'] .agents-empty b {
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* ---------- shell dock ---------- */
+
+body[data-design='liquid'] .agents-dock:focus-within {
+  box-shadow: var(--lq-rim), 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 30px -6px var(--accent-glow);
+}
+
+body[data-design='liquid'] .dock-head {
+  padding: 7px 8px 7px 14px;
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+
+body[data-design='liquid'] .dock-title {
+  font-size: 12px;
+  color: #fff;
+}
+
+body[data-design='liquid'] .dock-body {
+  margin: 0 6px 6px;
+  border-radius: calc(var(--radius) + 4px);
+  overflow: hidden;
+  background: var(--lq-screen);
+  box-shadow: var(--lq-screen-rim);
+}
+
+body[data-design='liquid'] .dock-body .pane {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+body[data-design='liquid'] .dock-close {
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+body[data-design='liquid'] .dock-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  color: #fff;
+}
+
+/* ---------- glass keys: every small button in the panels ---------- */
+
+body[data-design='liquid'] .diff-tools button,
+body[data-design='liquid'] .dock-send,
+body[data-design='liquid'] .peek-btn {
+  border-radius: 999px;
+  background: var(--lq-key);
+  box-shadow: var(--lq-rim);
+  color: #fff;
+}
+
+body[data-design='liquid'] .diff-tools button {
+  padding: 6px 11px 6px 9px;
+}
+
+body[data-design='liquid'] .dock-send {
+  padding: 5px 11px 5px 9px;
+}
+
+body[data-design='liquid'] .diff-tools button:hover,
+body[data-design='liquid'] .dock-send:hover,
+body[data-design='liquid'] .peek-btn:hover:not(:disabled) {
+  background: var(--lq-key-hover);
+  box-shadow: var(--lq-rim), 0 0 16px -4px rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+body[data-design='liquid'] .diff-tools button:hover svg,
+body[data-design='liquid'] .peek-btn:hover:not(:disabled) svg {
+  color: #fff;
+}
+
+/* the lit keys: the blue glass */
+body[data-design='liquid'] .diff-tools .diff-send,
+body[data-design='liquid'] .diff-tools button.on,
+body[data-design='liquid'] .dock-send.selection,
+body[data-design='liquid'] .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab,
+body[data-design='liquid'] .peek-home {
+  background: var(--lq-primary);
+  box-shadow: var(--lq-primary-rim);
+  color: #fff;
+}
+
+body[data-design='liquid'] .diff-tools .diff-send:hover,
+body[data-design='liquid'] .peek-home:hover:not(:disabled) {
+  background: var(--lq-primary-hover);
+  box-shadow: var(--lq-primary-rim);
+}
+
+body[data-design='liquid'] .dock-send.failed {
+  background: linear-gradient(180deg, #ff7b7b, #e5383b);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -8px 14px -10px rgba(255, 255, 255, 0.5),
+    0 10px 22px -10px #e5383b;
+  color: #fff;
+}
+
+/* ---------- diff ---------- */
+
+body[data-design='liquid'] .diff-head {
+  padding: 12px 12px 10px 16px;
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+/* segmented control: a recessed capsule, the chosen one a glass pill */
+body[data-design='liquid'] .diff-toggle,
+body[data-design='liquid'] .peek-modes {
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--lq-well);
+  box-shadow: var(--lq-well-rim);
+}
+
+body[data-design='liquid'] .diff-toggle button,
+body[data-design='liquid'] .peek-mode {
+  border-radius: 999px;
+  padding: 4px 11px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+body[data-design='liquid'] .diff-toggle button.active,
+body[data-design='liquid'] .peek-mode.active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.15));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 2px 6px -2px rgba(0, 0, 0, 0.35);
+  color: #fff;
+}
+
+body[data-design='liquid'] .diff-sub,
+body[data-design='liquid'] .diff-repos {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+body[data-design='liquid'] .diff-summary .add,
+body[data-design='liquid'] .df-stat .add {
+  color: #7ff0b0;
+}
+
+body[data-design='liquid'] .diff-summary .del,
+body[data-design='liquid'] .df-stat .del {
+  color: #ff9aa6;
+}
+
+body[data-design='liquid'] .diff-repo {
+  border-color: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+body[data-design='liquid'] .diff-repo.active {
+  border-color: transparent;
+  background: var(--lq-primary);
+  box-shadow: var(--lq-primary-rim);
+  color: #fff;
+}
+
+body[data-design='liquid'] .diff-body {
+  padding: 0 10px 10px;
+}
+
+body[data-design='liquid'] .diff-body > .diff-file:first-child {
+  margin-top: 10px;
+}
+
+/* each file: a dark glass card, its header a band of brighter glass */
+body[data-design='liquid'] .diff-file {
+  margin-bottom: 10px;
+  border-radius: 16px;
+  background: rgba(8, 12, 26, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.13), 0 8px 20px -12px rgba(0, 0, 0, 0.5);
+}
+
+body[data-design='liquid'] .diff-file-head {
+  padding: 9px 12px;
+  font-size: 12.5px;
+  border-radius: 16px 16px 0 0;
+  background: rgba(70, 80, 120, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px) saturate(1.6);
+}
+
+body[data-design='liquid'] .diff-file.collapsed .diff-file-head {
+  border-radius: 16px;
+}
+
+body[data-design='liquid'] .diff-file-head:hover {
+  background: rgba(90, 100, 145, 0.6);
+}
+
+body[data-design='liquid'] .diff-file-body {
+  border-radius: 0 0 16px 16px;
+}
+
+body[data-design='liquid'] .df-badge {
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  border-radius: 6px;
+  font-size: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+body[data-design='liquid'] .df-badge.renamed {
+  background: #ffc94d;
+}
+
+body[data-design='liquid'] .diff-line.add {
+  background: rgba(80, 230, 150, 0.15);
+  box-shadow: inset 2px 0 0 rgba(80, 230, 150, 0.8);
+  color: #a6f5c8;
+}
+
+body[data-design='liquid'] .diff-line.del {
+  background: rgba(255, 90, 110, 0.15);
+  box-shadow: inset 2px 0 0 rgba(255, 90, 110, 0.8);
+  color: #ffb3bd;
+}
+
+body[data-design='liquid'] .diff-line.hunk {
+  margin: 4px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--lq-a-tint);
+}
+
+body[data-design='liquid'] .dl-comment {
+  border-radius: 50%;
+  background: var(--lq-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 0 10px -2px var(--lq-a-lo);
+  color: #fff;
+}
+
+body[data-design='liquid'] .diff-note {
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+body[data-design='liquid'] .diff-note textarea {
+  border: none;
+  border-radius: 10px;
+  background: var(--lq-well);
+  box-shadow: var(--lq-well-rim);
+}
+
+body[data-design='liquid'] .diff-note textarea:focus {
+  box-shadow: var(--lq-well-rim), 0 0 0 2px var(--accent-mid);
+}
+
+body[data-design='liquid'] .dn-bar button {
+  border-radius: 999px;
+  padding: 4px 11px;
+  background: var(--lq-key);
+  box-shadow: var(--lq-rim);
+}
+
+body[data-design='liquid'] .dn-bar button.primary {
+  background: var(--lq-primary);
+  box-shadow: var(--lq-primary-rim);
+}
+
+body[data-design='liquid'] .diff-more {
+  border-top-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+body[data-design='liquid'] .diff-more:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+/* ---------- settings ---------- */
+
+/* Frost's size and place: the panel is the same object in every design, so
+   switching while it is open restyles it without moving it. */
+body[data-design='liquid'] #settings {
+  border-radius: 28px;
+  background: var(--ice-sheen), var(--ice);
+  box-shadow: var(--ice-edge), 0 34px 80px -18px rgba(0, 0, 0, 0.6);
+}
+
+body[data-design='liquid'] .settings-header {
+  padding: 18px 14px 14px 22px;
+  font-size: 19px;
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+
+body[data-design='liquid'] .settings-header button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--lq-key);
+  box-shadow: var(--lq-rim);
+  color: #fff;
+}
+
+body[data-design='liquid'] .settings-header button:hover {
+  background: var(--lq-key-hover);
+}
+
+body[data-design='liquid'] .settings-body {
+  padding: 14px 14px 20px;
+  gap: 12px;
+}
+
+/* each group a card of brighter glass */
+body[data-design='liquid'] .group {
+  padding: 16px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+body[data-design='liquid'] .group h3 {
+  font-family: var(--ui-font-display);
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0.005em;
+  color: #fff;
+}
+
+body[data-design='liquid'] .group h3::before {
+  display: none;
+}
+
+body[data-design='liquid'] .field span {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+body[data-design='liquid'] .field em {
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+body[data-design='liquid'] .field.row.sub {
+  border-left-color: rgba(255, 255, 255, 0.18);
+}
+
+/* inputs: recessed capsules */
+body[data-design='liquid'] .field input[type='text'],
+body[data-design='liquid'] .field select {
+  height: 34px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background-color: var(--lq-well);
+  box-shadow: var(--lq-well-rim);
+}
+
+body[data-design='liquid'] .field select {
+  padding-right: 32px;
+  background-position: right 12px center;
+}
+
+body[data-design='liquid'] .field input[type='text']:hover,
+body[data-design='liquid'] .field select:hover {
+  background-color: rgba(0, 0, 0, 0.12);
+}
+
+body[data-design='liquid'] .field input[type='text']:focus,
+body[data-design='liquid'] .field select:focus {
+  box-shadow: var(--lq-well-rim), 0 0 0 2px var(--accent-mid), 0 0 16px -2px var(--accent-glow);
+}
+
+body[data-design='liquid'] .field select option {
+  background: #1d2338;
+}
+
+body[data-design='liquid'] .input-row button {
+  border: none;
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  background: var(--lq-key);
+  box-shadow: var(--lq-rim);
+  color: #fff;
+}
+
+body[data-design='liquid'] .input-row button:hover {
+  background: var(--lq-key-hover);
+}
+
+body[data-design='liquid'] .field input[type='color'] {
+  height: 34px;
+  border: none;
+  border-radius: 999px;
+  background: var(--lq-well);
+  box-shadow: var(--lq-well-rim);
+}
+
+body[data-design='liquid'] .field input[type='color']::-webkit-color-swatch {
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* switches, the way the phone draws them: a fat track, a white bead */
+body[data-design='liquid'] .field input[type='checkbox'] {
+  width: 42px;
+  height: 25px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+body[data-design='liquid'] .field input[type='checkbox']::before {
+  top: 2px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+  background: linear-gradient(180deg, #fff, #e8ecf5);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 -1px 1px rgba(0, 0, 0, 0.08);
+}
+
+body[data-design='liquid'] .field input[type='checkbox']:checked {
+  background: linear-gradient(180deg, var(--lq-a-hi), var(--lq-a-lo));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 14px -2px var(--lq-a-lo);
+}
+
+body[data-design='liquid'] .field input[type='checkbox']:checked::before {
+  transform: translateX(17px);
+}
+
+/* sliders: a recessed track and a big glass bead */
+body[data-design='liquid'] .field input[type='range'] {
+  height: 24px;
+}
+
+body[data-design='liquid'] .field input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, transparent), rgba(255, 255, 255, 0.18));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+body[data-design='liquid'] .field input[type='range']::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  background: linear-gradient(180deg, #fff, #e3e8f3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), inset 0 -1px 1px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
+body[data-design='liquid'] .field input[type='range']:hover::-webkit-slider-thumb {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent), 0 0 16px var(--accent-glow);
+}
+
+body[data-design='liquid'] .settings-actions button,
+body[data-design='liquid'] .modal-actions button {
+  border: none;
+  border-radius: 999px;
+  background: var(--lq-key);
+  box-shadow: var(--lq-rim);
+  color: #fff;
+}
+
+body[data-design='liquid'] .settings-actions button:hover,
+body[data-design='liquid'] .modal-actions button:hover {
+  background: var(--lq-key-hover);
+  box-shadow: var(--lq-rim), 0 0 16px -4px rgba(255, 255, 255, 0.35);
+}
+
+body[data-design='liquid'] .settings-actions button:disabled:hover {
+  background: var(--lq-key);
+}
+
+body[data-design='liquid'] #btn-update-act {
+  background: var(--lq-primary);
+  box-shadow: var(--lq-primary-rim);
+}
+
+body[data-design='liquid'] .update-box {
+  border: none;
+  border-radius: 16px;
+  background-color: var(--lq-well);
+  box-shadow: var(--lq-well-rim);
+}
+
+body[data-design='liquid'] .update-line b {
+  color: #fff;
+}
+
+body[data-design='liquid'] .hint {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+body[data-design='liquid'] .hint b {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* design picker: glass tiles, the chosen one rimmed in blue */
+body[data-design='liquid'] .design-tile {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+body[data-design='liquid'] .design-tile .design-swatch {
+  border-radius: 11px;
+}
+
+body[data-design='liquid'] .design-tile.active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.1));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 0 0 2px var(--accent), 0 0 20px -4px var(--accent-glow);
+}
+
+/* ---------- scrollbars ---------- */
+
+body[data-design='liquid'] .settings-body::-webkit-scrollbar-thumb,
+body[data-design='liquid'] #palette-list::-webkit-scrollbar-thumb,
+body[data-design='liquid'] .agents-rail::-webkit-scrollbar-thumb,
+body[data-design='liquid'] .agents-diff::-webkit-scrollbar-thumb,
+body[data-design='liquid'] .diff-body::-webkit-scrollbar-thumb,
+body[data-design='liquid'] .peek-body::-webkit-scrollbar-thumb,
+body[data-design='liquid'] .peek-tree::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+body[data-design='liquid'] .settings-body::-webkit-scrollbar-thumb:hover,
+body[data-design='liquid'] #palette-list::-webkit-scrollbar-thumb:hover,
+body[data-design='liquid'] .agents-rail::-webkit-scrollbar-thumb:hover,
+body[data-design='liquid'] .agents-diff::-webkit-scrollbar-thumb:hover,
+body[data-design='liquid'] .diff-body::-webkit-scrollbar-thumb:hover,
+body[data-design='liquid'] .peek-body::-webkit-scrollbar-thumb:hover,
+body[data-design='liquid'] .peek-tree::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.42);
+  background-clip: padding-box;
+}
+
+/* ---------- command palette ---------- */
+
+body[data-design='liquid'] #palette,
+body[data-design='liquid'] #peek {
+  background: rgba(8, 12, 30, 0.22);
+  backdrop-filter: blur(6px);
+}
+
+body[data-design='liquid'] .palette-box {
+  width: min(620px, 88vw);
+  padding: 6px;
+  border-radius: 30px;
+  background: var(--ice-sheen), var(--ice-strong);
+  box-shadow: var(--ice-edge), 0 40px 90px -18px rgba(0, 0, 0, 0.65);
+}
+
+/* the search field: a capsule recessed into the glass */
+body[data-design='liquid'] #palette-input {
+  height: 52px;
+  padding: 0 20px 0 50px;
+  border: none;
+  border-radius: 999px;
+  background: var(--search-icon) no-repeat 20px 50% / 17px, var(--lq-well);
+  box-shadow: var(--lq-well-rim);
+  font-size: 16px;
+}
+
+body[data-design='liquid'] #palette-list {
+  padding: 8px 2px 4px;
+}
+
+body[data-design='liquid'] .palette-item {
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+body[data-design='liquid'] .palette-item.selected {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 6px 16px -8px rgba(0, 0, 0, 0.45);
+  color: #fff;
+}
+
+body[data-design='liquid'] .palette-item.selected::before {
+  display: none;
+}
+
+body[data-design='liquid'] .palette-item.selected em {
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+
+/* ---------- peek ---------- */
+
+body[data-design='liquid'] .peek-box {
+  border-radius: 28px;
+  background: var(--ice-sheen), var(--ice-strong);
+  box-shadow: var(--ice-edge), 0 40px 90px -18px rgba(0, 0, 0, 0.65);
+}
+
+body[data-design='liquid'] .peek-head {
+  padding: 10px 10px 10px 20px;
+  border-bottom-color: rgba(255, 255, 255, 0.14);
+}
+
+body[data-design='liquid'] .peek-btn {
+  padding: 6px 12px 6px 10px;
+}
+
+body[data-design='liquid'] .peek-close {
+  padding: 6px 8px;
+  border-radius: 50%;
+}
+
+body[data-design='liquid'] .peek-side {
+  border-right-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body[data-design='liquid'] .peek-row {
+  border-radius: 999px;
+}
+
+body[data-design='liquid'] .peek-row:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+body[data-design='liquid'] .peek-row.selected {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+body[data-design='liquid'] .peek-row.active {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* the code sits on the darker screen glass, its gutter matching it */
+body[data-design='liquid'] .peek-body {
+  background: var(--lq-screen);
+}
+
+body[data-design='liquid'] .peek-gutter {
+  background: rgba(16, 20, 38, 0.92);
+}
+
+body[data-design='liquid'] .peek-band {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+body[data-design='liquid'] .peek-mini {
+  border-left-color: rgba(255, 255, 255, 0.12);
+}
+
+body[data-design='liquid'] .peek-mini-view {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+body[data-design='liquid'] .peek-md code {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+body[data-design='liquid'] .peek-md pre {
+  border-radius: 16px;
+  background: rgba(8, 12, 26, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+body[data-design='liquid'] .peek-md a {
+  color: var(--lq-a-hi2);
+}
+
+/* ---------- toasts ---------- */
+
+body[data-design='liquid'] .toast {
+  border-radius: 20px;
+  padding: 11px 16px 11px 34px;
+  background: var(--ice-sheen), var(--ice-strong);
+}
+
+body[data-design='liquid'] .toast::before {
+  left: 14px;
+  top: 15px;
+  width: 10px;
+  height: 10px;
+  background: linear-gradient(180deg, var(--lq-a-hi2), var(--lq-a-lo));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 10px var(--lq-a-lo);
+}
+
+body[data-design='liquid'] .toast.error::before {
+  background: linear-gradient(180deg, #ff8a8a, #e5383b);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 10px #e5383b;
+}
+
+/* ---------- modal ---------- */
+
+body[data-design='liquid'] #modal {
+  background: rgba(8, 12, 30, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+body[data-design='liquid'] .modal-box {
+  padding: 24px 24px 20px;
+  border-radius: 30px;
+  background: var(--ice-sheen), var(--ice-strong);
+  box-shadow: var(--ice-edge), 0 40px 100px -20px rgba(0, 0, 0, 0.7);
+}
+
+body[data-design='liquid'] .modal-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #3a2600;
+  background: linear-gradient(180deg, #ffd978, #f0a620);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 20px -4px rgba(240, 180, 41, 0.7);
+}
+
+body[data-design='liquid'] .modal-title {
+  font-size: 16px;
+}
+
+body[data-design='liquid'] .modal-actions button {
+  padding: 9px 18px;
+}
+
+body[data-design='liquid'] .modal-confirm {
+  background: var(--lq-primary) !important;
+  box-shadow: var(--lq-primary-rim) !important;
+  font-weight: 600 !important;
+}
+
+body[data-design='liquid'] .modal-confirm:hover {
+  background: var(--lq-primary-hover) !important;
+}
+
+body[data-design='liquid'] .modal-note {
+  border-radius: 16px;
+  background: var(--lq-well);
+  box-shadow: var(--lq-well-rim);
+}
+
+/* ---------- a custom accent ----------
+   Set when the accent has been picked for this design (core.js): every tone
+   above is worked out from it instead, so the whole design follows. */
+
+body[data-design='liquid'][data-custom-accent] {
+  --lq-a-hi: oklch(from var(--accent) calc(l + 0.07) c h);
+  --lq-a-hi2: oklch(from var(--accent) calc(l + 0.11) c h);
+  --lq-a-lo: oklch(from var(--accent) calc(l - 0.1) c h);
+  --lq-a-lo2: oklch(from var(--accent) calc(l - 0.06) c h);
+  --lq-a-tint: oklch(from var(--accent) 0.9 calc(c * 0.45) h);
+  --lq-a-deep: oklch(from var(--accent) 0.3 c h);
+}
