@@ -3,6 +3,36 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.6.0 — 2026-10-20
+
+### Added
+
+- **Four designs.** Pick one from the tiles at the top of Settings and it
+  applies at once, no restart. Each restyles everything around the terminal:
+  tabs, panes, agent mode, the diff, settings, the palette, Peek, menus and
+  notifications.
+  - **Frost**, the default, as it was.
+  - **Liquid Glass**: bright frosted glass with thick shiny rims, tabs in a
+    floating capsule, round controls.
+  - **Aurora Night**: deep navy glass with teal and violet light behind the
+    chrome, gradient edges, a glowing underline on the active tab.
+  - **Graphite Studio**: smoked graphite with a signal-orange accent, folder
+    tabs numbered and joined to the terminal, keycap buttons, glowing status
+    lights.
+
+  Your tint, blur, font and terminal colours carry over to every design.
+- **Each design keeps its own accent.** The Accent picker changes the one in
+  use, starting from that design's own colour, and **Reset** puts it back. A
+  picked accent recolours the whole design: Aurora's two-colour light is worked
+  out from it, and Graphite's keys switch to white lettering on a dark accent.
+
+### Fixed
+
+- **The diff panel shows diffs again.** In 2.5.0 an agent working in a git
+  repository left the panel on "No agent selected", in Session and Uncommitted
+  alike. The same fault hid the other repositories an agent edits, and the
+  files its session had touched.
+
 ## 2.5.0 — 2026-10-15
 
 ### Added
