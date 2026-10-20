@@ -189,6 +189,29 @@ running and supervising Claude Code agents with live status and diff watching.
     A separate **readability** floor darkens the backdrop behind text, so a clear
     tint stays legible over a bright wallpaper; set it to 0 to leave the
     wallpaper completely untouched
+- **Four designs** — the look of everything around the terminal, picked from
+  the tiles at the top of settings and switched live, no restart:
+  - **Frost** — the default: smoked glass, lit edges, a strip of light under
+    the active tab
+  - **Liquid Glass** — bright frosted glass with thick shiny rims: tabs in a
+    floating capsule, round controls, very round panes
+  - **Aurora Night** — deep navy glass with teal and violet light blooming
+    behind the chrome, gradient edges and a glowing underline on the active tab
+  - **Graphite Studio** — smoked graphite with a signal-orange accent: folder
+    tabs joined to the terminal and numbered, keycap buttons, status lights
+    that glow
+
+  Each restyles everything — tabs, panes, agent mode, the diff, settings, the
+  palette, Peek, menus, notifications. Your tint, blur, readability, font and
+  the terminal's own colours carry over to all of them; Aurora and Graphite lay
+  a dark wash of their own over the glass, since they are built to be dark.
+  **Each design keeps its own accent**: the Accent picker changes the one in
+  use, starting from that design's own colour, and **Reset** puts it back. A
+  picked accent recolours the whole design, not just its highlights — Aurora's
+  two-colour light is worked out from it, turned either way round the colour
+  wheel, and Graphite's keys flip to white lettering on a dark one
+
+  ![The same agent tab in each of the four designs: Frost, Liquid Glass, Aurora Night and Graphite Studio](../assets/screenshot-designs.png)
 - **Hot-reload everything** — save `config/theme.json` or `config/theme.css`
   and the running window updates instantly. `theme.css` is raw CSS injected
   last: restyle anything
@@ -450,6 +473,13 @@ for an installed build, in the repo's `config/` when running from source:
   found. The installer only ever runs when Frost quits, or when you press
   **Restart and install** in settings. With `check` off nothing is looked for and
   **Check now** is still there for when you want to ask.
+
+  `design` is `frost` (the default), `liquid`, `aurora` or `graphite`. `accent`
+  is Frost's accent colour; the other designs keep theirs in `accents`, one
+  per design — `{ "graphite": "#3fb950" }` — and one left out shows that
+  design's own colour. Every design's stylesheet is in `src/renderer/designs/`
+  and keyed to `body[data-design="…"]`, so `theme.css` can restyle a single
+  design by starting its selectors the same way.
 
   `scrollback` is how many lines a pane keeps after they scroll off the top,
   10,000 by default and held between 1,000 and 200,000 — it is memory, and what

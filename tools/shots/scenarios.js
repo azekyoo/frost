@@ -40,73 +40,9 @@ const waitFor = async (fn, timeout = 30000, step = 250) => {
 };
 `;
 
-module.exports = [
-  {
-    name: 'screenshot-hero',
-    photo: 'ocean-dusk',
-    wallpaper: 'pine',
-    // two shells side by side, real git and real program output
-    setup: `(async () => {
-      ${RUN}
-      await type('git log --oneline --graph -5');
-      await type('node src/index.js');
-      await type('node src/index.js errands');
-      runCommand('pane.splitRight');
-      await ready();
-      await type('git status --short --branch');
-      await type('git diff --stat');
-      await type('cat package.json');
-      runCommand('pane.focusLeft');
-      await type('node src/index.js frost');
-      await type('ls');
-      await pause(400);
-    })()`
-  },
-  {
-    name: 'screenshot-palette',
-    photo: 'moonrise-peak',
-    wallpaper: 'night',
-    setup: `(async () => {
-      ${RUN}
-      await type('git log --oneline -6');
-      await type('node src/index.js');
-      await type('node src/index.js books');
-      await type('git diff --stat');
-      openPalette();
-      el.paletteInput.value = 'pane';
-      renderPalette();
-      await pause(300);
-    })()`
-  },
-  {
-    name: 'screenshot-profiles',
-    photo: 'aurora',
-    wallpaper: 'coast',
-    setup: `(async () => {
-      ${RUN}
-      await type('node src/index.js');
-      await type('node src/index.js travel');
-      // a second tab so the strip shows two titles, both "dir · branch"
-      await newTab();
-      await ready();
-      await type('git log --oneline --graph -4');
-      await type('node src/index.js food');
-      openProfileMenu(document.getElementById('btn-newtab-menu'));
-      await pause(300);
-    })()`
-  },
-  {
-    // The flagship shot, and the one that can't be faked: agent mode is only
-    // itself with a real Claude Code session in the middle of it, reporting real
-    // status and producing a real diff. So this runs `claude` for real and asks
-    // it for a small edit in the demo repo.
-    name: 'screenshot-agent',
-    photo: 'peaks-sunrise',
-    wallpaper: 'alpine',
-    spaces: true,
-    sessions: true, // staged demo-repo sessions for the Sessions list
-    theme: { autoDetectAgents: true },
-    setup: `(async () => {
+// The agent tab with a real Claude Code session in it: shared by the agent shot
+// and the designs shot, which photographs this same screen once per design.
+const AGENT_SETUP = `(async () => {
       ${RUN}
       await newAgentTab();
       const leaf = [...state.activeTab.centerLeaves][0];
@@ -185,6 +121,19 @@ module.exports = [
         }
       }
 
+      // Selected, so the diff panel shows its diff rather than "No agent
+      // selected". The Session diff is only what this run changed; if that came
+      // out empty, the repo's uncommitted work fills the panel instead.
+      if (agent) {
+        selectAgent(state.activeTab, agent.id, { focus: false });
+        const body = state.activeTab.els.diffBody;
+        if (!(await waitFor(() => body.querySelector('.diff-file'), 15000))) {
+          const toggle = state.activeTab.contentEl.querySelector('.diff-toggle button[data-mode="uncommitted"]');
+          if (toggle) toggle.click();
+          await waitFor(() => body.querySelector('.diff-file'), 15000);
+        }
+      }
+
       leaf.term.scrollToBottom();
       await pause(600);
 
@@ -203,6 +152,97 @@ module.exports = [
         await pause(400);
       }
       return onScreen();
+    })()`;
+
+module.exports = [
+  {
+    name: 'screenshot-hero',
+    photo: 'ocean-dusk',
+    wallpaper: 'pine',
+    // two shells side by side, real git and real program output
+    setup: `(async () => {
+      ${RUN}
+      await type('git log --oneline --graph -5');
+      await type('node src/index.js');
+      await type('node src/index.js errands');
+      runCommand('pane.splitRight');
+      await ready();
+      await type('git status --short --branch');
+      await type('git diff --stat');
+      await type('cat package.json');
+      runCommand('pane.focusLeft');
+      await type('node src/index.js frost');
+      await type('ls');
+      await pause(400);
+    })()`
+  },
+  {
+    name: 'screenshot-palette',
+    photo: 'moonrise-peak',
+    wallpaper: 'night',
+    setup: `(async () => {
+      ${RUN}
+      await type('git log --oneline -6');
+      await type('node src/index.js');
+      await type('node src/index.js books');
+      await type('git diff --stat');
+      openPalette();
+      el.paletteInput.value = 'pane';
+      renderPalette();
+      await pause(300);
+    })()`
+  },
+  {
+    name: 'screenshot-profiles',
+    photo: 'aurora',
+    wallpaper: 'coast',
+    setup: `(async () => {
+      ${RUN}
+      await type('node src/index.js');
+      await type('node src/index.js travel');
+      // a second tab so the strip shows two titles, both "dir · branch"
+      await newTab();
+      await ready();
+      await type('git log --oneline --graph -4');
+      await type('node src/index.js food');
+      openProfileMenu(document.getElementById('btn-newtab-menu'));
+      await pause(300);
+    })()`
+  },
+  {
+    // The flagship shot, and the one that can't be faked: agent mode is only
+    // itself with a real Claude Code session in the middle of it, reporting real
+    // status and producing a real diff. So this runs `claude` for real and asks
+    // it for a small edit in the demo repo.
+    name: 'screenshot-agent',
+    photo: 'peaks-sunrise',
+    wallpaper: 'alpine',
+    spaces: true,
+    sessions: true, // staged demo-repo sessions for the Sessions list
+    theme: { autoDetectAgents: true },
+    setup: AGENT_SETUP
+  },
+  {
+    // The four designs side by side, on one screen: the agent tab is set up
+    // once and photographed under each design in turn, so the only thing that
+    // differs between the four is the design. Tiled 2x2 by shots.js, and
+    // taken one Ctrl+- out: four windows to an image, so more of each fits.
+    name: 'screenshot-designs',
+    photo: 'peaks-sunrise',
+    wallpaper: 'alpine',
+    spaces: true,
+    sessions: true,
+    theme: { autoDetectAgents: true },
+    designs: [
+      { id: 'frost', label: 'Frost' },
+      { id: 'liquid', label: 'Liquid Glass' },
+      { id: 'aurora', label: 'Aurora Night' },
+      { id: 'graphite', label: 'Graphite Studio' }
+    ],
+    setup: `(async () => {
+      runCommand('view.zoomOut');
+      await new Promise((r) => setTimeout(r, 800));
+      return await ${AGENT_SETUP};
     })()`
   },
   {
