@@ -41,6 +41,10 @@ if (!app.isPackaged && !process.argv.some((a) => a.startsWith('--user-data-dir')
   app.setPath('userData', path.join(app.getPath('appData'), 'Frost (source)'));
 }
 
+// Before any handler is registered, so every one of them is timed.
+const stalls = require('./stalls');
+stalls.install(ipcMain, app.getPath('userData'));
+
 // Installed builds live somewhere unwritable (Program Files, or a read-only
 // asar), so their config goes to %APPDATA%. Running from source keeps using the
 // repo's config/ folder, which keeps the dev loop and .gitignore intact.
@@ -2404,7 +2408,7 @@ function initAgentInfra() {
       // for the size to settle costs ~60ms and reads the finished file.
       awaitWriteFinish: { stabilityThreshold: 60, pollInterval: 15 }
     })
-    .on('all', (_ev, file) => {
+    .on('all', stalls.timed('agent status file', (_ev, file) => {
       const base = path.basename(file);
       if (base.startsWith('st-')) {
         const agentId = base.slice(3);
@@ -2451,12 +2455,12 @@ function initAgentInfra() {
           agentEnded(agentId);
         }
       }
-    });
-  setInterval(() => {
+    }));
+  setInterval(stalls.timed('status tick', () => {
     broadcastStatuses();
     refreshAgentTitles();
     if (diffSel) scanTranscriptEdits(diffSel.agentId);
-  }, 1500);
+  }), 1500);
 }
 
 ipcMain.handle('fonts:list', () => {
@@ -3063,7 +3067,7 @@ async function runDiff() {
 function diffSoon(agentId) {
   if (diffSel?.agentId !== agentId) return;
   clearTimeout(diffTimer);
-  diffTimer = setTimeout(runDiff, 400);
+  diffTimer = setTimeout(stalls.timed('diff', runDiff), 400);
 }
 
 function watchDiff(view) {
@@ -3122,7 +3126,7 @@ async function startDiffWatcher(cwd) {
     })
     .on('all', () => {
       clearTimeout(diffTimer);
-      diffTimer = setTimeout(runDiff, 400);
+      diffTimer = setTimeout(stalls.timed('diff', runDiff), 400);
     });
   diffWatchers.set(cwd, watcher);
 }
