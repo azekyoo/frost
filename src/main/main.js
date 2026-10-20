@@ -3481,7 +3481,7 @@ const NAME_INDEX_MAX = 300000;
 const nameIndexes = new Map(); // repo root (lowercased) -> { names, at, pending }
 const repoRoots = new Map(); // folder (lowercased) -> repo root, or '' outside git
 
-async function repoRootOf(dir) {
+async function repoRootCached(dir) {
   const key = dir.toLowerCase();
   if (!repoRoots.has(key)) {
     const top = await gitRun(dir, ['rev-parse', '--show-toplevel']);
@@ -3514,7 +3514,7 @@ function buildNameIndex(root) {
 async function findInRepo(cwd, name) {
   if (/[\\/]/.test(name) || /[\0<>|"*?&^%`$:]/.test(name)) return null;
   const base = cwd && fs.existsSync(cwd) ? cwd : null;
-  const root = base && (await repoRootOf(base));
+  const root = base && (await repoRootCached(base));
   if (!root) return null;
   let entry = nameIndexes.get(root.toLowerCase());
   if (!entry || !entry.at) entry = await buildNameIndex(root);
