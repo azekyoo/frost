@@ -252,8 +252,10 @@ function beginTabDrag(ev, tab) {
 // match the strip it came from reads as a different object.
 function ghostPaint() {
   const t = state.theme || {};
+  // the accent on show, which under another design is that design's own
+  const accent = getComputedStyle(document.body).getPropertyValue('--accent').trim();
   return {
-    accent: t.accent || '#80a8ff',
+    accent: /^#[0-9a-f]{6}$/i.test(accent) ? accent : t.accent || '#80a8ff',
     fg: t.terminal?.foreground || '#ffffff',
     bg: t.terminal?.background || '#24262e',
     font: t.font?.family || ''

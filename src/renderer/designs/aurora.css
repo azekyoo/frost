@@ -1,0 +1,1148 @@
+/* ==========================================================================
+   Aurora Night
+   Deep navy glass with the northern lights behind it: teal and violet blooms
+   painted under the chrome, and the same two colours, as one gradient, on
+   everything that is lit — the open tab, the picked agent, the primary action.
+   A layer over style.css: every rule is scoped to body[data-design='aurora'],
+   and it restyles shapes and colours only.
+   ========================================================================== */
+
+body[data-design='aurora'] {
+  --aurora-a: #5eead4;
+  --aurora-b: #a78bfa;
+  --aurora: linear-gradient(90deg, var(--aurora-a), var(--aurora-b));
+  --aurora-diag: linear-gradient(135deg, var(--aurora-a), var(--aurora-b));
+  --aurora-text: linear-gradient(90deg, var(--au-a-tint), var(--au-b-tint));
+  --aurora-glow: color-mix(in srgb, var(--accent) 60%, transparent);
+
+  /* one accent for the places that take a single colour: the point between the
+     two ends of the gradient */
+  --accent: #8fb4ff;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-mid: color-mix(in srgb, var(--accent) 45%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 60%, transparent);
+
+  /* pale tints of the two ends for text, and the dark ink for text on the
+     teal end. Signature values here; recomputed from a custom accent at the
+     end of this file. */
+  --au-a-tint: #8fe9da;
+  --au-b-tint: #c3b2ff;
+  --au-on-a: #04221d;
+
+  --hairline: rgba(160, 180, 255, 0.11);
+  --hairline-strong: rgba(160, 180, 255, 0.18);
+  --surface-1: rgba(150, 170, 255, 0.045);
+  --surface-2: rgba(150, 170, 255, 0.085);
+  --surface-3: rgba(150, 170, 255, 0.14);
+
+  --ice: rgba(8, 10, 24, 0.86);
+  --ice-strong: rgba(7, 9, 22, 0.92);
+  --ice-blur: blur(calc(34px / var(--ui-zoom, 1))) saturate(1.5);
+  --ice-edge: inset 0 0 0 1px rgba(160, 180, 255, 0.14);
+  --ice-lift: 0 24px 60px -16px rgba(0, 0, 0, 0.75), 0 0 40px -18px var(--aurora-glow);
+  --ice-sheen: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 40%);
+
+  --raised: linear-gradient(180deg, color-mix(in srgb, var(--accent) 4%, transparent), color-mix(in srgb, var(--accent) 12%, transparent));
+  --raised-edge: inset 0 0 0 1px rgba(160, 180, 255, 0.14);
+
+  --st-working: #6cb6ff;
+  --st-blocked: #ffb454;
+  --st-done: #5eead4;
+
+  --danger: #ff6b93;
+}
+
+/* ---------- gradient borders ----------
+   A 1px ring painted by a pseudo-element and cut out with a mask, so the fill
+   inside stays as translucent as it was: a gradient border-image can't follow a
+   radius, and a gradient background behind the fill would show through it. */
+
+body[data-design='aurora'] :is(
+    .rail-new,
+    .agent-row.selected,
+    .palette-box,
+    .split > .pane.focused,
+    .modal-actions .modal-confirm,
+    .design-tile.active,
+    #settings,
+    .peek-box,
+    .menu,
+    .pane-search,
+    .modal-box,
+    #btn-update-act,
+    .diff-tools .diff-send,
+    .dock-send.selection,
+    .peek-home
+  )::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* the selected agent row's ::before is Frost's 2px accent bar: undo its size */
+  width: auto;
+  height: auto;
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--aurora-diag);
+  box-shadow: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* toasts already wear their dot on ::before */
+body[data-design='aurora'] .toast::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 55%, transparent), color-mix(in srgb, var(--aurora-b) 55%, transparent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* the big floating sheets carry a quieter ring: the gradient at half strength */
+body[data-design='aurora'] :is(#settings, .peek-box, .menu, .pane-search, .modal-box)::before {
+  opacity: 0.45;
+}
+
+/* ---------- the window ---------- */
+
+/* The aurora itself: three blooms of light behind all the chrome, over a navy
+   night wash. The wash is what makes it Night: the glass is still there, but
+   dimmed to a dark sky whatever the tint, as a design built to be dark should
+   be. Radial gradients rather than a blurred layer, so it costs one paint and
+   nothing per frame. */
+body[data-design='aurora'] #design-fx {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 46% at 4% -4%, color-mix(in srgb, var(--aurora-a) 20%, transparent), transparent 70%),
+    radial-gradient(48% 52% at 100% 104%, color-mix(in srgb, var(--aurora-b) 24%, transparent), transparent 70%),
+    radial-gradient(30% 30% at 52% -8%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%),
+    rgba(6, 8, 22, 0.72);
+}
+
+/* above the blooms; the glass layers stay below them at their negative z */
+body[data-design='aurora'] #titlebar,
+body[data-design='aurora'] #content {
+  position: relative;
+  z-index: 1;
+}
+
+/* the window's edge, in the gradient: dim when the window is behind another,
+   lit when it has the keyboard */
+body[data-design='aurora'].glass::after {
+  border: 1px solid transparent;
+  border-image: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 35%, transparent), rgba(160, 180, 255, 0.12) 45%, color-mix(in srgb, var(--aurora-b) 35%, transparent)) 1;
+}
+
+body[data-design='aurora'].glass.win-focused::after {
+  border-image: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 75%, transparent), rgba(160, 180, 255, 0.2) 45%, color-mix(in srgb, var(--aurora-b) 75%, transparent)) 1;
+}
+
+body[data-design='aurora'].glass::before {
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--aurora-a) 50%, transparent) 25%, color-mix(in srgb, var(--aurora-b) 50%, transparent) 75%, transparent);
+}
+
+body[data-design='aurora'] ::selection {
+  background: color-mix(in srgb, var(--aurora-b) 38%, transparent);
+}
+
+/* ---------- titlebar ---------- */
+
+/* a straight rule under the strip, faintly blue, instead of the fading seam */
+body[data-design='aurora'] #titlebar::after {
+  left: 0;
+  right: 0;
+  background: var(--hairline);
+}
+
+body[data-design='aurora'] #tabstrip {
+  align-self: stretch;
+  gap: 0;
+}
+
+/* Tabs are words on the glass, not pills: the lit one gets a wash of light
+   rising from its foot and a glowing gradient line under it. */
+body[data-design='aurora'] .tab {
+  height: 100%;
+  min-width: 140px;
+  padding: 0 8px 0 16px;
+  border-radius: 0;
+  color: rgba(231, 235, 255, 0.5);
+}
+
+body[data-design='aurora'] .tab + .tab::before {
+  background: var(--hairline);
+  height: 16px;
+}
+
+body[data-design='aurora'] .tab:hover {
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 6%, transparent));
+  color: rgba(231, 235, 255, 0.82);
+}
+
+body[data-design='aurora'] .tab.active {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 0%, transparent), color-mix(in srgb, var(--accent) 12%, transparent));
+  box-shadow: none;
+  color: #fff;
+}
+
+body[data-design='aurora'] .tab.active::after {
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 2px;
+  background: var(--aurora);
+  box-shadow: 0 0 12px rgba(150, 170, 255, 0.9), 0 -6px 18px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+body[data-design='aurora'] .tab.active .title {
+  font-weight: 600;
+}
+
+body[data-design='aurora'] .tab .close:hover {
+  background: rgba(255, 107, 147, 0.18);
+  color: #ffb3c6;
+}
+
+body[data-design='aurora'] .tab-rename {
+  border-color: color-mix(in srgb, var(--aurora-b) 70%, transparent);
+  background: rgba(7, 9, 22, 0.8);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aurora-b) 18%, transparent), 0 0 14px -4px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .tab .tab-zoom {
+  color: var(--au-b-tint);
+  background: color-mix(in srgb, var(--aurora-b) 16%, transparent);
+}
+
+/* the buttons are bare icons on the glass until reached for */
+body[data-design='aurora'] .tb-group:hover {
+  background: rgba(150, 170, 255, 0.05);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+body[data-design='aurora'] :is(#btn-newtab, #btn-newtab-menu, #btn-agents, #btn-settings) {
+  color: rgba(231, 235, 255, 0.72);
+  border-radius: 10px;
+}
+
+body[data-design='aurora'] :is(#btn-newtab, #btn-newtab-menu, #btn-agents, #btn-settings):hover {
+  background: rgba(150, 170, 255, 0.1);
+  color: #fff;
+}
+
+body[data-design='aurora'] #btn-newtab {
+  border-radius: 10px 4px 4px 10px;
+}
+
+body[data-design='aurora'] #btn-newtab-menu {
+  border-radius: 4px 10px 10px 4px;
+}
+
+/* the one control that is Frost's own: a violet key, lit */
+body[data-design='aurora'] #btn-agents {
+  margin-left: 4px;
+  color: var(--au-b-tint);
+  background: color-mix(in srgb, var(--aurora-b) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-b) 32%, transparent), 0 0 18px -4px color-mix(in srgb, var(--aurora-b) 60%, transparent);
+}
+
+body[data-design='aurora'] #btn-agents:hover {
+  color: #fff;
+  background: color-mix(in srgb, var(--aurora-b) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-b) 55%, transparent), 0 0 22px -4px color-mix(in srgb, var(--aurora-b) 80%, transparent);
+}
+
+body[data-design='aurora'] #btn-agents svg {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--aurora-b) 80%, transparent));
+}
+
+body[data-design='aurora'] #win-controls button {
+  color: rgba(231, 235, 255, 0.6);
+}
+
+body[data-design='aurora'] #win-controls button:hover {
+  background: rgba(150, 170, 255, 0.1);
+  color: #fff;
+}
+
+body[data-design='aurora'] #btn-close:hover {
+  background: linear-gradient(135deg, #ff6b93, #c0397a) !important;
+}
+
+/* ---------- panes ---------- */
+
+/* A lone terminal sits straight on the glass, under the aurora, with nothing
+   drawn round it. In a split each pane is a faint sheet, and the focused one
+   is ringed in the gradient and throws its light. */
+body[data-design='aurora'] .split .pane,
+body[data-design='aurora'] .agents-center .pane {
+  background: color-mix(in srgb, var(--accent) 2.5%, transparent);
+  border-color: var(--hairline);
+}
+
+body[data-design='aurora'] .pane.focused {
+  border-color: transparent;
+  box-shadow: 0 0 30px -10px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .agents-center .pane.focused {
+  border-color: rgba(160, 180, 255, 0.2);
+  box-shadow: none;
+}
+
+body[data-design='aurora'] .tab-content > .pane.focused {
+  box-shadow: none;
+}
+
+body[data-design='aurora'] .split > .pane.focused::before {
+  z-index: 7;
+}
+
+body[data-design='aurora'] .pane.drop-over {
+  border-color: color-mix(in srgb, var(--aurora-b) 75%, transparent) !important;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 7%, transparent), color-mix(in srgb, var(--aurora-b) 9%, transparent));
+  box-shadow: 0 0 30px -6px var(--aurora-glow) !important;
+}
+
+body[data-design='aurora'] :is(.divider, .agents-gutter, .agents-dock-gutter):hover::after,
+body[data-design='aurora'] :is(.divider, .agents-gutter, .agents-dock-gutter).dragging::after {
+  background: var(--aurora-diag);
+  box-shadow: 0 0 12px var(--aurora-glow);
+}
+
+/* ---------- find bar ---------- */
+
+body[data-design='aurora'] .pane-search {
+  border-radius: 12px;
+}
+
+body[data-design='aurora'] .pane-search-input,
+body[data-design='aurora'] .field input[type='text'],
+body[data-design='aurora'] .field select {
+  background-color: rgba(4, 6, 18, 0.6);
+  border-color: rgba(160, 180, 255, 0.14);
+}
+
+body[data-design='aurora'] .pane-search-input:focus,
+body[data-design='aurora'] .field input[type='text']:focus,
+body[data-design='aurora'] .field select:focus,
+body[data-design='aurora'] .diff-note textarea:focus {
+  border-color: color-mix(in srgb, var(--aurora-b) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aurora-b) 15%, transparent), 0 0 16px -4px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .pane-search button.pane-search-toggle.on {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 22%, transparent), color-mix(in srgb, var(--aurora-b) 30%, transparent));
+  border-color: color-mix(in srgb, var(--aurora-b) 60%, transparent);
+}
+
+/* ---------- command blocks ---------- */
+
+body[data-design='aurora'] .cmd-band {
+  --band: var(--aurora-a);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 8%, transparent), color-mix(in srgb, var(--aurora-b) 3%, transparent));
+}
+
+body[data-design='aurora'] .cmd-band.failed {
+  --band: var(--danger);
+  background: linear-gradient(90deg, rgba(255, 107, 147, 0.1), rgba(255, 107, 147, 0.02));
+}
+
+body[data-design='aurora'] .cmd-bar {
+  border-radius: 10px;
+}
+
+body[data-design='aurora'] .cmd-exit {
+  color: var(--aurora-a);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--aurora-a) 60%, transparent);
+}
+
+body[data-design='aurora'] .cmd-exit.failed {
+  color: var(--danger);
+  text-shadow: 0 0 8px rgba(255, 107, 147, 0.6);
+}
+
+/* ---------- menus, tooltips ---------- */
+
+body[data-design='aurora'] .menu {
+  border-radius: 12px;
+}
+
+body[data-design='aurora'] .menu-item:hover {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 14%, transparent), color-mix(in srgb, var(--aurora-b) 10%, transparent));
+}
+
+body[data-design='aurora'] :is(.menu-item, .palette-item) em {
+  background: rgba(150, 170, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(160, 180, 255, 0.16);
+  color: rgba(231, 235, 255, 0.62);
+}
+
+body[data-design='aurora'] #tooltip,
+body[data-design='aurora'] #image-card {
+  box-shadow: inset 0 0 0 1px rgba(160, 180, 255, 0.18), 0 14px 34px -10px rgba(0, 0, 0, 0.7),
+    0 0 24px -12px var(--aurora-glow);
+}
+
+/* ---------- agent mode ---------- */
+
+/* The rail and the diff are columns of the same night, not cards on it: a
+   faint fill, a hairline edge, and the lit things inside them do the talking. */
+body[data-design='aurora'] .agents-rail,
+body[data-design='aurora'] .agents-diff,
+body[data-design='aurora'] .agents-dock {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, transparent), color-mix(in srgb, var(--accent) 1.5%, transparent));
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  color: #e7ebff;
+}
+
+body[data-design='aurora'] .agents-rail {
+  padding: 16px 14px;
+}
+
+body[data-design='aurora'] .rail-section + .rail-section {
+  border-top-color: var(--hairline);
+}
+
+/* section labels: tracked capitals, written in the aurora */
+body[data-design='aurora'] :is(.rail-head h4, .diff-title, .group h3) {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  background: var(--aurora-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+body[data-design='aurora'] .rail-head h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* its own pill, painted over the label's gradient clip */
+body[data-design='aurora'] .rail-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(160, 180, 255, 0.12);
+  color: rgba(231, 235, 255, 0.6);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+body[data-design='aurora'] .rail-count:empty {
+  display: none;
+}
+
+/* the primary action: a navy key ringed in the gradient, glowing */
+body[data-design='aurora'] .rail-new {
+  position: relative;
+  height: 40px;
+  padding: 0 12px;
+  margin-bottom: 16px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(14, 16, 36, 0.85);
+  box-shadow: 0 0 24px -6px var(--aurora-glow);
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--aurora-b) 70%, transparent);
+}
+
+body[data-design='aurora'] .rail-new:hover {
+  background: rgba(24, 26, 56, 0.9);
+  box-shadow: 0 0 30px -4px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .rail-refresh {
+  border-color: var(--hairline-strong);
+  border-radius: 7px;
+  color: rgba(231, 235, 255, 0.7);
+}
+
+body[data-design='aurora'] .rail-refresh:hover {
+  border-color: color-mix(in srgb, var(--aurora-b) 55%, transparent);
+  background: color-mix(in srgb, var(--aurora-b) 10%, transparent);
+}
+
+body[data-design='aurora'] .agents-list,
+body[data-design='aurora'] .sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+body[data-design='aurora'] .sessions-list {
+  gap: 0;
+}
+
+/* each live agent a card of faint glass; the picked one ringed in the
+   gradient and glowing */
+body[data-design='aurora'] .agent-row {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  font-size: 12.5px;
+}
+
+body[data-design='aurora'] .agent-row:hover {
+  background: rgba(150, 170, 255, 0.06);
+}
+
+body[data-design='aurora'] .agent-row.selected {
+  background: rgba(20, 22, 50, 0.75);
+  box-shadow: 0 0 26px -8px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .agent-row.dormant {
+  background: transparent;
+  box-shadow: inset 0 -1px 0 rgba(160, 180, 255, 0.06);
+  border-radius: 0;
+  padding: 8px 6px;
+}
+
+body[data-design='aurora'] .agent-row.dormant:hover {
+  background: rgba(150, 170, 255, 0.04);
+}
+
+body[data-design='aurora'] .agent-meta {
+  color: rgba(231, 235, 255, 0.5);
+  font-size: 11px;
+}
+
+/* the state, spelled out at the end of the meta line in its own colour */
+body[data-design='aurora'] .meta-st {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+body[data-design='aurora'] .agent-row[data-status='working'] .meta-st {
+  color: #8cc4ff;
+}
+
+body[data-design='aurora'] .agent-row[data-status='blocked'] .meta-st {
+  color: #ffc98a;
+  text-shadow: 0 0 8px rgba(255, 180, 84, 0.6);
+}
+
+body[data-design='aurora'] .agent-row[data-status='done'] .meta-st {
+  color: var(--aurora-a);
+}
+
+body[data-design='aurora'] .agent-row[data-status='idle'] .meta-st,
+body[data-design='aurora'] .agent-row[data-status='exited'] .meta-st {
+  color: rgba(231, 235, 255, 0.45);
+}
+
+body[data-design='aurora'] .st-working {
+  box-shadow: 0 0 0 3px rgba(108, 182, 255, 0.18), 0 0 10px rgba(108, 182, 255, 0.85);
+}
+
+body[data-design='aurora'] .st-blocked {
+  box-shadow: 0 0 0 3px rgba(255, 180, 84, 0.2), 0 0 10px rgba(255, 180, 84, 0.9);
+}
+
+body[data-design='aurora'] .st-done {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aurora-a) 16%, transparent), 0 0 8px color-mix(in srgb, var(--aurora-a) 60%, transparent);
+}
+
+body[data-design='aurora'] .agent-row.unseen .agent-dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aurora-a) 25%, transparent), 0 0 12px color-mix(in srgb, var(--aurora-a) 95%, transparent);
+}
+
+body[data-design='aurora'] .agents-empty {
+  color: rgba(231, 235, 255, 0.78);
+}
+
+body[data-design='aurora'] .agents-empty::before {
+  color: #fff;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 22%, transparent), color-mix(in srgb, var(--aurora-b) 30%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-b) 45%, transparent), 0 0 34px -6px var(--aurora-glow);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--aurora-b) 90%, transparent);
+}
+
+body[data-design='aurora'] .agents-empty b {
+  background: rgba(150, 170, 255, 0.1);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+/* ---------- diff ---------- */
+
+body[data-design='aurora'] .diff-head {
+  padding: 12px 14px;
+}
+
+/* Session / Uncommitted as two words with a violet line under the chosen one,
+   not a segmented track */
+body[data-design='aurora'] .diff-toggle {
+  gap: 14px;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
+body[data-design='aurora'] .diff-toggle button {
+  padding: 3px 0;
+  border-radius: 0;
+  color: rgba(231, 235, 255, 0.5);
+  font-size: 11.5px;
+}
+
+body[data-design='aurora'] .diff-toggle button.active {
+  background: none;
+  color: #fff;
+  box-shadow: inset 0 -2px 0 var(--aurora-b), 0 6px 10px -8px color-mix(in srgb, var(--aurora-b) 90%, transparent);
+}
+
+body[data-design='aurora'] :is(.diff-tools button, .dock-send, .peek-btn) {
+  position: relative;
+  border-radius: 8px;
+  background: rgba(150, 170, 255, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(160, 180, 255, 0.14);
+  color: rgba(231, 235, 255, 0.82);
+}
+
+body[data-design='aurora'] :is(.diff-tools button, .dock-send):hover,
+body[data-design='aurora'] .peek-btn:hover:not(:disabled) {
+  background: rgba(150, 170, 255, 0.1);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-b) 45%, transparent), 0 0 16px -6px var(--aurora-glow);
+  color: #fff;
+}
+
+body[data-design='aurora'] .diff-tools button:hover svg,
+body[data-design='aurora'] .peek-btn:hover:not(:disabled) svg {
+  color: var(--aurora-a);
+}
+
+/* lit keys: a navy fill ringed in the gradient */
+body[data-design='aurora'] :is(.diff-tools .diff-send, .dock-send.selection, .peek-home),
+body[data-design='aurora'] .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab,
+body[data-design='aurora'] .diff-tools button.on {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 14%, transparent), color-mix(in srgb, var(--aurora-b) 20%, transparent));
+  box-shadow: 0 0 18px -6px var(--aurora-glow);
+  color: #fff;
+}
+
+body[data-design='aurora'] .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-b) 55%, transparent), 0 0 18px -6px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .dock-send.failed {
+  background: linear-gradient(135deg, rgba(255, 107, 147, 0.3), rgba(255, 107, 147, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 147, 0.6), 0 0 16px -4px rgba(255, 107, 147, 0.7);
+}
+
+body[data-design='aurora'] .diff-summary .add,
+body[data-design='aurora'] .df-stat .add {
+  color: var(--au-a-tint);
+}
+
+body[data-design='aurora'] .diff-summary .del,
+body[data-design='aurora'] .df-stat .del {
+  color: #ff9ab4;
+}
+
+body[data-design='aurora'] .diff-repo {
+  border-color: var(--hairline-strong);
+  color: rgba(231, 235, 255, 0.65);
+}
+
+body[data-design='aurora'] .diff-repo.active {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 18%, transparent), color-mix(in srgb, var(--aurora-b) 26%, transparent));
+  border-color: color-mix(in srgb, var(--aurora-b) 55%, transparent);
+  box-shadow: 0 0 14px -6px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .diff-file {
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+body[data-design='aurora'] .diff-file-head {
+  padding: 9px 12px;
+  border-radius: 12px 12px 0 0;
+  background: rgba(12, 14, 32, 0.86);
+  box-shadow: inset 0 -1px 0 var(--hairline);
+}
+
+body[data-design='aurora'] .diff-file.collapsed .diff-file-head {
+  border-radius: 12px;
+}
+
+body[data-design='aurora'] .diff-file-head:hover {
+  background: rgba(20, 22, 48, 0.9);
+}
+
+body[data-design='aurora'] .diff-file-body {
+  border-radius: 0 0 12px 12px;
+}
+
+/* status letters glow in their own colour */
+body[data-design='aurora'] .df-badge {
+  border-radius: 5px;
+  background: rgba(150, 170, 255, 0.18);
+}
+
+body[data-design='aurora'] .df-badge.added,
+body[data-design='aurora'] .df-badge.untracked {
+  background: color-mix(in srgb, var(--aurora-a) 85%, transparent);
+  color: var(--au-on-a);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--aurora-a) 60%, transparent);
+}
+
+body[data-design='aurora'] .df-badge.deleted {
+  background: rgba(255, 107, 147, 0.85);
+  box-shadow: 0 0 8px rgba(255, 107, 147, 0.6);
+}
+
+body[data-design='aurora'] .df-badge.renamed {
+  background: rgba(255, 201, 77, 0.9);
+  box-shadow: 0 0 8px rgba(255, 201, 77, 0.55);
+}
+
+/* changed lines fade out to the right, a wash of light rather than a band */
+body[data-design='aurora'] .diff-line.add {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 17%, transparent), color-mix(in srgb, var(--aurora-a) 3%, transparent));
+  box-shadow: inset 2px 0 0 var(--aurora-a);
+  color: var(--au-a-tint);
+}
+
+body[data-design='aurora'] .diff-line.del {
+  background: linear-gradient(90deg, rgba(255, 107, 147, 0.17), rgba(255, 107, 147, 0.03));
+  box-shadow: inset 2px 0 0 #ff6b93;
+  color: #ffb3c6;
+}
+
+body[data-design='aurora'] .diff-line.add .dl-word {
+  background: color-mix(in srgb, var(--aurora-a) 32%, transparent);
+}
+
+body[data-design='aurora'] .diff-line.del .dl-word {
+  background: rgba(255, 107, 147, 0.32);
+}
+
+body[data-design='aurora'] .diff-line.hunk {
+  color: var(--au-b-tint);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-b) 12%, transparent), transparent);
+}
+
+body[data-design='aurora'] .diff-line.untracked-row:hover {
+  background: color-mix(in srgb, var(--aurora-a) 18%, transparent);
+}
+
+body[data-design='aurora'] .dl-no.linkable:hover {
+  color: var(--aurora-a);
+}
+
+body[data-design='aurora'] .dl-comment {
+  background: var(--aurora-diag);
+  color: #0a0c1e;
+  box-shadow: 0 0 10px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .diff-note {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 10%, transparent), color-mix(in srgb, var(--aurora-b) 14%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-b) 40%, transparent), 0 0 16px -8px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .diff-note textarea {
+  background: rgba(4, 6, 18, 0.6);
+  border-color: var(--hairline-strong);
+}
+
+body[data-design='aurora'] .dn-bar button {
+  background: rgba(150, 170, 255, 0.1);
+}
+
+body[data-design='aurora'] .dn-bar button.primary {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 40%, transparent), color-mix(in srgb, var(--aurora-b) 50%, transparent));
+}
+
+body[data-design='aurora'] .diff-more {
+  background: rgba(150, 170, 255, 0.04);
+  border-top-color: var(--hairline);
+}
+
+/* ---------- shell dock ---------- */
+
+body[data-design='aurora'] .agents-dock:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-b) 50%, transparent), 0 0 26px -8px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .dock-head {
+  padding: 7px 8px 7px 14px;
+}
+
+body[data-design='aurora'] .dock-title {
+  color: #e7ebff;
+}
+
+body[data-design='aurora'] .dock-title svg {
+  stroke: var(--aurora-a);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--aurora-a) 70%, transparent));
+}
+
+/* ---------- settings ---------- */
+
+body[data-design='aurora'] #settings {
+  border-radius: 16px;
+  background: rgba(8, 10, 24, 0.9);
+}
+
+body[data-design='aurora'] .settings-header {
+  font-size: 17px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 7%, transparent), color-mix(in srgb, var(--aurora-b) 8%, transparent));
+}
+
+body[data-design='aurora'] .group {
+  border-radius: 14px;
+  background: rgba(150, 170, 255, 0.035);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+/* the heading tick becomes a short stroke of the gradient */
+body[data-design='aurora'] .group h3::before {
+  width: 14px;
+  height: 2px;
+  background: var(--aurora);
+  box-shadow: 0 0 8px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .field em {
+  background: rgba(150, 170, 255, 0.08);
+  color: var(--au-b-tint);
+}
+
+body[data-design='aurora'] .field select option {
+  background: #0c0e22;
+}
+
+/* switches: navy track, lit with the gradient when on */
+body[data-design='aurora'] .field input[type='checkbox'] {
+  background: rgba(150, 170, 255, 0.12);
+}
+
+body[data-design='aurora'] .field input[type='checkbox']:checked {
+  background: var(--aurora);
+  box-shadow: 0 0 14px -2px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .field input[type='range']::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 60%, transparent), color-mix(in srgb, var(--aurora-b) 60%, transparent));
+}
+
+body[data-design='aurora'] .field input[type='range']::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--aurora-b) 60%, transparent), 0 0 12px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .field input[type='range']:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--aurora-b) 75%, transparent), 0 0 18px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .field input[type='color'] {
+  background: rgba(4, 6, 18, 0.6);
+  border-color: var(--hairline-strong);
+}
+
+body[data-design='aurora'] .input-row button,
+body[data-design='aurora'] .settings-actions button {
+  position: relative;
+  border-color: var(--hairline-strong);
+  background: rgba(150, 170, 255, 0.05);
+  box-shadow: none;
+  border-radius: 9px;
+}
+
+body[data-design='aurora'] .input-row button:hover,
+body[data-design='aurora'] .settings-actions button:hover {
+  border-color: color-mix(in srgb, var(--aurora-b) 55%, transparent);
+  background: rgba(150, 170, 255, 0.1);
+  box-shadow: 0 0 16px -6px var(--aurora-glow);
+}
+
+body[data-design='aurora'] #btn-update-act {
+  border-color: transparent;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 16%, transparent), color-mix(in srgb, var(--aurora-b) 24%, transparent));
+  box-shadow: 0 0 18px -6px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .update-box {
+  border-color: var(--hairline);
+  background-color: rgba(4, 6, 18, 0.45);
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--aurora-b) 22%, transparent) var(--update-progress, 0%),
+    transparent var(--update-progress, 0%)
+  );
+}
+
+body[data-design='aurora'] .update-status.ready,
+body[data-design='aurora'] .update-status.available {
+  color: var(--aurora-a);
+}
+
+body[data-design='aurora'] .hint {
+  color: rgba(231, 235, 255, 0.46);
+}
+
+body[data-design='aurora'] .hint b {
+  color: var(--au-b-tint);
+}
+
+body[data-design='aurora'] .design-tile {
+  position: relative;
+  border-radius: 12px;
+  background: rgba(150, 170, 255, 0.04);
+}
+
+body[data-design='aurora'] .design-tile.active {
+  background: rgba(20, 22, 50, 0.7);
+  box-shadow: 0 0 22px -6px var(--aurora-glow);
+}
+
+/* ---------- scrollbars ---------- */
+
+body[data-design='aurora'] :is(.settings-body, #palette-list, .agents-rail, .agents-diff, .diff-body, .peek-body, .peek-tree) {
+  scrollbar-color: color-mix(in srgb, var(--aurora-b) 30%, transparent) transparent;
+}
+
+body[data-design='aurora']
+  :is(.settings-body, #palette-list, .agents-rail, .agents-diff, .diff-body, .peek-body, .peek-tree)::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--aurora-a) 30%, transparent), color-mix(in srgb, var(--aurora-b) 35%, transparent));
+  background-clip: padding-box;
+}
+
+body[data-design='aurora']
+  :is(.settings-body, #palette-list, .agents-rail, .agents-diff, .diff-body, .peek-body, .peek-tree)::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--aurora-a) 55%, transparent), color-mix(in srgb, var(--aurora-b) 60%, transparent));
+  background-clip: padding-box;
+}
+
+/* ---------- palette ---------- */
+
+body[data-design='aurora'] #palette,
+body[data-design='aurora'] #peek {
+  background: rgba(3, 4, 14, 0.45);
+}
+
+body[data-design='aurora'] .palette-box {
+  border-radius: 16px;
+  box-shadow: 0 32px 80px -16px rgba(0, 0, 0, 0.75), 0 0 50px -14px var(--aurora-glow);
+}
+
+body[data-design='aurora'] #palette-input {
+  background-color: transparent;
+  border-bottom-color: var(--hairline);
+}
+
+body[data-design='aurora'] .palette-item {
+  color: rgba(231, 235, 255, 0.75);
+}
+
+body[data-design='aurora'] .palette-item.selected {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 16%, transparent), color-mix(in srgb, var(--aurora-b) 10%, transparent) 60%, transparent);
+  box-shadow: none;
+  color: #fff;
+}
+
+body[data-design='aurora'] .palette-item.selected::before {
+  width: 2px;
+  background: linear-gradient(180deg, var(--aurora-a), var(--aurora-b));
+  box-shadow: 0 0 10px var(--aurora-glow);
+}
+
+/* ---------- peek ---------- */
+
+body[data-design='aurora'] .peek-box {
+  border-radius: 16px;
+  box-shadow: 0 32px 80px -16px rgba(0, 0, 0, 0.75), 0 0 50px -16px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .peek-head {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 6%, transparent), color-mix(in srgb, var(--aurora-b) 7%, transparent));
+}
+
+body[data-design='aurora'] .peek-root {
+  background: var(--aurora-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+body[data-design='aurora'] .peek-close:hover:not(:disabled) svg {
+  color: #ff9ab4;
+}
+
+body[data-design='aurora'] .peek-modes {
+  gap: 12px;
+  padding: 0 4px;
+  background: none;
+  box-shadow: none;
+}
+
+body[data-design='aurora'] .peek-mode {
+  padding: 4px 0;
+  border-radius: 0;
+}
+
+body[data-design='aurora'] .peek-mode.active {
+  background: none;
+  color: #fff;
+  box-shadow: inset 0 -2px 0 var(--aurora-b);
+}
+
+body[data-design='aurora'] .peek-side {
+  background: color-mix(in srgb, var(--accent) 2.5%, transparent);
+}
+
+body[data-design='aurora'] .peek-row.selected {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 14%, transparent), color-mix(in srgb, var(--aurora-b) 8%, transparent));
+  box-shadow: inset 2px 0 0 var(--aurora-a);
+}
+
+body[data-design='aurora'] .peek-row.active {
+  box-shadow: inset 2px 0 0 var(--aurora-b);
+}
+
+body[data-design='aurora'] .peek-gutter {
+  background: rgba(7, 9, 22, 0.96);
+}
+
+body[data-design='aurora'] .peek-band {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--aurora-a) 14%, transparent), color-mix(in srgb, var(--aurora-b) 6%, transparent));
+  box-shadow: inset 2px 0 0 var(--aurora-a);
+}
+
+body[data-design='aurora'] .peek-add {
+  background: color-mix(in srgb, var(--aurora-a) 11%, transparent);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--aurora-a) 75%, transparent);
+}
+
+body[data-design='aurora'] .peek-mini-view {
+  background: color-mix(in srgb, var(--aurora-b) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aurora-b) 35%, transparent);
+}
+
+body[data-design='aurora'] .peek-md a {
+  color: var(--aurora-a);
+}
+
+body[data-design='aurora'] .peek-md h1,
+body[data-design='aurora'] .peek-md h2 {
+  border-bottom-color: var(--hairline-strong);
+}
+
+body[data-design='aurora'] .peek-md code {
+  background: rgba(150, 170, 255, 0.1);
+}
+
+body[data-design='aurora'] .peek-md pre {
+  background: rgba(4, 6, 18, 0.55);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+body[data-design='aurora'] .peek-md blockquote {
+  border-left-color: var(--aurora-b);
+}
+
+/* ---------- toasts ---------- */
+
+body[data-design='aurora'] .toast {
+  border-radius: 12px;
+  background: rgba(8, 10, 24, 0.92);
+}
+
+body[data-design='aurora'] .toast::before {
+  background: var(--aurora-diag);
+  box-shadow: 0 0 10px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .toast.error::after {
+  background: linear-gradient(135deg, rgba(255, 107, 147, 0.75), rgba(255, 107, 147, 0.25));
+}
+
+body[data-design='aurora'] .toast.error::before {
+  background: var(--danger);
+  box-shadow: 0 0 10px rgba(255, 107, 147, 0.8);
+}
+
+/* ---------- modal ---------- */
+
+body[data-design='aurora'] #modal {
+  background: rgba(3, 4, 14, 0.55);
+}
+
+body[data-design='aurora'] .modal-box {
+  border-radius: 16px;
+  box-shadow: 0 34px 90px -18px rgba(0, 0, 0, 0.8), 0 0 50px -16px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .modal-icon {
+  color: #ffc98a;
+  background: rgba(255, 180, 84, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 180, 84, 0.35), 0 0 18px -4px rgba(255, 180, 84, 0.55);
+}
+
+body[data-design='aurora'] .modal-actions button {
+  border-color: var(--hairline-strong);
+  background: rgba(150, 170, 255, 0.05);
+}
+
+body[data-design='aurora'] .modal-actions button:hover {
+  background: rgba(150, 170, 255, 0.1);
+}
+
+/* the !important answers style.css's own on the confirm key */
+body[data-design='aurora'] .modal-actions .modal-confirm {
+  position: relative;
+  border-color: transparent !important;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 22%, transparent), color-mix(in srgb, var(--aurora-b) 32%, transparent)) !important;
+  box-shadow: 0 0 22px -6px var(--aurora-glow);
+  color: #fff;
+}
+
+body[data-design='aurora'] .modal-actions .modal-confirm:hover {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--aurora-a) 32%, transparent), color-mix(in srgb, var(--aurora-b) 44%, transparent)) !important;
+  box-shadow: 0 0 28px -4px var(--aurora-glow);
+}
+
+body[data-design='aurora'] .modal-note {
+  background: rgba(4, 6, 18, 0.5);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+/* ---------- a custom accent ----------
+   Set when the accent has been picked for this design (core.js). The aurora's
+   two ends are the accent turned either way round the colour wheel — the
+   signature teal and violet sit 85 degrees below and 30 above its blue — so
+   any accent gets an aurora of its own. */
+
+body[data-design='aurora'][data-custom-accent] {
+  --aurora-a: oklch(from var(--accent) 0.86 calc(c + 0.01) calc(h - 85));
+  --aurora-b: oklch(from var(--accent) 0.72 calc(c + 0.04) calc(h + 30));
+  --aurora-text: linear-gradient(90deg, oklch(from var(--aurora-a) 0.9 c h), oklch(from var(--aurora-b) 0.8 c h));
+  --au-a-tint: oklch(from var(--aurora-a) 0.88 calc(c * 0.8) h);
+  --au-b-tint: oklch(from var(--aurora-b) 0.84 calc(c * 0.7) h);
+  --au-on-a: oklch(from var(--aurora-a) 0.22 calc(c * 0.5) h);
+}

@@ -1,0 +1,1698 @@
+/* ==========================================================================
+   Graphite Studio
+   A piece of studio hardware rather than a sheet of ice: smoked matte graphite,
+   warm off-white type, one signal-orange accent, keycaps that press, and status
+   lights that glow like LEDs. The tabs are folder tabs cut from the same stock
+   as the screen they sit on. Everything here is scoped to the body attribute,
+   so with any other design picked none of it applies.
+   ========================================================================== */
+
+body[data-design='graphite'] {
+  --accent: #ff6a2b;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-mid: color-mix(in srgb, var(--accent) 45%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 60%, transparent);
+
+  /* the accent's family: the lit top of an accent key, its hover, the dark
+     ledge under it, a pale tint for text, and the ink written on it. Signature
+     values here; recomputed from a custom accent at the end of this file. */
+  --g-a-hi: #ff8a4c;
+  --g-a-hi2: #ff9a62;
+  --g-a-mid: #ff7638;
+  --g-a-tint: #ffb08a;
+  --g-a-ledge: #9c3a10;
+  --g-on-a: #1a0d05;
+  /* chrome text only: the terminal's own colours come from theme.json */
+  --fg: #ece8e1;
+
+  --hairline: rgba(255, 255, 255, 0.065);
+  --hairline-strong: rgba(255, 255, 255, 0.11);
+  --surface-1: rgba(255, 255, 255, 0.035);
+  --surface-2: rgba(255, 255, 255, 0.07);
+  --surface-3: rgba(255, 255, 255, 0.11);
+
+  /* the material: matte, barely translucent, no sheen */
+  --ice: rgba(24, 24, 27, 0.94);
+  --ice-strong: rgba(20, 20, 23, 0.96);
+  --ice-blur: blur(calc(28px / var(--ui-zoom, 1))) saturate(1.1);
+  --ice-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --ice-lift: 0 24px 60px -16px rgba(0, 0, 0, 0.75), 0 3px 8px -2px rgba(0, 0, 0, 0.4);
+  --ice-sheen: linear-gradient(transparent, transparent);
+
+  --raised: rgba(255, 255, 255, 0.06);
+  --raised-edge: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+
+  /* the screen: what a terminal, and every tab that opens onto one, is cut
+     from. Translucent, so the glass backdrop still shows through. */
+  --g-screen: rgba(14, 14, 16, 0.55);
+  --g-well: #0c0c0e;
+  --g-dim: rgba(236, 232, 225, 0.42);
+  --g-mid: rgba(236, 232, 225, 0.68);
+  --g-led-off: #4a4a50;
+  --g-green: #9be07a;
+  --g-mono: 'Cascadia Mono', Consolas, monospace;
+
+  /* keycaps: a grey cap on a 2px ledge, the orange one for the action that
+     matters, a red one for something gone wrong */
+  --g-key: linear-gradient(180deg, #36363b, #2a2a2e);
+  --g-key-hover: linear-gradient(180deg, #3f3f45, #313136);
+  --g-key-edge: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 0 #121214, 0 3px 6px rgba(0, 0, 0, 0.4);
+  --g-key-down: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 0 #121214, 0 1px 3px rgba(0, 0, 0, 0.4);
+  --g-key-acc: linear-gradient(180deg, var(--g-a-hi), var(--accent));
+  --g-key-acc-hover: linear-gradient(180deg, var(--g-a-hi2), var(--g-a-mid));
+  --g-key-acc-edge: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 0 var(--g-a-ledge), 0 0 18px -4px color-mix(in srgb, var(--accent) 70%, transparent);
+  --g-key-red: linear-gradient(180deg, #e0483f, #c2332b);
+  --g-key-red-edge: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 2px 0 #6e1712, 0 0 16px -4px rgba(248, 81, 73, 0.7);
+}
+
+/* ---------- window ---------- */
+
+body[data-design='graphite'].glass::after {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body[data-design='graphite'].glass.win-focused::after {
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+/* a machined edge rather than light catching glass: one even line */
+body[data-design='graphite'].glass::before {
+  background: rgba(255, 255, 255, 0.12);
+  opacity: 0.6;
+}
+
+body[data-design='graphite'].glass.win-focused::before {
+  opacity: 1;
+}
+
+body[data-design='graphite'] ::selection {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* ---------- titlebar ---------- */
+
+body[data-design='graphite'] #titlebar::after {
+  display: none;
+}
+
+/* The tabs hang from the bottom of the strip, so the lit one can run straight
+   into the screen below it like a folder tab into its folder. */
+body[data-design='graphite'] #tabstrip {
+  align-items: flex-end;
+  gap: 4px;
+  counter-reset: g-tab;
+}
+
+body[data-design='graphite'] #tabstrip .tab {
+  counter-increment: g-tab;
+  gap: 8px;
+  height: 36px;
+  min-width: 140px;
+  padding: 0 4px 0 12px;
+  border-radius: 8px 8px 0 0;
+  color: rgba(236, 232, 225, 0.5);
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-design='graphite'] #tabstrip .tab:hover {
+  color: var(--g-mid);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* the lit tab is the screen's own stock, edged on three sides */
+body[data-design='graphite'] #tabstrip .tab.active {
+  color: var(--fg);
+  background: var(--g-screen);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 1px 0 0 rgba(255, 255, 255, 0.05),
+    inset -1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+body[data-design='graphite'] #tabstrip .tab .title {
+  font-size: 12.5px;
+  line-height: 36px;
+}
+
+/* An LED on every shell tab, where 2.0 drew the seams between them: green on
+   the lit tab, dark on the rest. An agent tab has its status dot instead. */
+body[data-design='graphite'] #tabstrip .tab::before {
+  content: '';
+  position: static;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: none;
+  opacity: 1;
+  background: var(--g-led-off);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4);
+  transition: background 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+body[data-design='graphite'] #tabstrip .tab.active::before {
+  background: var(--g-green);
+  box-shadow: 0 0 8px var(--g-green), 0 0 2px var(--g-green);
+}
+
+body[data-design='graphite'] #tabstrip .tab:has(.tab-dot)::before {
+  display: none;
+}
+
+/* The tab's number, small and mono after the title, the way a hardware
+   selector labels its channels. Counted in CSS, so it is always the tab's
+   place in the strip. */
+body[data-design='graphite'] #tabstrip .tab::after {
+  content: counter(g-tab);
+  order: 1;
+  position: static;
+  flex: none;
+  width: auto;
+  height: auto;
+  margin-left: -2px;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font-family: var(--g-mono);
+  font-size: 10px;
+  color: rgba(236, 232, 225, 0.32);
+}
+
+body[data-design='graphite'] #tabstrip .tab.active::after {
+  color: var(--accent);
+}
+
+body[data-design='graphite'] #tabstrip .tab .close {
+  order: 2;
+  border-radius: 5px;
+}
+
+body[data-design='graphite'] #tabstrip .tab .close:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+body[data-design='graphite'] .tab .tab-zoom {
+  font-family: var(--g-mono);
+  border-radius: 3px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+body[data-design='graphite'] .tab-rename {
+  border-radius: 4px;
+  border-color: var(--accent);
+  background: var(--g-well);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+body[data-design='graphite'] #tabstrip .tab.dragging {
+  opacity: 0.3;
+}
+
+body[data-design='graphite'] .tab-dot {
+  margin-right: 0;
+  width: 7px;
+  height: 7px;
+}
+
+/* ---------- titlebar keys ---------- */
+
+/* Every key on the strip is a keycap, sat at the height of the tabs */
+body[data-design='graphite'] .tb-group,
+body[data-design='graphite'] #btn-agents,
+body[data-design='graphite'] #btn-settings {
+  align-self: flex-end;
+  margin-bottom: 4px;
+}
+
+body[data-design='graphite'] .tb-group {
+  height: 30px;
+  margin-left: 8px;
+  border-radius: 7px;
+  background: var(--g-key);
+  box-shadow: var(--g-key-edge);
+}
+
+body[data-design='graphite'] .tb-group:hover {
+  background: var(--g-key-hover);
+  box-shadow: var(--g-key-edge);
+}
+
+body[data-design='graphite'] #btn-newtab,
+body[data-design='graphite'] #btn-newtab-menu {
+  height: 30px;
+  background: transparent;
+  color: var(--fg);
+}
+
+body[data-design='graphite'] #btn-newtab {
+  width: 30px;
+  border-radius: 7px 0 0 7px;
+}
+
+body[data-design='graphite'] #btn-newtab-menu {
+  border-radius: 0 7px 7px 0;
+}
+
+body[data-design='graphite'] #btn-newtab-menu::before {
+  opacity: 1;
+  top: 7px;
+  bottom: 7px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.06);
+}
+
+body[data-design='graphite'] #btn-newtab:hover,
+body[data-design='graphite'] #btn-newtab-menu:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+body[data-design='graphite'] #btn-newtab:active,
+body[data-design='graphite'] #btn-newtab-menu:active {
+  transform: translateY(1px);
+}
+
+body[data-design='graphite'] #btn-settings {
+  width: 30px;
+  height: 30px;
+  margin-right: 6px;
+  border-radius: 7px;
+  color: var(--fg);
+  background: var(--g-key);
+  box-shadow: var(--g-key-edge);
+}
+
+body[data-design='graphite'] #btn-settings:hover {
+  background: var(--g-key-hover);
+}
+
+/* the agent key is the one orange cap on the strip, and it says what it is */
+body[data-design='graphite'] #btn-agents {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: 30px;
+  margin-left: 6px;
+  padding: 0 10px 0 8px;
+  border-radius: 7px;
+  color: var(--g-on-a);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--g-key-acc);
+  box-shadow: var(--g-key-acc-edge);
+}
+
+body[data-design='graphite'] #btn-agents::after {
+  content: 'Agent';
+}
+
+body[data-design='graphite'] #btn-agents svg {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+  filter: none;
+}
+
+body[data-design='graphite'] #btn-agents:hover {
+  color: var(--g-on-a);
+  background: var(--g-key-acc-hover);
+}
+
+body[data-design='graphite'] #btn-agents:active,
+body[data-design='graphite'] #btn-settings:active {
+  transform: translateY(1px);
+}
+
+body[data-design='graphite'] #win-controls button {
+  color: var(--g-mid);
+}
+
+body[data-design='graphite'] #win-controls button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+}
+
+/* ---------- content and panes ---------- */
+
+/* no gap above: the lit tab has to meet the screen */
+body[data-design='graphite'] #content {
+  padding: 0 10px 10px;
+}
+
+/* A graphite wash over the whole window: the glass still shows through, but
+   dimmed to smoked metal whatever the tint, so the chrome around the screens
+   is as dark as the screens themselves are. */
+body[data-design='graphite'] #design-fx {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(17, 17, 19, 0.55);
+}
+
+/* above the wash; the glass layers stay below it at their negative z */
+body[data-design='graphite'] #titlebar,
+body[data-design='graphite'] #content {
+  position: relative;
+  z-index: 1;
+}
+
+body[data-design='graphite'] .pane {
+  background: var(--g-screen);
+  border-color: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+body[data-design='graphite'] .split .pane,
+body[data-design='graphite'] .agents-center .pane {
+  background: var(--g-screen);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* the focused screen in a split is ringed in orange, with a faint glow */
+body[data-design='graphite'] .split .pane.focused,
+body[data-design='graphite'] .agents-center .pane.focused {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent), 0 0 22px -8px var(--accent-glow);
+}
+
+body[data-design='graphite'] .tab-content > .pane.focused {
+  border-color: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+body[data-design='graphite'] .pane.drop-over {
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 8%, var(--g-screen));
+  box-shadow: inset 0 0 0 1px var(--accent-soft), 0 0 24px -6px var(--accent-glow) !important;
+}
+
+body[data-design='graphite'] .divider::after {
+  border-radius: 1px;
+}
+
+body[data-design='graphite'] .divider:hover::after,
+body[data-design='graphite'] .divider.dragging::after {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* ---------- find bar ---------- */
+
+body[data-design='graphite'] .pane-search {
+  border-radius: 8px;
+  padding: 4px;
+}
+
+body[data-design='graphite'] .pane-search-input {
+  background-color: var(--g-well);
+  border-radius: 5px;
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+body[data-design='graphite'] .pane-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 2px var(--accent-soft);
+}
+
+body[data-design='graphite'] .pane-search-count {
+  font-family: var(--g-mono);
+  font-size: 10.5px;
+  color: var(--g-dim);
+}
+
+body[data-design='graphite'] .pane-search button {
+  border-radius: 5px;
+}
+
+body[data-design='graphite'] .pane-search button.pane-search-toggle.on {
+  color: var(--g-on-a);
+  background: var(--g-key-acc);
+  border-color: transparent;
+  box-shadow: 0 0 10px -2px var(--accent-glow);
+}
+
+/* ---------- command blocks ---------- */
+
+body[data-design='graphite'] .cmd-band {
+  border-radius: 4px;
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--band) 85%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--band) 18%, transparent);
+}
+
+body[data-design='graphite'] .cmd-band:not(.failed) {
+  --band: var(--g-green);
+}
+
+body[data-design='graphite'] .cmd-bar {
+  border-radius: 8px;
+  padding: 4px;
+  gap: 4px;
+}
+
+body[data-design='graphite'] .cmd-exit {
+  font-family: var(--g-mono);
+  color: var(--g-green);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--g-green) 60%, transparent);
+}
+
+body[data-design='graphite'] .cmd-exit.failed {
+  color: var(--danger);
+  text-shadow: 0 0 6px rgba(248, 81, 73, 0.6);
+}
+
+body[data-design='graphite'] .cmd-bar button {
+  border-radius: 5px;
+  background: var(--g-key);
+  box-shadow: var(--g-key-edge);
+  color: var(--fg);
+}
+
+body[data-design='graphite'] .cmd-bar button:hover:not(:disabled) {
+  background: var(--g-key-hover);
+}
+
+body[data-design='graphite'] .cmd-bar button:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--g-key-down);
+}
+
+/* ---------- menus, tooltips ---------- */
+
+body[data-design='graphite'] .menu {
+  border-radius: 8px;
+  padding: 4px;
+}
+
+body[data-design='graphite'] .menu-item {
+  border-radius: 5px;
+  position: relative;
+}
+
+body[data-design='graphite'] .menu-item:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* shortcuts are real keycaps here */
+body[data-design='graphite'] .menu-item em,
+body[data-design='graphite'] .palette-item em {
+  font-family: var(--g-mono);
+  font-size: 10px;
+  border-radius: 4px;
+  padding: 3px 6px 3px;
+  color: var(--fg);
+  background: var(--g-key);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1.5px 0 #0c0c0e;
+}
+
+body[data-design='graphite'] .menu-sep {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body[data-design='graphite'] #tooltip {
+  border-radius: 6px;
+}
+
+body[data-design='graphite'] #tooltip .tip-sub {
+  font-family: var(--g-mono);
+  font-size: 10.5px;
+}
+
+body[data-design='graphite'] #image-card {
+  border-radius: 8px;
+}
+
+body[data-design='graphite'] #image-card .image-card-pic {
+  border-radius: 4px;
+}
+
+/* ---------- agent mode ---------- */
+
+body[data-design='graphite'] .agents-layout {
+  gap: 0;
+}
+
+body[data-design='graphite'] .agents-gutter::after,
+body[data-design='graphite'] .agents-dock-gutter::after {
+  border-radius: 1px;
+}
+
+body[data-design='graphite'] .agents-gutter:hover::after,
+body[data-design='graphite'] .agents-gutter.dragging::after,
+body[data-design='graphite'] .agents-dock-gutter:hover::after,
+body[data-design='graphite'] .agents-dock-gutter.dragging::after {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* the side panels: a lighter, flatter plate than the screen between them */
+body[data-design='graphite'] .agents-rail,
+body[data-design='graphite'] .agents-diff,
+body[data-design='graphite'] .agents-dock {
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  color: var(--fg);
+}
+
+body[data-design='graphite'] .agents-rail {
+  padding: 14px 12px;
+}
+
+body[data-design='graphite'] .rail-section + .rail-section {
+  border-top-color: rgba(255, 255, 255, 0.05);
+}
+
+/* labels in the studio's own lettering: mono, tracked capitals */
+body[data-design='graphite'] .rail-head h4,
+body[data-design='graphite'] .diff-title,
+body[data-design='graphite'] .group h3,
+body[data-design='graphite'] .dock-title {
+  font-family: var(--g-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--g-dim);
+}
+
+body[data-design='graphite'] .rail-head h4 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex: 1;
+}
+
+body[data-design='graphite'] .rail-count {
+  display: inline;
+  margin-left: 8px;
+  font-family: var(--g-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--g-a-hi);
+  font-variant-numeric: tabular-nums;
+}
+
+body[data-design='graphite'] .rail-head:has(.rail-refresh) h4 {
+  flex: none;
+}
+
+/* the rail's one big orange key */
+body[data-design='graphite'] .rail-new {
+  height: 36px;
+  padding: 0 12px;
+  margin-bottom: 16px;
+  border: none;
+  border-radius: 7px;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--g-on-a);
+  background: var(--g-key-acc);
+  box-shadow: var(--g-key-acc-edge);
+}
+
+body[data-design='graphite'] .rail-new:hover {
+  border-color: transparent;
+  background: var(--g-key-acc-hover);
+  box-shadow: var(--g-key-acc-edge);
+}
+
+body[data-design='graphite'] .rail-new:active {
+  transform: translateY(1px);
+}
+
+body[data-design='graphite'] .agents-layout .hint {
+  color: var(--g-dim);
+}
+
+/* Each live agent is a row on the panel: its LED, its name, its state on a
+   small tag, and where it runs in mono beneath. */
+body[data-design='graphite'] .agent-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  row-gap: 3px;
+  padding: 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+body[data-design='graphite'] .agent-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* the one on screen: tinted orange, with an orange edge down its left */
+body[data-design='graphite'] .agent-row.selected {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), inset 3px 0 0 var(--accent);
+}
+
+body[data-design='graphite'] .agent-row.selected::before {
+  display: none;
+}
+
+body[data-design='graphite'] .agent-name {
+  font-weight: 600;
+}
+
+body[data-design='graphite'] .agent-meta {
+  grid-column: 2 / -1;
+  font-family: var(--g-mono);
+  font-size: 10.5px;
+  color: var(--g-dim);
+}
+
+body[data-design='graphite'] .meta-st {
+  display: none;
+}
+
+body[data-design='graphite'] .agent-state {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--g-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--g-mid);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body[data-design='graphite'] .agent-row[data-status='working'] .agent-state {
+  color: #8cc4ff;
+  background: rgba(88, 166, 255, 0.14);
+}
+
+body[data-design='graphite'] .agent-row[data-status='blocked'] .agent-state {
+  color: #ffc98a;
+  background: rgba(255, 180, 84, 0.16);
+  box-shadow: 0 0 10px -3px rgba(255, 180, 84, 0.6);
+}
+
+body[data-design='graphite'] .agent-row[data-status='done'] .agent-state {
+  color: var(--g-green);
+  background: rgba(155, 224, 122, 0.14);
+}
+
+body[data-design='graphite'] .agent-row[data-status='idle'] .agent-state,
+body[data-design='graphite'] .agent-row[data-status='exited'] .agent-state {
+  color: var(--g-dim);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* closed sessions: plain lines with a mono age, so live agents stand above */
+body[data-design='graphite'] .agent-row.dormant {
+  padding: 7px 8px;
+  margin-bottom: 1px;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+body[data-design='graphite'] .agent-row.dormant:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body[data-design='graphite'] .agent-row.dormant .agent-meta {
+  font-size: 10px;
+}
+
+body[data-design='graphite'] .agent-row.unseen .agent-name {
+  color: #fff;
+}
+
+body[data-design='graphite'] .rail-refresh {
+  border: none;
+  border-radius: 5px;
+  height: 22px;
+  padding: 0 8px;
+  font-family: var(--g-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg);
+  background: var(--g-key);
+  box-shadow: var(--g-key-edge);
+}
+
+body[data-design='graphite'] .rail-refresh:hover {
+  color: var(--fg);
+  background: var(--g-key-hover);
+}
+
+body[data-design='graphite'] .rail-refresh:active {
+  transform: translateY(1px);
+  box-shadow: var(--g-key-down);
+}
+
+/* ---- status lights ---- */
+/* Each state is an LED: a lit one glows its own colour, an idle one is dark
+   glass, a closed one is a dead socket. */
+
+body[data-design='graphite'] .st-working {
+  background: #58a6ff;
+  box-shadow: 0 0 10px #58a6ff, 0 0 2px #58a6ff;
+}
+
+body[data-design='graphite'] .st-blocked {
+  background: #ffb454;
+  box-shadow: 0 0 12px #ffb454, 0 0 3px #ffb454;
+}
+
+body[data-design='graphite'] .st-done {
+  background: var(--g-green);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--g-green) 80%, transparent);
+}
+
+body[data-design='graphite'] .st-idle {
+  background: var(--g-led-off);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4);
+}
+
+body[data-design='graphite'] .st-exited {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--g-led-off);
+}
+
+body[data-design='graphite'] .agent-row.unseen .agent-dot {
+  box-shadow: 0 0 12px var(--g-green), 0 0 3px var(--g-green);
+}
+
+body[data-design='graphite'] .agent-row.seen .agent-dot {
+  box-shadow: none;
+}
+
+/* ---- empty state ---- */
+
+body[data-design='graphite'] .agents-empty {
+  color: var(--g-mid);
+}
+
+body[data-design='graphite'] .agents-empty::before {
+  border-radius: 10px;
+  color: var(--g-on-a);
+  background: var(--g-key-acc);
+  box-shadow: var(--g-key-acc-edge);
+  text-shadow: none;
+}
+
+body[data-design='graphite'] .agents-empty b {
+  border-radius: 4px;
+  color: var(--fg);
+  background: var(--g-key);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 1.5px 0 #0c0c0e;
+}
+
+/* ---- diff panel ---- */
+
+body[data-design='graphite'] .diff-head,
+body[data-design='graphite'] .diff-sub,
+body[data-design='graphite'] .diff-repos {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+body[data-design='graphite'] .diff-head {
+  padding: 10px 12px;
+}
+
+/* a recessed track with the chosen option as a raised key */
+body[data-design='graphite'] .diff-toggle,
+body[data-design='graphite'] .peek-modes {
+  padding: 3px;
+  gap: 2px;
+  border-radius: 7px;
+  background: var(--g-well);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+body[data-design='graphite'] .diff-toggle button,
+body[data-design='graphite'] .peek-mode {
+  border-radius: 5px;
+  color: rgba(236, 232, 225, 0.5);
+}
+
+body[data-design='graphite'] .diff-toggle button:hover,
+body[data-design='graphite'] .peek-mode:hover {
+  color: var(--fg);
+}
+
+body[data-design='graphite'] .diff-toggle button.active,
+body[data-design='graphite'] .peek-mode.active {
+  color: var(--fg);
+  background: var(--g-key);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+body[data-design='graphite'] .diff-sub {
+  font-family: var(--g-mono);
+  font-size: 10px;
+  color: var(--g-dim);
+}
+
+body[data-design='graphite'] .diff-summary .add,
+body[data-design='graphite'] .df-stat .add {
+  color: var(--g-green);
+}
+
+body[data-design='graphite'] .diff-summary .del,
+body[data-design='graphite'] .df-stat .del {
+  color: var(--g-a-hi);
+}
+
+/* ---- keycaps: every ordinary button in the panels ---- */
+
+body[data-design='graphite'] .diff-tools button,
+body[data-design='graphite'] .dock-send,
+body[data-design='graphite'] .dn-bar button,
+body[data-design='graphite'] .settings-actions button,
+body[data-design='graphite'] .input-row button,
+body[data-design='graphite'] .modal-actions button,
+body[data-design='graphite'] .peek-btn {
+  border: none;
+  border-radius: 6px;
+  color: var(--fg);
+  background: var(--g-key);
+  box-shadow: var(--g-key-edge);
+}
+
+body[data-design='graphite'] .diff-tools button:hover,
+body[data-design='graphite'] .dock-send:hover,
+body[data-design='graphite'] .dn-bar button:hover,
+body[data-design='graphite'] .settings-actions button:hover,
+body[data-design='graphite'] .input-row button:hover,
+body[data-design='graphite'] .modal-actions button:hover,
+body[data-design='graphite'] .peek-btn:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: transparent;
+  background: var(--g-key-hover);
+  box-shadow: var(--g-key-edge);
+  filter: none;
+}
+
+body[data-design='graphite'] .diff-tools button:active,
+body[data-design='graphite'] .dock-send:active,
+body[data-design='graphite'] .dn-bar button:active,
+body[data-design='graphite'] .settings-actions button:active,
+body[data-design='graphite'] .input-row button:active,
+body[data-design='graphite'] .modal-actions button:active,
+body[data-design='graphite'] .peek-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: var(--g-key-down);
+}
+
+body[data-design='graphite'] .diff-tools button:hover svg,
+body[data-design='graphite'] .peek-btn:hover:not(:disabled) svg {
+  color: var(--accent);
+}
+
+/* ---- orange keys: the one action in a row that wants pressing ---- */
+
+body[data-design='graphite'] .diff-tools .diff-send,
+body[data-design='graphite'] .dock-send.selection,
+body[data-design='graphite'] .dn-bar button.primary,
+body[data-design='graphite'] #btn-update-act,
+body[data-design='graphite'] .modal-actions .modal-confirm,
+body[data-design='graphite'] .peek-home,
+body[data-design='graphite'] .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab,
+body[data-design='graphite'] .diff-tools button.on {
+  color: var(--g-on-a) !important;
+  font-weight: 700 !important;
+  background: var(--g-key-acc) !important;
+  box-shadow: var(--g-key-acc-edge) !important;
+}
+
+body[data-design='graphite'] .diff-tools .diff-send:hover,
+body[data-design='graphite'] .dock-send.selection:hover,
+body[data-design='graphite'] .dn-bar button.primary:hover,
+body[data-design='graphite'] #btn-update-act:hover,
+body[data-design='graphite'] .modal-actions .modal-confirm:hover,
+body[data-design='graphite'] .peek-home:hover:not(:disabled) {
+  background: var(--g-key-acc-hover) !important;
+}
+
+body[data-design='graphite'] .diff-tools .diff-send svg,
+body[data-design='graphite'] .peek-home svg,
+body[data-design='graphite'] .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab svg {
+  color: var(--g-on-a) !important;
+}
+
+body[data-design='graphite'] .dock-send.failed {
+  color: #fff;
+  background: var(--g-key-red);
+  box-shadow: var(--g-key-red-edge);
+}
+
+/* ---- repo chips ---- */
+
+body[data-design='graphite'] .diff-repo {
+  border-radius: 5px;
+  border-color: rgba(255, 255, 255, 0.08);
+  font-family: var(--g-mono);
+  font-size: 10px;
+  color: var(--g-mid);
+}
+
+body[data-design='graphite'] .diff-repo.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* ---- file cards ---- */
+
+body[data-design='graphite'] .diff-file {
+  border-radius: 8px;
+  background: rgba(14, 14, 16, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+body[data-design='graphite'] .diff-file-head {
+  border-radius: 8px 8px 0 0;
+  background: rgba(32, 32, 36, 0.92);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.05), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
+}
+
+body[data-design='graphite'] .diff-file.collapsed .diff-file-head {
+  border-radius: 8px;
+}
+
+body[data-design='graphite'] .diff-file-head:hover {
+  background: rgba(40, 40, 45, 0.95);
+}
+
+body[data-design='graphite'] .diff-file-body {
+  border-radius: 0 0 8px 8px;
+}
+
+/* the change letter as a mono tag */
+body[data-design='graphite'] .df-badge {
+  width: auto;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-family: var(--g-mono);
+  font-size: 9.5px;
+  line-height: 17px;
+  color: var(--g-mid);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body[data-design='graphite'] .df-badge.added,
+body[data-design='graphite'] .df-badge.untracked {
+  color: var(--g-green);
+  background: rgba(155, 224, 122, 0.15);
+}
+
+body[data-design='graphite'] .df-badge.deleted {
+  color: var(--g-a-hi);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+body[data-design='graphite'] .df-badge.renamed,
+body[data-design='graphite'] .df-badge.modified {
+  color: #ffd27a;
+  background: rgba(255, 200, 80, 0.14);
+}
+
+body[data-design='graphite'] .df-dir {
+  font-family: var(--g-mono);
+  font-size: 10px;
+}
+
+body[data-design='graphite'] .df-stat {
+  font-family: var(--g-mono);
+}
+
+/* additions green, removals in the signal orange */
+body[data-design='graphite'] .diff-line.add {
+  background: rgba(155, 224, 122, 0.1);
+  box-shadow: inset 2px 0 0 var(--g-green);
+  color: #bdeca5;
+}
+
+body[data-design='graphite'] .diff-line.del {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--g-a-tint);
+}
+
+body[data-design='graphite'] .diff-line.add .dl-word {
+  background: rgba(155, 224, 122, 0.28);
+}
+
+body[data-design='graphite'] .diff-line.del .dl-word {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+body[data-design='graphite'] .diff-line.hunk {
+  color: var(--g-dim);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+body[data-design='graphite'] .diff-line.untracked-row:hover {
+  background: rgba(155, 224, 122, 0.18);
+}
+
+body[data-design='graphite'] .dl-no {
+  color: rgba(236, 232, 225, 0.26);
+}
+
+body[data-design='graphite'] .dl-no.linkable:hover {
+  color: var(--accent);
+}
+
+body[data-design='graphite'] .dl-comment {
+  border-radius: 4px;
+  color: var(--g-on-a);
+  background: var(--g-key-acc);
+  box-shadow: 0 1px 0 var(--g-a-ledge), 0 0 8px -2px var(--accent-glow);
+}
+
+/* ---- review notes ---- */
+
+body[data-design='graphite'] .diff-note {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), inset 3px 0 0 var(--accent);
+}
+
+body[data-design='graphite'] .diff-note textarea {
+  border-radius: 4px;
+  background: var(--g-well);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+body[data-design='graphite'] .diff-note textarea:focus {
+  border-color: var(--accent);
+}
+
+body[data-design='graphite'] .dn-hint {
+  font-family: var(--g-mono);
+  font-size: 9.5px;
+  color: var(--g-dim);
+}
+
+body[data-design='graphite'] .dn-del:hover {
+  color: var(--accent);
+}
+
+body[data-design='graphite'] .diff-more {
+  font-family: var(--g-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--g-mid);
+  background: rgba(255, 255, 255, 0.025);
+  border-top-color: rgba(255, 255, 255, 0.05);
+}
+
+body[data-design='graphite'] .diff-more:hover {
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ---- docked shell ---- */
+
+body[data-design='graphite'] .agents-dock:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent), 0 0 22px -8px var(--accent-glow);
+}
+
+/* a status strip across its top, like the strip over a hardware display */
+body[data-design='graphite'] .dock-head {
+  padding: 5px 6px 5px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+body[data-design='graphite'] .dock-title svg {
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+}
+
+body[data-design='graphite'] .dock-name {
+  font-family: var(--g-mono);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--fg);
+}
+
+body[data-design='graphite'] .dock-send {
+  height: 24px;
+}
+
+body[data-design='graphite'] .dock-close {
+  border-radius: 5px;
+  color: var(--g-mid);
+}
+
+body[data-design='graphite'] .dock-close:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+body[data-design='graphite'] .dock-body .pane {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* ---------- settings ---------- */
+
+/* Frost's size and place: the panel is the same object in every design, so
+   switching while it is open restyles it without moving it. */
+body[data-design='graphite'] #settings {
+  border-radius: 10px;
+  background: var(--ice-strong);
+}
+
+body[data-design='graphite'] #settings::after {
+  opacity: 0.035;
+}
+
+body[data-design='graphite'] .settings-header {
+  font-family: var(--g-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 14px 12px 12px 16px;
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+/* a power light before the title: lit while the panel is out */
+body[data-design='graphite'] .settings-header span::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 10px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent), 0 0 2px var(--accent);
+}
+
+body[data-design='graphite'] .settings-header button {
+  border-radius: 6px;
+  color: var(--fg);
+  background: var(--g-key);
+  box-shadow: var(--g-key-edge);
+}
+
+body[data-design='graphite'] .settings-header button:hover {
+  background: var(--g-key-hover);
+}
+
+body[data-design='graphite'] .group {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* the heading's tick becomes a small square LED */
+body[data-design='graphite'] .group h3::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+body[data-design='graphite'] .field span {
+  color: var(--g-mid);
+}
+
+/* slider readouts in a little display window */
+body[data-design='graphite'] .field em {
+  font-family: var(--g-mono);
+  font-size: 10.5px;
+  border-radius: 3px;
+  color: var(--g-a-hi);
+  background: var(--g-well);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+body[data-design='graphite'] .field input[type='text'],
+body[data-design='graphite'] .field select,
+body[data-design='graphite'] .field input[type='color'] {
+  border-radius: 6px;
+  border-color: rgba(255, 255, 255, 0.06);
+  background-color: var(--g-well);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+body[data-design='graphite'] .field input[type='text'] {
+  font-family: var(--g-mono);
+  font-size: 11.5px;
+}
+
+body[data-design='graphite'] .field input[type='text']:hover,
+body[data-design='graphite'] .field select:hover {
+  background-color: #111113;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+body[data-design='graphite'] .field input[type='text']:focus,
+body[data-design='graphite'] .field select:focus {
+  border-color: var(--accent);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 2px var(--accent-soft);
+}
+
+body[data-design='graphite'] .field select option {
+  background: #18181b;
+  color: #ece8e1;
+}
+
+body[data-design='graphite'] .field input[type='color']::-webkit-color-swatch {
+  border-radius: 3px;
+}
+
+/* Switches are hardware toggles: a rectangular slot with a cap that slides,
+   and an orange LED in the cap when it is on. */
+body[data-design='graphite'] .field input[type='checkbox'] {
+  width: 32px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--g-well);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+body[data-design='graphite'] .field input[type='checkbox']::before {
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: radial-gradient(circle at 50% 50%, var(--g-led-off) 0 2.5px, transparent 3px), var(--g-key);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+body[data-design='graphite'] .field input[type='checkbox']:checked {
+  background: var(--g-well);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7), inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+body[data-design='graphite'] .field input[type='checkbox']:checked::before {
+  transform: translateX(14px);
+  background: radial-gradient(circle at 50% 50%, var(--g-a-hi) 0 2.5px, transparent 3.5px), var(--g-key);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 10px -2px var(--accent-glow);
+}
+
+/* sliders: a recessed slot and a fader cap with an orange index line */
+body[data-design='graphite'] .field input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--g-well);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+body[data-design='graphite'] .field input[type='range']::-webkit-slider-thumb {
+  width: 12px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, transparent 5px, var(--accent) 5px 7px, transparent 7px), var(--g-key);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 2px 0 #121214, 0 3px 6px rgba(0, 0, 0, 0.5);
+}
+
+body[data-design='graphite'] .field input[type='range']:hover::-webkit-slider-thumb {
+  transform: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 2px 0 #121214, 0 3px 6px rgba(0, 0, 0, 0.5),
+    0 0 12px -2px var(--accent-glow);
+}
+
+body[data-design='graphite'] .field input[type='range']:active::-webkit-slider-thumb {
+  transform: translateY(1px);
+}
+
+body[data-design='graphite'] .field.row.sub {
+  border-left-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+body[data-design='graphite'] .update-box {
+  border-radius: 6px;
+  border-color: rgba(255, 255, 255, 0.06);
+  background-color: var(--g-well);
+}
+
+body[data-design='graphite'] .update-line b {
+  color: var(--g-a-hi);
+}
+
+body[data-design='graphite'] .update-status {
+  font-family: var(--g-mono);
+  font-size: 10.5px;
+}
+
+body[data-design='graphite'] .hint {
+  color: rgba(236, 232, 225, 0.42);
+}
+
+body[data-design='graphite'] .hint b {
+  color: var(--g-mid);
+}
+
+body[data-design='graphite'] #diag {
+  font-family: var(--g-mono);
+  font-size: 10px;
+}
+
+/* the design picker, as a row of cartridges */
+body[data-design='graphite'] .design-tile {
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 2px 0 #0c0c0e;
+}
+
+body[data-design='graphite'] .design-tile:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body[data-design='graphite'] .design-tile.active {
+  box-shadow: inset 0 0 0 1.5px var(--accent), 0 2px 0 #0c0c0e, 0 0 14px -4px var(--accent-glow);
+}
+
+body[data-design='graphite'] .design-swatch {
+  border-radius: 4px;
+}
+
+/* ---------- scrollbars ---------- */
+
+body[data-design='graphite'] .settings-body::-webkit-scrollbar-thumb,
+body[data-design='graphite'] #palette-list::-webkit-scrollbar-thumb,
+body[data-design='graphite'] .agents-rail::-webkit-scrollbar-thumb,
+body[data-design='graphite'] .agents-diff::-webkit-scrollbar-thumb,
+body[data-design='graphite'] .diff-body::-webkit-scrollbar-thumb,
+body[data-design='graphite'] .peek-body::-webkit-scrollbar-thumb,
+body[data-design='graphite'] .peek-tree::-webkit-scrollbar-thumb {
+  background: #3a3a3f;
+  background-clip: padding-box;
+  border-radius: 4px;
+}
+
+body[data-design='graphite'] .settings-body::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] #palette-list::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] .agents-rail::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] .agents-diff::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] .diff-body::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] .peek-body::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] .peek-tree::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: padding-box;
+}
+
+/* ---------- command palette ---------- */
+
+body[data-design='graphite'] #palette,
+body[data-design='graphite'] #peek {
+  background: rgba(4, 4, 6, 0.45);
+}
+
+body[data-design='graphite'] .palette-box {
+  border-radius: 10px;
+  box-shadow: var(--ice-edge), 0 30px 80px -16px rgba(0, 0, 0, 0.8);
+}
+
+body[data-design='graphite'] .palette-box::after {
+  opacity: 0.035;
+}
+
+/* the input reads as a command line: mono, with a prompt in orange */
+body[data-design='graphite'] #palette-input {
+  font-family: var(--g-mono);
+  font-size: 14px;
+  padding-left: 44px;
+  background: var(--search-icon) no-repeat 17px 50% / 15px, rgba(0, 0, 0, 0.25);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+  caret-color: var(--accent);
+}
+
+body[data-design='graphite'] #palette-list {
+  padding: 6px;
+}
+
+body[data-design='graphite'] .palette-item {
+  border-radius: 6px;
+  color: var(--g-mid);
+}
+
+body[data-design='graphite'] .palette-item.selected {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), inset 3px 0 0 var(--accent);
+}
+
+body[data-design='graphite'] .palette-item.selected::before {
+  display: none;
+}
+
+body[data-design='graphite'] .palette-item.selected em {
+  color: var(--g-on-a);
+  background: var(--g-key-acc);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 1.5px 0 var(--g-a-ledge);
+}
+
+body[data-design='graphite'] .palette-detail {
+  color: var(--g-dim);
+  opacity: 1;
+}
+
+/* ---------- peek ---------- */
+
+body[data-design='graphite'] .peek-box {
+  border-radius: 10px;
+  box-shadow: var(--ice-edge), 0 30px 80px -16px rgba(0, 0, 0, 0.8);
+}
+
+body[data-design='graphite'] .peek-head {
+  background: rgba(0, 0, 0, 0.22);
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+body[data-design='graphite'] .peek-root {
+  font-family: var(--g-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+body[data-design='graphite'] .peek-crumbs {
+  font-family: var(--g-mono);
+  font-size: 12px;
+}
+
+body[data-design='graphite'] .peek-btn {
+  height: 28px;
+}
+
+body[data-design='graphite'] .peek-close:hover:not(:disabled) svg {
+  color: var(--accent);
+}
+
+body[data-design='graphite'] .peek-side {
+  border-right-color: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+body[data-design='graphite'] .peek-row {
+  border-radius: 5px;
+}
+
+body[data-design='graphite'] .peek-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body[data-design='graphite'] .peek-row.selected {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+body[data-design='graphite'] .peek-row.active {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+body[data-design='graphite'] .peek-row[data-status]::after {
+  font-family: var(--g-mono);
+  font-size: 10px;
+}
+
+body[data-design='graphite'] .peek-row.dir.changed::after {
+  box-shadow: 0 0 6px var(--ansi-yellow, #ffc21f);
+}
+
+body[data-design='graphite'] .peek-gutter {
+  color: rgba(236, 232, 225, 0.26);
+  background: #141416;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.04);
+}
+
+body[data-design='graphite'] .peek-band {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+body[data-design='graphite'] .peek-add {
+  background: rgba(155, 224, 122, 0.1);
+  box-shadow: inset 3px 0 0 var(--g-green);
+}
+
+body[data-design='graphite'] .peek-del {
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+body[data-design='graphite'] .peek-del::before {
+  border-left-color: var(--accent);
+}
+
+body[data-design='graphite'] .peek-mini {
+  border-left-color: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+body[data-design='graphite'] .peek-mini-view {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+body[data-design='graphite'] .peek-mini:hover .peek-mini-view {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+body[data-design='graphite'] .peek-none,
+body[data-design='graphite'] .peek-empty {
+  font-family: var(--g-mono);
+  font-size: 12px;
+  color: var(--g-dim);
+}
+
+body[data-design='graphite'] .peek-md h1,
+body[data-design='graphite'] .peek-md h2 {
+  border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+body[data-design='graphite'] .peek-md a {
+  color: var(--g-a-hi);
+}
+
+body[data-design='graphite'] .peek-md code {
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--g-a-tint);
+}
+
+body[data-design='graphite'] .peek-md pre {
+  border-radius: 6px;
+  background: var(--g-well);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+body[data-design='graphite'] .peek-md pre code {
+  color: inherit;
+}
+
+body[data-design='graphite'] .peek-md blockquote {
+  border-left-color: var(--accent);
+}
+
+body[data-design='graphite'] .peek-md th {
+  font-family: var(--g-mono);
+  font-size: 0.82em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ---------- toasts ---------- */
+
+body[data-design='graphite'] .toast {
+  border-radius: 8px;
+  padding-left: 30px;
+}
+
+/* the toast's dot is an LED */
+body[data-design='graphite'] .toast::before {
+  left: 13px;
+  width: 7px;
+  height: 7px;
+  box-shadow: 0 0 8px var(--accent), 0 0 2px var(--accent);
+}
+
+body[data-design='graphite'] .toast.error {
+  box-shadow: var(--ice-edge), inset 3px 0 0 var(--danger), var(--ice-lift);
+}
+
+body[data-design='graphite'] .toast.error::before {
+  box-shadow: 0 0 8px var(--danger), 0 0 2px var(--danger);
+}
+
+/* ---------- modal ---------- */
+
+body[data-design='graphite'] #modal {
+  background: rgba(4, 4, 6, 0.5);
+}
+
+body[data-design='graphite'] .modal-box {
+  border-radius: 12px;
+  box-shadow: var(--ice-edge), 0 34px 90px -18px rgba(0, 0, 0, 0.85);
+}
+
+body[data-design='graphite'] .modal-box::after {
+  opacity: 0.035;
+}
+
+body[data-design='graphite'] .modal-icon {
+  border-radius: 7px;
+  color: #1a1000;
+  background: linear-gradient(180deg, #ffc94d, #f0b429);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 0 #8a6200, 0 0 16px -4px rgba(240, 180, 41, 0.6);
+}
+
+body[data-design='graphite'] .modal-title {
+  font-family: var(--g-mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+body[data-design='graphite'] .modal-detail {
+  color: var(--g-mid);
+}
+
+body[data-design='graphite'] .modal-actions button {
+  border-radius: 7px;
+  font-weight: 500;
+}
+
+body[data-design='graphite'] .modal-note {
+  border-radius: 6px;
+  font-family: var(--g-mono);
+  font-size: 11px;
+  background: var(--g-well);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  color: var(--g-mid);
+}
+
+/* ---------- a custom accent ----------
+   Set when the accent has been picked for this design (core.js): the key's
+   tones are worked out from it, and the ink on an accent key flips between
+   near-black and white on the accent's lightness, so a dark accent stays
+   readable. */
+
+body[data-design='graphite'][data-custom-accent] {
+  --g-a-hi: oklch(from var(--accent) calc(l + 0.06) c h);
+  --g-a-hi2: oklch(from var(--accent) calc(l + 0.1) c h);
+  --g-a-mid: oklch(from var(--accent) calc(l + 0.03) c h);
+  --g-a-tint: oklch(from var(--accent) 0.84 calc(c * 0.6) h);
+  --g-a-ledge: oklch(from var(--accent) calc(l - 0.3) c h);
+  --g-on-a: oklch(from var(--accent) clamp(0.16, (0.66 - l) * 1000, 0.98) calc(c * 0.2) h);
+}

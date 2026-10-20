@@ -22,6 +22,7 @@ const path = require('path');
 const fs = require('fs');
 const { render, SCENES } = require('./shots/wallpaper');
 const scenarios = require('./shots/scenarios');
+const { compositeGrid } = require('./shots/grid');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'assets');
@@ -319,6 +320,23 @@ async function captureScenario(scenario, wallpaperFile, bounds, port) {
       throw new Error(`refusing to capture: ${foreign.length} session(s) outside the demo repo would be on screen`);
     }
 
+    // A designs scenario photographs the same screen once per design: the
+    // switch is the one Settings makes, applied live, so nothing on screen but
+    // the design changes between the captures.
+    if (scenario.designs) {
+      const shots = [];
+      for (const design of scenario.designs) {
+        await dbg.eval(`(async () => {
+          state.theme.design = ${JSON.stringify(design.id)};
+          applyTheme(state.theme);
+          await new Promise((r) => setTimeout(r, 800));
+        })()`);
+        const shot = await dbg.send('Page.captureScreenshot', { format: 'png' });
+        shots.push({ label: design.label, png: Buffer.from(shot.data, 'base64') });
+      }
+      return shots;
+    }
+
     const shot = await dbg.send('Page.captureScreenshot', { format: 'png' });
     return Buffer.from(shot.data, 'base64');
   } catch (err) {
@@ -488,9 +506,21 @@ app.whenReady().then(async () => {
       // `photo` names a file in assets/wallpapers; `wallpaper` names a generated
       // scene. A scenario with neither is a bug, one with both prefers the photo.
       const wallpaper = scenario.photo ? fitPhoto(scenario.photo) : wallpapers[scenario.wallpaper];
-      const windowPng = await captureScenario(scenario, wallpaper, bounds, PORT + i);
+      const captured = await captureScenario(scenario, wallpaper, bounds, PORT + i);
       const outFile = path.join(OUT, scenario.name + '.png');
-      const out = await composite(wallpaper, windowPng, size, canvas, bounds, outFile);
+      let out;
+      if (Array.isArray(captured)) {
+        // one finished shot per design, then the four tiled into the image
+        const tiles = [];
+        for (const [n, { label, png }] of captured.entries()) {
+          const file = path.join(TMP, `${scenario.name}-${n}.png`);
+          await composite(wallpaper, png, size, canvas, bounds, file);
+          tiles.push({ label, file });
+        }
+        out = await compositeGrid(tiles, canvas, outFile, { wallpaper, tmp: TMP });
+      } else {
+        out = await composite(wallpaper, captured, size, canvas, bounds, outFile);
+      }
       const kb = Math.round(fs.statSync(outFile).size / 1024);
       log(`${scenario.name}  ${out.width}x${out.height}  ${kb}kb  ${Date.now() - t}ms`);
     } catch (err) {

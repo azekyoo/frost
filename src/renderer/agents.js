@@ -299,12 +299,12 @@ function buildAgentLayout(tab) {
     <div class="agents-rail">
       <button class="rail-new" title="Start Claude Code in a folder">+ New session</button>
       <div class="rail-section">
-        <div class="rail-head"><h4>Agents</h4></div>
+        <div class="rail-head"><h4>Agents<span class="rail-count"></span></h4></div>
         <div class="agents-list"></div>
       </div>
       <div class="rail-section">
         <div class="rail-head">
-          <h4>Sessions</h4>
+          <h4>Sessions<span class="rail-count"></span></h4>
           <button class="rail-refresh" title="Look for new Claude Code sessions">refresh</button>
         </div>
         <div class="sessions-list"></div>
@@ -790,6 +790,21 @@ async function resumeSession(tab, session) {
   }
 }
 
+const AGENT_STATE_WORDS = {
+  working: 'Working',
+  blocked: 'Needs you',
+  done: 'Done',
+  idle: 'Idle',
+  exited: 'Exited'
+};
+
+// How many rows a rail section holds, next to its heading. Hidden in Frost;
+// blank when there are none.
+function setRailCount(list, n) {
+  const count = list.closest('.rail-section')?.querySelector('.rail-count');
+  if (count) count.textContent = n ? String(n) : '';
+}
+
 function renderAgentList(tab) {
   const rows = [];
   for (const agent of globalAgents.values()) {
@@ -797,17 +812,23 @@ function renderAgentList(tab) {
     const look = agent.status === 'done' ? (agent.unseen ? ' unseen' : ' seen') : '';
     row.className = 'agent-row' + (tab.selected === agent.id ? ' selected' : '') + look;
     row.title = [agent.cwd, agent.sessionId, agent.unseen && 'Finished — not looked at yet'].filter(Boolean).join('\n');
+    // for a design to colour the row by; Frost colours only the dot
+    row.dataset.status = agent.status;
     row.innerHTML = `
       <span class="agent-dot st-${agent.status}"></span>
       <span class="agent-name"></span>
-      <span class="agent-meta"></span>`;
+      <span class="agent-state"></span>
+      <span class="agent-meta"><span class="meta-where"></span><span class="meta-st"></span></span>`;
     row.querySelector('.agent-name').textContent = agent.name;
+    // The state twice: in words on a chip, for the designs that show one, and
+    // at the end of the meta line, where Frost shows it. Each design hides one.
+    row.querySelector('.agent-state').textContent = AGENT_STATE_WORDS[agent.status] || agent.status;
     // the repo too, as in the sessions list: a resumed session is named after
     // its title, which doesn't say where it runs
     const folder = String(agent.cwd || '').split(/[\\/]/).pop();
-    row.querySelector('.agent-meta').textContent = [folder, agent.branch, agent.status]
-      .filter(Boolean)
-      .join(' · ');
+    const where = [folder, agent.branch].filter(Boolean).join(' · ');
+    row.querySelector('.meta-where').textContent = where;
+    row.querySelector('.meta-st').textContent = (where ? ' · ' : '') + agent.status;
     row.addEventListener('click', () => selectAgent(tab, agent.id));
     row.addEventListener('contextmenu', (ev) => {
       ev.preventDefault();
@@ -816,6 +837,7 @@ function renderAgentList(tab) {
     rows.push(row);
   }
   tab.els.agentsList.replaceChildren(...rows);
+  setRailCount(tab.els.agentsList, rows.length);
   if (!rows.length) {
     const p = document.createElement('p');
     p.className = 'hint';
@@ -986,6 +1008,7 @@ function renderSessionList(tab) {
     rows.push(row);
   }
   tab.els.sessionsList.replaceChildren(...rows);
+  setRailCount(tab.els.sessionsList, rows.length);
   if (!rows.length) {
     const p = document.createElement('p');
     p.className = 'hint';
