@@ -201,9 +201,16 @@ body.glass #glass-bg {
      pixels, like the blur: a zoomed page must not blur the desktop harder */
   inset: calc(-80px / var(--ui-zoom, 1));
   z-index: -2;
-  background-repeat: no-repeat;
   filter: blur(calc(var(--glass-blur, 40px) / var(--ui-zoom, 1)));
   pointer-events: none;
+}
+
+/* one per monitor, placed over it by boot.js; the blur on #glass-bg runs across
+   the seam between two, the way the eye sees two screens side by side */
+#glass-bg .glass-tile {
+  position: absolute;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 body.glass #glass-tint {

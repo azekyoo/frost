@@ -4,50 +4,72 @@
 
 // ---------- glass background ----------
 
-function updateGlassPos({ bounds, display, maximized }) {
+// One tile per monitor, each laid over the screen it stands for, so a window
+// straddling two monitors shows each one's picture on its own side. The window
+// moves, the tiles stay put on the desktop.
+function updateGlassPos({ bounds }) {
   if (bounds) glassState.bounds = bounds;
-  if (display) glassState.display = display;
   const b = glassState.bounds;
-  const d = glassState.display;
-  if (!b || !d) return;
+  if (!b) return;
   // Screen geometry arrives in unzoomed device-independent pixels; a zoomed page
   // measures itself in smaller CSS pixels, so the wallpaper has to be divided
   // down or it drifts out of alignment with the desktop behind the window.
   const z = uiZoom || 1;
-  // #glass-bg is inset 80 screen px, so shift the wallpaper by as much to stay
+  // #glass-bg is inset 80 screen px, so shift the tiles by as much to stay
   // screen-aligned
-  el.glassBg.style.backgroundSize = `${d.width / z}px ${d.height / z}px`;
-  el.glassBg.style.backgroundPosition = `${(d.x - b.x + 80) / z}px ${(d.y - b.y + 80) / z}px`;
+  for (const tile of el.glassBg.children) {
+    const r = tile.screenRect;
+    tile.style.left = `${(r.x - b.x + 80) / z}px`;
+    tile.style.top = `${(r.y - b.y + 80) / z}px`;
+    tile.style.width = `${r.width / z}px`;
+    tile.style.height = `${r.height / z}px`;
+  }
 }
 
-// The desktop changed its picture while the window was open. Decoded before the
-// swap, or the glass shows bare tint for a frame while the new image loads.
-function swapGlassWallpaper(url) {
-  if (!url) {
-    el.glassBg.style.backgroundImage = 'none';
-    return;
-  }
-  const img = new Image();
-  img.src = url;
-  img
-    .decode()
-    .catch(() => {})
-    .then(() => {
-      el.glassBg.style.backgroundImage = `url("${url}")`;
-    });
+// How Windows fits a picture to its monitor, in CSS
+const GLASS_FIT = { fill: 'cover', span: 'cover', fit: 'contain', stretch: '100% 100%' };
+let glassLayoutSeq = 0;
+
+// Every image is decoded before the swap, or the glass shows bare tint for a
+// frame while it loads. A newer layout arriving meanwhile wins.
+async function showGlassWallpaper(layout) {
+  const seq = ++glassLayoutSeq;
+  const urls = Object.values(layout.images).filter(Boolean);
+  await Promise.all(
+    urls.map((url) => {
+      const img = new Image();
+      img.src = url;
+      return img.decode().catch(() => {});
+    })
+  );
+  if (seq !== glassLayoutSeq) return;
+  el.glassBg.replaceChildren(
+    ...layout.tiles.map(({ rect, file }) => {
+      const tile = document.createElement('div');
+      tile.className = 'glass-tile';
+      tile.screenRect = rect;
+      const url = file && layout.images[file];
+      if (url) tile.style.backgroundImage = `url("${url}")`;
+      tile.style.backgroundSize = GLASS_FIT[layout.mode] || 'cover';
+      if (layout.color) tile.style.backgroundColor = layout.color;
+      return tile;
+    })
+  );
+  updateGlassPos({});
 }
 
 async function initGlass() {
-  const info = await api.glassInfo();
-  // listen even with no picture yet: the user may set one later
+  // listening before asking: Windows' own answer follows the first one shortly
   api.onWinBounds(updateGlassPos);
-  api.onGlassWallpaper(swapGlassWallpaper);
+  api.onGlassWallpaper(showGlassWallpaper);
+  const info = await api.glassInfo();
   updateGlassPos(info);
-  if (!info.wallpaper) {
+  if (!info.wallpaper?.tiles.length) {
     toast('Glass mode: could not read wallpaper — tint only');
     return;
   }
-  el.glassBg.style.backgroundImage = `url("${info.wallpaper}")`;
+  // not awaited: the terminal need not wait for a 5K photo to decode
+  showGlassWallpaper(info.wallpaper);
 }
 
 // A drop that misses a pane has to do nothing. Chromium's default is to
