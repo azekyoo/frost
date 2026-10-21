@@ -411,22 +411,68 @@ function readKeys() {
 let currentMaterial = 'acrylic';
 
 // Wallpaper for the 'glass' material — the app blurs it itself, DWM stays out.
-function getWallpaperDataUrl() {
+// Windows keeps its own copy of whatever the desktop is showing. The registry
+// path can lag behind it: a slideshow or Spotlight changes the picture without
+// rewriting it, and the original file may since have been moved or deleted.
+// The copy is re-encoded, which costs nothing once it is blurred.
+const TRANSCODED_WALLPAPER = path.join(
+  process.env.APPDATA || '',
+  'Microsoft',
+  'Windows',
+  'Themes',
+  'TranscodedWallpaper'
+);
+
+// Async throughout: this also runs while windows are open, whenever the
+// wallpaper changes, and a multi-megabyte read must not stall the main process.
+async function getWallpaperDataUrl() {
   try {
     if (SHOT?.wallpaper && fs.existsSync(SHOT.wallpaper)) {
-      return 'data:image/png;base64,' + fs.readFileSync(SHOT.wallpaper).toString('base64');
+      return 'data:image/png;base64,' + (await fs.promises.readFile(SHOT.wallpaper)).toString('base64');
     }
-    const r = spawnSync('reg', ['query', 'HKCU\\Control Panel\\Desktop', '/v', 'WallPaper'], {
-      encoding: 'utf8'
-    });
-    const m = /WallPaper\s+REG_SZ\s+(.+)/.exec(r.stdout || '');
+    const stdout = await new Promise((resolve) =>
+      execFile(
+        'reg',
+        ['query', 'HKCU\\Control Panel\\Desktop', '/v', 'WallPaper'],
+        { encoding: 'utf8', windowsHide: true },
+        (_err, out) => resolve(out || '')
+      )
+    );
+    const m = /WallPaper\s+REG_SZ\s+(.+)/.exec(stdout);
     const p = m && m[1].trim();
-    if (!p || !fs.existsSync(p)) return null;
-    const mime = path.extname(p).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
-    return `data:${mime};base64,` + fs.readFileSync(p).toString('base64');
+    if (!p) return null; // a solid colour: no picture to blur
+    const buf =
+      (await fs.promises.readFile(TRANSCODED_WALLPAPER).catch(() => null)) ||
+      (await fs.promises.readFile(p).catch(() => null));
+    if (!buf?.length) return null;
+    // the transcoded copy has no extension, so ask the bytes
+    const mime = buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png' : 'image/jpeg';
+    return `data:${mime};base64,` + buf.toString('base64');
   } catch {
     return null;
   }
+}
+
+// Windows sends no WM_SETTINGCHANGE when Settings changes the picture, but it
+// always rewrites its copy, so watching that file catches every change. One
+// change writes it several times: the read waits for the writes to settle, and
+// one read answers every glass window.
+let wallpaperWatcher = null;
+let wallpaperTimer = null;
+function watchWallpaper() {
+  if (wallpaperWatcher) return;
+  try {
+    wallpaperWatcher = fs.watch(path.dirname(TRANSCODED_WALLPAPER), (_ev, name) => {
+      if (name && name !== 'TranscodedWallpaper') return;
+      clearTimeout(wallpaperTimer);
+      wallpaperTimer = setTimeout(async () => {
+        const wallpaper = await getWallpaperDataUrl();
+        for (const w of liveWindows()) {
+          if (w.isFramelessMode) w.webContents.send('glass:wallpaper', wallpaper);
+        }
+      }, 1000);
+    });
+  } catch {}
 }
 
 // ---------- window registry ----------
@@ -867,6 +913,7 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   w.on('restore', sendBounds);
   w.on('show', sendBounds);
   w.on('focus', sendBounds);
+  if (glass) watchWallpaper();
 
   // Dragging onto another monitor is the moment the display's own zoom applies.
   for (const ev of ['move', 'moved', 'resize', 'restore', 'show']) {
@@ -3202,10 +3249,10 @@ ipcMain.on('diag:report', (_e, data) => {
   } catch {}
 });
 
-ipcMain.handle('glass:info', (event) => ({
-  wallpaper: getWallpaperDataUrl(),
-  ...glassBounds(windowOf(event))
-}));
+ipcMain.handle('glass:info', async (event) => {
+  const wallpaper = await getWallpaperDataUrl();
+  return { wallpaper, ...glassBounds(windowOf(event)) };
+});
 
 // dir: 1 = in, -1 = out, 0 = back to the display's default
 ipcMain.handle('zoom:step', (event, dir) => {

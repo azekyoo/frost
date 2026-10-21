@@ -20,15 +20,34 @@ function updateGlassPos({ bounds, display, maximized }) {
   el.glassBg.style.backgroundPosition = `${(d.x - b.x + 80) / z}px ${(d.y - b.y + 80) / z}px`;
 }
 
+// The desktop changed its picture while the window was open. Decoded before the
+// swap, or the glass shows bare tint for a frame while the new image loads.
+function swapGlassWallpaper(url) {
+  if (!url) {
+    el.glassBg.style.backgroundImage = 'none';
+    return;
+  }
+  const img = new Image();
+  img.src = url;
+  img
+    .decode()
+    .catch(() => {})
+    .then(() => {
+      el.glassBg.style.backgroundImage = `url("${url}")`;
+    });
+}
+
 async function initGlass() {
   const info = await api.glassInfo();
+  // listen even with no picture yet: the user may set one later
+  api.onWinBounds(updateGlassPos);
+  api.onGlassWallpaper(swapGlassWallpaper);
+  updateGlassPos(info);
   if (!info.wallpaper) {
     toast('Glass mode: could not read wallpaper — tint only');
     return;
   }
   el.glassBg.style.backgroundImage = `url("${info.wallpaper}")`;
-  updateGlassPos(info);
-  api.onWinBounds(updateGlassPos);
 }
 
 // A drop that misses a pane has to do nothing. Chromium's default is to

@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('api', {
   onOpenDir: (cb) => ipcRenderer.on('session:openDir', (_e, dir) => cb(dir)),
   onKeysChanged: (cb) => ipcRenderer.on('keys:changed', (_e, m) => cb(m)),
   glassInfo: () => ipcRenderer.invoke('glass:info'),
+  onGlassWallpaper: (cb) => ipcRenderer.on('glass:wallpaper', (_e, url) => cb(url)),
   diagReport: (data) => ipcRenderer.send('diag:report', data),
   pickDir: () => ipcRenderer.invoke('dialog:pickDir'),
   fontsList: () => ipcRenderer.invoke('fonts:list'),
