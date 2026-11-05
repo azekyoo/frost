@@ -3,6 +3,31 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.7.0 — 2026-11-05
+
+### Added
+
+- **Drag an agent up or down the list.** Press on a running agent in agent
+  mode and drag it to put the list in the order you want. Dropping it anywhere
+  only moves it, never ends it, and Esc puts it back where it was.
+- **Delete a past session.** Right-click a session under Sessions and choose
+  **Delete session…**. After you confirm, its transcript goes to the Recycle
+  Bin and the row leaves the list. A session still open somewhere can't be
+  deleted until it is ended.
+- **Each monitor gets its own wallpaper behind glass.** With a different
+  picture on each screen, or one spanned across them, the glass blurs the
+  wallpaper actually behind it, even with the window across two monitors.
+- **Glass follows a wallpaper change.** Change the wallpaper while Frost is
+  open and the glass picks the new one up within a second, no restart.
+
+### Changed
+
+- **Tooltips stay away while a mouse button is held**, so they don't cover what
+  you are dragging or selecting.
+- **Frost notes what it was doing when it freezes.** A slow or stuck moment in
+  the main process is written to `stalls.log` in Frost's data folder, so a hang
+  can be traced to its cause.
+
 ## 2.6.0 — 2026-10-20
 
 ### Added

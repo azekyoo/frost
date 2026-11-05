@@ -188,7 +188,8 @@ running and supervising Claude Code agents with live status and diff watching.
     in-app. Blur 0–100px, tint from fully clear to opaque, zero Windows frost.
     A separate **readability** floor darkens the backdrop behind text, so a clear
     tint stays legible over a bright wallpaper; set it to 0 to leave the
-    wallpaper completely untouched
+    wallpaper completely untouched. Each monitor blurs its own wallpaper, and
+    a wallpaper change is picked up live
 - **Four designs** — the look of everything around the terminal, picked from
   the tiles at the top of settings and switched live, no restart:
   - **Frost** — the default: smoked glass, lit edges, a strip of light under
@@ -256,7 +257,9 @@ running and supervising Claude Code agents with live status and diff watching.
     From a shell in a normal tab, it goes to the agent working in that folder.
     What the command printed is sent as it is, so mind secrets in it
   - right-click an agent to mark it unread, copy its session ID or folder,
-    open the folder, or end the session
+    open the folder, or end the session; drag it up or down to reorder the list
+  - right-click a past session to copy its ID or folder, or delete it (to the
+    Recycle Bin, after a confirm)
   - **it tells you when it needs you** — a Windows notification and a taskbar
     flash when an agent goes blocked or finishes, raised only while Frost is in
     the background; clicking the notification jumps to that agent
@@ -401,6 +404,8 @@ key it currently answers to — that, not this table, is the authoritative list.
 | Double-click a tab | Rename it (empty restores `directory · branch`) |
 | Right-click a tab | Rename, duplicate, move to a new window, close |
 | Right-click an agent | Mark unread, copy session ID or folder, open folder, end session |
+| Drag an agent | Reorder the agent list (Esc puts it back) |
+| Right-click a past session | Copy session ID or folder, delete session |
 
 Every one of them is remappable in `config/keybindings.json`:
 
