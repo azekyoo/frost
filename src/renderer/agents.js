@@ -1005,6 +1005,10 @@ function renderSessionList(tab) {
     // running, just not here: dimmer than live, brighter than closed
     if (s.runningElsewhere) row.querySelector('.agent-dot').className = 'agent-dot st-idle';
     if (!busy) row.addEventListener('click', () => resumeSession(tab, s));
+    row.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      openSessionMenu(s, busy, ev.clientX, ev.clientY);
+    });
     rows.push(row);
   }
   tab.els.sessionsList.replaceChildren(...rows);
@@ -1015,6 +1019,47 @@ function renderSessionList(tab) {
     p.textContent = 'No other Claude Code sessions yet';
     tab.els.sessionsList.appendChild(p);
   }
+}
+
+function openSessionMenu(session, busy, x, y) {
+  const open = busy || session.runningElsewhere;
+  openMenu(
+    [
+      { label: 'Copy session ID', run: () => copyText(session.id, 'session ID') },
+      { label: 'Copy folder path', run: () => copyText(session.cwd, 'folder path') },
+      {
+        label: 'Delete session…',
+        sep: true,
+        // a running claude would write the transcript straight back
+        disabled: open,
+        title: open ? 'Still open — end it first' : '',
+        run: () => deleteSession(session)
+      }
+    ],
+    x,
+    y
+  );
+}
+
+async function deleteSession(session) {
+  const ok = await confirmModal({
+    title: `Delete "${session.title}"?`,
+    detail: 'Its transcript is moved to the Recycle Bin and it can no longer be resumed.',
+    confirmLabel: 'Delete',
+    cancelLabel: 'Cancel',
+    focusCancel: true
+  });
+  if (!ok) return;
+  const res = await api.claudeDeleteSession(session.id);
+  if (res?.error) {
+    toast(res.error, { error: true });
+    return;
+  }
+  // gone from the list now, not on the next refresh
+  claudeSessions = claudeSessions.filter((s) => s.id !== session.id);
+  renderSessions();
+  refreshSessions();
+  toast(`Deleted "${session.title}"`);
 }
 
 // Re-issues the diff request for the selected agent, so the Session/Uncommitted

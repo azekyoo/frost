@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('api', {
   onAgentDetected: (cb) => ipcRenderer.on('agent:detected', (_e, m) => cb(m)),
   onAgentEnded: (cb) => ipcRenderer.on('agent:ended', (_e, m) => cb(m)),
   claudeSessions: (exclude) => ipcRenderer.invoke('claude:sessions', exclude),
+  claudeDeleteSession: (id) => ipcRenderer.invoke('claude:delete-session', id),
   claudeFolders: () => ipcRenderer.invoke('claude:folders'),
   onAgentTitle: (cb) => ipcRenderer.on('agent:title', (_e, m) => cb(m)),
   onAgentSession: (cb) => ipcRenderer.on('agent:session', (_e, m) => cb(m)),

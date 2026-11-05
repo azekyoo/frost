@@ -2858,6 +2858,28 @@ function listClaudeSessions(exclude = []) {
 
 ipcMain.handle('claude:sessions', (_e, exclude) => listClaudeSessions(exclude));
 
+// Removes a session from disk: its transcript, and the folder beside it that
+// holds its subagents and /rename name. To the Recycle Bin, so a wrong click
+// can still be undone. Refused while a claude has it open, which would just
+// write the transcript back.
+ipcMain.handle('claude:delete-session', async (_e, id) => {
+  if (typeof id !== 'string' || !/^[\w-]+$/.test(id)) return { error: 'Not a session id' };
+  if (!transcriptPaths.has(id)) scanTranscripts();
+  const file = transcriptPaths.get(id);
+  if (!file) return { error: 'Session not found' };
+  if (runningClaudeSessions().has(id)) return { error: 'This session is open somewhere — end it first' };
+  try {
+    await shell.trashItem(file);
+  } catch (e) {
+    return { error: `Couldn't delete the session: ${e.message}` };
+  }
+  const side = file.slice(0, -6);
+  if (fs.existsSync(side)) await shell.trashItem(side).catch(() => {});
+  transcriptPaths.delete(id);
+  sessionCache.delete(file);
+  return { ok: true };
+});
+
 // Every folder claude has run in, newest first, for New session to offer. It
 // reaches past the sessions list's cut-off, but only reads the top of each
 // transcript — the cwd is on its first lines — and never again for the same
