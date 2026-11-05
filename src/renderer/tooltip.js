@@ -70,6 +70,12 @@ function showTip(target, text) {
 }
 
 document.addEventListener('mouseover', (ev) => {
+  // a button held down is a press or a drag under way (reordering agents, a
+  // tab, a selection), and a tip popping up over it only gets in the way
+  if (ev.buttons) {
+    if (tipState.target) hideTip();
+    return;
+  }
   const target = ev.target instanceof Element ? ev.target.closest('[title], [data-has-tip]') : null;
   if (!target) {
     if (tipState.target) hideTip();

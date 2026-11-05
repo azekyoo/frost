@@ -1521,6 +1521,21 @@ body.frameless #win-controls {
   background: var(--surface-1);
 }
 
+/* an agent row being dragged to a new place in the list */
+.agent-row.reordering {
+  z-index: 2;
+  transition: none;
+  background: var(--raised);
+  box-shadow: var(--raised-edge), 0 6px 18px rgba(0, 0, 0, 0.35);
+  cursor: grabbing;
+}
+
+body.agent-reordering,
+body.agent-reordering * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
 .agent-row.selected {
   background: var(--raised);
   box-shadow: var(--raised-edge);

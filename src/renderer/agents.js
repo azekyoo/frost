@@ -7,6 +7,8 @@ const globalAgents = new Map(); // agentId -> agent {id,name,cwd,branch,git,ptyI
 const agentsByPty = new Map(); // ptyId -> agent
 const pendingNames = new Map(); // ptyId -> preferred display name
 let claudeSessions = []; // recent Claude Code sessions [{id,cwd,title,branch,lastActive,exists}]
+let agentDrag = null; // { tab, row, list, startY, grabTop, base, moved, before }
+let dragJustEnded = false;
 const STATUS_RANK = { blocked: 4, working: 3, done: 2, idle: 1, exited: 0 };
 
 function agentTabs() {
@@ -806,6 +808,12 @@ function setRailCount(list, n) {
 }
 
 function renderAgentList(tab) {
+  // a status tick mid-drag would rebuild the rows out from under the pointer;
+  // the drop renders the list again
+  if (agentDrag?.tab === tab) {
+    renderSessionList(tab);
+    return;
+  }
   const rows = [];
   for (const agent of globalAgents.values()) {
     const row = document.createElement('div');
@@ -829,7 +837,13 @@ function renderAgentList(tab) {
     const where = [folder, agent.branch].filter(Boolean).join(' · ');
     row.querySelector('.meta-where').textContent = where;
     row.querySelector('.meta-st').textContent = (where ? ' · ' : '') + agent.status;
-    row.addEventListener('click', () => selectAgent(tab, agent.id));
+    row.dataset.agentId = agent.id;
+    row.addEventListener('click', () => {
+      // the click that ends a drag is not a click on the row
+      if (dragJustEnded) return;
+      selectAgent(tab, agent.id);
+    });
+    row.addEventListener('mousedown', (ev) => startAgentDrag(tab, row, ev));
     row.addEventListener('contextmenu', (ev) => {
       ev.preventDefault();
       openAgentMenu(tab, agent, ev.clientX, ev.clientY);
@@ -845,6 +859,96 @@ function renderAgentList(tab) {
     tab.els.agentsList.appendChild(p);
   }
   renderSessionList(tab);
+}
+
+// ---------- reordering agents ----------
+// A running agent's row can be dragged up or down the list. The order is all
+// a drag changes: dropping anywhere, even outside the rail, just keeps the
+// place it reached, and Esc puts it back where it was.
+
+const DRAG_THRESHOLD = 4; // px of movement before a press becomes a drag
+
+function startAgentDrag(tab, row, ev) {
+  if (ev.button !== 0 || agentDrag) return;
+  const list = tab.els.agentsList;
+  agentDrag = {
+    tab,
+    row,
+    list,
+    startY: ev.clientY,
+    grabTop: row.getBoundingClientRect().top,
+    base: row.offsetTop,
+    moved: false,
+    before: [...list.children]
+  };
+  window.addEventListener('mousemove', onAgentDragMove);
+  window.addEventListener('mouseup', onAgentDragEnd);
+  window.addEventListener('keydown', onAgentDragKey, true);
+}
+
+function onAgentDragMove(ev) {
+  const d = agentDrag;
+  if (!d) return;
+  const dy = ev.clientY - d.startY;
+  if (!d.moved) {
+    if (Math.abs(dy) < DRAG_THRESHOLD) return;
+    d.moved = true;
+    d.row.classList.add('reordering');
+    document.body.classList.add('agent-reordering');
+  }
+  ev.preventDefault();
+  // the row goes in front of the first other row whose middle is below the pointer
+  const others = [...d.list.querySelectorAll('.agent-row')].filter((r) => r !== d.row);
+  const next = others.find((r) => {
+    const b = r.getBoundingClientRect();
+    return ev.clientY < b.top + b.height / 2;
+  });
+  if (next) {
+    if (d.row.nextElementSibling !== next) d.list.insertBefore(d.row, next);
+  } else if (others.length && d.row !== others[others.length - 1].nextElementSibling) {
+    others[others.length - 1].after(d.row);
+  }
+  // follow the pointer from wherever the row sits now, kept inside the list
+  const listBox = d.list.getBoundingClientRect();
+  const h = d.row.offsetHeight;
+  const want = Math.max(listBox.top, Math.min(listBox.bottom - h, d.grabTop + dy));
+  const natural = d.grabTop + (d.row.offsetTop - d.base);
+  d.row.style.transform = `translateY(${want - natural}px)`;
+}
+
+function onAgentDragKey(ev) {
+  if (ev.key !== 'Escape' || !agentDrag) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  agentDrag.list.replaceChildren(...agentDrag.before);
+  finishAgentDrag(false);
+}
+
+function onAgentDragEnd() {
+  if (agentDrag) finishAgentDrag(agentDrag.moved);
+}
+
+function finishAgentDrag(keep) {
+  const d = agentDrag;
+  window.removeEventListener('mousemove', onAgentDragMove);
+  window.removeEventListener('mouseup', onAgentDragEnd);
+  window.removeEventListener('keydown', onAgentDragKey, true);
+  agentDrag = null;
+  if (!d.moved) return; // a plain click: let it through
+  d.row.classList.remove('reordering');
+  d.row.style.transform = '';
+  document.body.classList.remove('agent-reordering');
+  dragJustEnded = true;
+  setTimeout(() => (dragJustEnded = false), 0);
+  if (keep) {
+    // the Map's order is the list's order, in every agent tab
+    const order = [...d.list.querySelectorAll('.agent-row')].map((r) => r.dataset.agentId);
+    const entries = order.map((id) => [id, globalAgents.get(id)]).filter(([, a]) => a);
+    for (const [id, a] of globalAgents) if (!order.includes(id)) entries.push([id, a]);
+    globalAgents.clear();
+    for (const [id, a] of entries) globalAgents.set(id, a);
+  }
+  renderAgentLists();
 }
 
 function copyText(text, what) {
