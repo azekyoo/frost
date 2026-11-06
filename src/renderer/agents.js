@@ -898,15 +898,17 @@ function onAgentDragMove(ev) {
   }
   ev.preventDefault();
   // the row goes in front of the first other row whose middle is below the pointer
+  // (judged by where rows sit, not where a slide is showing them mid-way)
   const others = [...d.list.querySelectorAll('.agent-row')].filter((r) => r !== d.row);
   const next = others.find((r) => {
     const b = r.getBoundingClientRect();
-    return ev.clientY < b.top + b.height / 2;
+    return ev.clientY < b.top - slideOffset(r) + b.height / 2;
   });
+  const last = others[others.length - 1];
   if (next) {
-    if (d.row.nextElementSibling !== next) d.list.insertBefore(d.row, next);
-  } else if (others.length && d.row !== others[others.length - 1].nextElementSibling) {
-    others[others.length - 1].after(d.row);
+    if (d.row.nextElementSibling !== next) slideRows(d.list, () => d.list.insertBefore(d.row, next), d.row);
+  } else if (last && d.row !== last.nextElementSibling) {
+    slideRows(d.list, () => last.after(d.row), d.row);
   }
   // follow the pointer from wherever the row sits now, kept inside the list
   const listBox = d.list.getBoundingClientRect();
@@ -920,7 +922,11 @@ function onAgentDragKey(ev) {
   if (ev.key !== 'Escape' || !agentDrag) return;
   ev.preventDefault();
   ev.stopPropagation();
-  agentDrag.list.replaceChildren(...agentDrag.before);
+  const d = agentDrag;
+  slideRows(d.list, () => {
+    d.list.replaceChildren(...d.before);
+    d.row.style.transform = '';
+  });
   finishAgentDrag(false);
 }
 
@@ -935,8 +941,8 @@ function finishAgentDrag(keep) {
   window.removeEventListener('keydown', onAgentDragKey, true);
   agentDrag = null;
   if (!d.moved) return; // a plain click: let it through
-  d.row.classList.remove('reordering');
-  d.row.style.transform = '';
+  // the row glides from under the pointer into its slot, then the list is rebuilt
+  if (d.row.style.transform) slideRows(d.list, () => (d.row.style.transform = ''));
   document.body.classList.remove('agent-reordering');
   dragJustEnded = true;
   setTimeout(() => (dragJustEnded = false), 0);
@@ -948,7 +954,43 @@ function finishAgentDrag(keep) {
     globalAgents.clear();
     for (const [id, a] of entries) globalAgents.set(id, a);
   }
-  renderAgentLists();
+  const settle = d.row.getAnimations().find((a) => a.id === 'row-slide');
+  const done = () => {
+    d.row.classList.remove('reordering');
+    renderAgentLists();
+  };
+  if (settle) settle.finished.then(done, done);
+  else done();
+}
+
+// Rows the list moves around (a drag passing them, the drop, Esc) slide to
+// their new places instead of jumping: note where each row shows, make the
+// change, then play each row from its old spot to its new one.
+const ROW_SLIDE_MS = 160;
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+function slideOffset(row) {
+  const t = getComputedStyle(row).transform;
+  return t && t !== 'none' ? new DOMMatrixReadOnly(t).m42 : 0;
+}
+
+function slideRows(list, change, skip) {
+  const rows = [...list.querySelectorAll('.agent-row')].filter((r) => r !== skip);
+  const from = new Map(rows.map((r) => [r, r.getBoundingClientRect().top]));
+  change();
+  for (const r of rows) r.getAnimations().forEach((a) => a.id === 'row-slide' && a.cancel());
+  if (reduceMotion.matches) return;
+  for (const r of rows) {
+    if (!r.isConnected) continue;
+    const dy = from.get(r) - r.getBoundingClientRect().top;
+    if (Math.abs(dy) < 0.5) continue;
+    const base = r.style.transform || 'translateY(0)';
+    const anim = r.animate([{ transform: `translateY(${dy}px) ${base}` }, { transform: base }], {
+      duration: ROW_SLIDE_MS,
+      easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+    });
+    anim.id = 'row-slide';
+  }
 }
 
 function copyText(text, what) {
