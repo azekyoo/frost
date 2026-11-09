@@ -967,7 +967,6 @@ function finishAgentDrag(keep) {
 // their new places instead of jumping: note where each row shows, make the
 // change, then play each row from its old spot to its new one.
 const ROW_SLIDE_MS = 160;
-const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 function slideOffset(row) {
   const t = getComputedStyle(row).transform;
@@ -987,7 +986,7 @@ function slideRows(list, change, skip) {
     const base = r.style.transform || 'translateY(0)';
     const anim = r.animate([{ transform: `translateY(${dy}px) ${base}` }, { transform: base }], {
       duration: ROW_SLIDE_MS,
-      easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+      easing: MOTION_EASE
     });
     anim.id = 'row-slide';
   }

@@ -85,6 +85,7 @@ function closeTab(tab, { killPtys = true } = {}) {
     allLeaves(tab.root).forEach(destroyLeaf);
   }
   const i = state.tabs.indexOf(tab);
+  if (state.tabs.length > 1) foldTabAway(tab);
   state.tabs.splice(i, 1);
   if (state.tabs.length === 0) {
     window.close();
@@ -108,66 +109,156 @@ function renderTabs() {
 }
 
 function paintTabs() {
-  el.tabstrip.replaceChildren(
-    ...state.tabs.map((tab) => {
-      const t = document.createElement('div');
-      t.className = 'tab' + (tab === state.activeTab ? ' active' : '');
-      t.tabData = tab;
-      if (tab.kind === 'agents') {
-        const dot = document.createElement('span');
-        dot.className = 'tab-dot st-' + worstAgentStatus(tab);
-        t.appendChild(dot);
-      }
-      const pane = tab.activePane;
-      t.title = [pane?.cwd, pane?.profileName].filter(Boolean).join('\n') || tabLabel(tab);
-      if (pane?.cwd) t.dataset.tipMono = ''; // the first line is a path
-      const title = document.createElement('span');
-      title.className = 'title';
-      title.textContent = tabLabel(tab);
-      // A zoomed tab looks like a tab with one pane, and the difference matters:
-      // the other shells are still running behind it.
-      if (tab.zoomedPane) {
-        const mark = document.createElement('span');
-        mark.className = 'tab-zoom';
-        mark.textContent = '⤢';
-        mark.title = 'One pane is zoomed';
-        title.appendChild(mark);
-      }
-      const close = document.createElement('button');
-      close.className = 'close';
-      close.textContent = '×';
-      close.title = 'Close tab';
-      // stopPropagation on mousedown: otherwise the tab re-activates and the
-      // tab strip re-renders, destroying this button before 'click' can fire
-      close.addEventListener('mousedown', (ev) => ev.stopPropagation());
-      close.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        closeTab(tab);
-      });
-      t.append(title, close);
-      t.addEventListener('mousedown', (ev) => {
-        if (ev.button !== 0) return;
-        activateTab(tab);
-        beginTabDrag(ev, tab);
-      });
-      // The name is the tab's own, so it is edited on the tab — double-click is
-      // where every other application puts this
-      title.addEventListener('dblclick', (ev) => {
-        ev.preventDefault();
-        startTabRename(tab);
-      });
-      t.addEventListener('contextmenu', (ev) => {
-        ev.preventDefault();
-        openTabMenu(tab, ev.clientX, ev.clientY);
-      });
-      return t;
-    })
+  const previous = new Map(
+    [...el.tabstrip.children].filter((n) => n.tabData && !n.classList.contains('leaving')).map((n) => [n.tabData, n])
   );
+  // a tab that just opened grows into the strip; ones at boot are simply there
+  const growNew = previous.size > 0 && !restoring && !reduceMotion.matches;
+  const born = [];
+  const fresh = state.tabs.map((tab) => {
+    const t = document.createElement('div');
+    t.className = 'tab' + (tab === state.activeTab ? ' active' : '');
+    t.tabData = tab;
+    if (tab.kind === 'agents') {
+      const dot = document.createElement('span');
+      dot.className = 'tab-dot st-' + worstAgentStatus(tab);
+      t.appendChild(dot);
+    }
+    const pane = tab.activePane;
+    t.title = [pane?.cwd, pane?.profileName].filter(Boolean).join('\n') || tabLabel(tab);
+    if (pane?.cwd) t.dataset.tipMono = ''; // the first line is a path
+    const title = document.createElement('span');
+    title.className = 'title';
+    title.textContent = tabLabel(tab);
+    // A zoomed tab looks like a tab with one pane, and the difference matters:
+    // the other shells are still running behind it.
+    if (tab.zoomedPane) {
+      const mark = document.createElement('span');
+      mark.className = 'tab-zoom';
+      mark.textContent = '⤢';
+      mark.title = 'One pane is zoomed';
+      title.appendChild(mark);
+    }
+    const close = document.createElement('button');
+    close.className = 'close';
+    close.textContent = '×';
+    close.title = 'Close tab';
+    // stopPropagation on mousedown: otherwise the tab re-activates and the
+    // tab strip re-renders, destroying this button before 'click' can fire
+    close.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    close.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeTab(tab);
+    });
+    t.append(title, close);
+    t.addEventListener('mousedown', (ev) => {
+      if (ev.button !== 0) return;
+      activateTab(tab);
+      beginTabDrag(ev, tab);
+    });
+    // The name is the tab's own, so it is edited on the tab — double-click is
+    // where every other application puts this
+    title.addEventListener('dblclick', (ev) => {
+      ev.preventDefault();
+      startTabRename(tab);
+    });
+    t.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      openTabMenu(tab, ev.clientX, ev.clientY);
+    });
+    // a glide still running on the tab's old node carries on in the new one;
+    // read while the old node is still in the document
+    const old = previous.get(tab);
+    if (old) carryAnimations(old, t);
+    else if (growNew) born.push(t);
+    return t;
+  });
+  // Closing tabs stay where they are, folding shut, until their animation is
+  // done — taken out and put back, they would lose it. Everything else is
+  // replaced, slotted in around them at the places they were closed from.
+  for (const n of [...el.tabstrip.children]) if (!n.classList.contains('leaving')) n.remove();
+  const order = [...fresh];
+  for (const { node, index } of [...leavingTabs].sort((a, b) => a.index - b.index)) {
+    if (node.isConnected) order.splice(Math.min(index, order.length), 0, node);
+  }
+  let ref = el.tabstrip.firstChild;
+  for (const n of order) {
+    if (n.classList.contains('leaving')) ref = n.nextSibling;
+    else el.tabstrip.insertBefore(n, ref);
+  }
+  born.forEach(growTab);
   reapplyRename();
   document.title = state.activeTab ? `${tabLabel(state.activeTab)} — Frost` : 'Frost';
   // With many tabs the strip scrolls, so the one you just switched to has to be
   // brought into view or it may be off-screen entirely.
   el.tabstrip.querySelector('.tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+// ---------- tab motion ----------
+// Opening a tab grows it out of nothing and closing one folds it shut, the
+// tabs beside it gliding over as it does. Animated as real width rather than a
+// transform, so the neighbours move because the layout moves.
+
+const TAB_MOTION_MS = 180;
+const leavingTabs = []; // { node, index }: closed tabs still folding shut
+
+function tabFoldFrames(node) {
+  const cs = getComputedStyle(node);
+  const w = node.offsetWidth + 'px';
+  return [
+    { minWidth: '0px', maxWidth: '0px', paddingLeft: '0px', paddingRight: '0px', opacity: 0 },
+    { minWidth: w, maxWidth: w, paddingLeft: cs.paddingLeft, paddingRight: cs.paddingRight, opacity: 1 }
+  ];
+}
+
+function growTab(node) {
+  node.classList.add('motion-clip');
+  const a = node.animate(tabFoldFrames(node), { duration: TAB_MOTION_MS, easing: MOTION_EASE });
+  a.id = 'motion-tab-grow';
+  a.finished.then(() => node.classList.remove('motion-clip'), () => {});
+}
+
+function foldTabAway(tab) {
+  if (reduceMotion.matches) return;
+  const node = tabElementOf(tab);
+  if (!node) return;
+  const index = [...el.tabstrip.children].indexOf(node);
+  node.getAnimations().forEach((a) => a.cancel());
+  const frames = tabFoldFrames(node).reverse();
+  node.classList.remove('active');
+  node.classList.add('leaving', 'motion-clip');
+  const entry = { node, index };
+  leavingTabs.push(entry);
+  const a = node.animate(frames, { duration: TAB_MOTION_MS, easing: MOTION_EASE, fill: 'forwards' });
+  const done = () => {
+    leavingTabs.splice(leavingTabs.indexOf(entry), 1);
+    node.remove();
+  };
+  a.finished.then(done, done);
+}
+
+// Tabs a drag passes slide aside rather than jumping: note where each shows,
+// make the move, then play each from its old spot to its new one.
+function tabSlideOffset(node) {
+  const t = getComputedStyle(node).transform;
+  return t && t !== 'none' ? new DOMMatrixReadOnly(t).m41 : 0;
+}
+
+function slideTabs(change) {
+  const nodes = [...el.tabstrip.children].filter((n) => !n.classList.contains('leaving'));
+  const from = new Map(nodes.map((n) => [n, n.getBoundingClientRect().left]));
+  change();
+  for (const n of nodes) n.getAnimations().forEach((a) => a.id === 'motion-tab-slide' && a.cancel());
+  if (reduceMotion.matches) return;
+  for (const n of nodes) {
+    const dx = from.get(n) - n.getBoundingClientRect().left;
+    if (Math.abs(dx) < 0.5) continue;
+    const a = n.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], {
+      duration: TAB_MOTION_MS,
+      easing: MOTION_EASE
+    });
+    a.id = 'motion-tab-slide';
+  }
 }
 
 // A tab strip is horizontal, so a vertical wheel should scroll it sideways —
@@ -357,10 +448,12 @@ function onTabDragMove(ev) {
 
   // Reorder against whichever tab the pointer is over, moving the element
   // itself: a strip rebuilt mid-drag would throw away the node being dragged.
+  // (judged by where tabs sit, not where a slide is showing them mid-way)
   const over = [...el.tabstrip.children].find((n) => {
-    if (n === d.el) return false;
+    if (n === d.el || n.classList.contains('leaving')) return false;
     const r = n.getBoundingClientRect();
-    return ev.clientX >= r.left && ev.clientX <= r.right;
+    const shift = tabSlideOffset(n);
+    return ev.clientX >= r.left - shift && ev.clientX <= r.right - shift;
   });
   if (!over) return;
   // Both positions are looked up in state.tabs, through the tab each node
@@ -374,7 +467,7 @@ function onTabDragMove(ev) {
   const from = state.tabs.indexOf(d.tab);
   const to = state.tabs.indexOf(over.tabData);
   if (from < 0 || to < 0 || from === to) return;
-  el.tabstrip.insertBefore(d.el, to > from ? over.nextSibling : over);
+  slideTabs(() => el.tabstrip.insertBefore(d.el, to > from ? over.nextSibling : over));
   const [moved] = state.tabs.splice(from, 1);
   state.tabs.splice(to, 0, moved);
   d.moved = true;

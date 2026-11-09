@@ -399,6 +399,16 @@ body.glass #glass-tint::after {
   opacity: 0;
 }
 
+/* A tab growing open or folding shut: its insides are clipped to whatever width
+   it has reached, and one on its way out can no longer be clicked. */
+.tab.motion-clip {
+  overflow: hidden;
+}
+
+.tab.leaving {
+  pointer-events: none;
+}
+
 /* Sits exactly where the title was, so renaming does not resize the tab */
 .tab-rename {
   flex: 1 1 auto;

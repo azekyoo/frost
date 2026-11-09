@@ -2030,6 +2030,62 @@ function resizePane(dir) {
   saveSession(); // each pane refits itself: they are watched for resize
 }
 
+// ---------- pane motion ----------
+// A split or a close changes the layout in one step, and the terminals are
+// refitted to their final sizes straight away: animating real sizes would
+// resize every shell on every frame. What moves instead is a clip — each pane
+// shows the area it had a moment ago and opens out to the area it has now, so a
+// new pane unfolds from the one it split off and the panes beside a closed one
+// grow over the space it left.
+
+const PANE_MOTION_MS = 200;
+
+function paneRects(tab) {
+  return new Map(allLeaves(tab.root).map((leaf) => [leaf, leaf.el.getBoundingClientRect()]));
+}
+
+// A rect of no width (or no height) on the side of `rect` that faces `toward`:
+// where a new pane starts from.
+function edgeFacing(rect, toward) {
+  const e = { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left };
+  if (toward.right <= rect.left + 1) e.right = rect.left;
+  else if (toward.left >= rect.right - 1) e.left = rect.right;
+  else if (toward.bottom <= rect.top + 1) e.bottom = rect.top;
+  else e.top = rect.bottom;
+  return e;
+}
+
+// `born` is a pane that did not exist before; it unfolds from `origin`, the pane it split off.
+function revealPanes(tab, before, born = null, origin = null) {
+  if (reduceMotion.matches || tab !== state.activeTab) return;
+  const originRect = origin?.el.getBoundingClientRect();
+  for (const leaf of allLeaves(tab.root)) {
+    const now = leaf.el.getBoundingClientRect();
+    if (now.width < 1 || now.height < 1) continue;
+    let was = before.get(leaf);
+    if (leaf === born && originRect) was = edgeFacing(now, originRect);
+    if (!was || (leaf !== born && (was.width < 1 || was.height < 1))) continue;
+    const top = Math.max(0, was.top - now.top);
+    const right = Math.max(0, now.right - was.right);
+    const bottom = Math.max(0, now.bottom - was.bottom);
+    const left = Math.max(0, was.left - now.left);
+    if (top + right + bottom + left < 1) continue;
+    if (top + bottom >= now.height || left + right >= now.width) {
+      if (leaf !== born) continue; // no overlap to grow from: just be there
+    }
+    const round = getComputedStyle(leaf.el).borderTopLeftRadius;
+    leaf.el.getAnimations().forEach((a) => a.id === 'motion-pane' && a.cancel());
+    const a = leaf.el.animate(
+      [
+        { clipPath: `inset(${top}px ${right}px ${bottom}px ${left}px round ${round})`, opacity: leaf === born ? 0.4 : 1 },
+        { clipPath: `inset(0px 0px 0px 0px round ${round})`, opacity: 1 }
+      ],
+      { duration: PANE_MOTION_MS, easing: MOTION_EASE }
+    );
+    a.id = 'motion-pane';
+  }
+}
+
 function renderTab(tab) {
   tab.contentEl.replaceChildren(renderNode(tab.root));
   allLeaves(tab.root).forEach((leaf) => leaf.fit.fit());
@@ -2070,7 +2126,9 @@ async function splitPane(dir) {
       parent.children[parent.children.indexOf(target)] = split;
     }
   }
+  const before = paneRects(tab);
   renderTab(tab);
+  revealPanes(tab, before, newLeaf, target);
   focusPane(newLeaf);
   saveSession();
 }
@@ -2088,6 +2146,7 @@ function removePane(node, { killPty = true } = {}) {
   const tab = tabOfPane(node);
   if (!tab) return;
   unzoom(tab);
+  const before = paneRects(tab); // measured while the pane is still there
 
   if (killPty) destroyLeaf(node);
   else {
@@ -2115,6 +2174,7 @@ function removePane(node, { killPty = true } = {}) {
     }
   }
   renderTab(tab);
+  revealPanes(tab, before);
   focusPane(firstLeaf(tab.root));
   saveSession();
 }

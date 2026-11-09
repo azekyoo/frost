@@ -32,6 +32,35 @@ const el = {
 
 // ---------- helpers ----------
 
+// ---------- motion ----------
+// Layout changes (a tab opening or closing, a pane splitting) play as a short
+// glide instead of a jump, so the eye can follow what moved. All of it is off
+// when the system asks for reduced motion.
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const MOTION_EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+
+// Parts of the UI are rebuilt from scratch on every repaint (the tab strip is
+// repainted whenever a title changes, which a busy shell does constantly). A
+// glide running on the old node would be cut off, so it is replayed on its
+// replacement from the same point.
+function carryAnimations(from, to) {
+  for (const a of from.getAnimations()) {
+    if (!a.id?.startsWith('motion-') || a.playState !== 'running') continue;
+    const b = to.animate(a.effect.getKeyframes(), a.effect.getTiming());
+    b.id = a.id;
+    b.currentTime = a.currentTime;
+  }
+  // the clip that hides a half-grown tab's insides has to come along too
+  if (from.classList.contains('motion-clip') && !to.classList.contains('motion-clip')) {
+    to.classList.add('motion-clip');
+    Promise.all(to.getAnimations().map((x) => x.finished)).then(
+      () => to.classList.remove('motion-clip'),
+      () => {}
+    );
+  }
+}
+
+
 // Messages stack rather than sharing one slot: a second toast used to overwrite
 // the first, so a warning could vanish before it was read. Errors are given
 // longer and marked, since they're the ones worth reading.
