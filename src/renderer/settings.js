@@ -357,7 +357,9 @@ let updateState = null;
 
 function renderUpdate(st) {
   if (!st || !upd.current) return;
-  const known = st.latest && st.stage !== 'checking';
+  // After a failed check the last answer is stale — it read "Latest release
+  // 2.7.0" beside an error while 2.8.0 was out — so it shows unknown instead.
+  const known = st.latest && st.stage !== 'checking' && st.stage !== 'error';
   upd.current.textContent = st.version || '—';
   upd.latest.textContent = known ? st.latest : st.stage === 'checking' ? 'checking…' : '—';
   upd.box.style.setProperty('--update-progress', (st.stage === 'downloading' ? st.percent : 0) + '%');
@@ -376,6 +378,7 @@ function renderUpdate(st) {
   }[st.stage];
   upd.status.textContent = text || '';
   upd.status.className = 'update-status ' + st.stage;
+  upd.status.title = st.stage === 'error' && st.detail ? st.detail : '';
 
   upd.check.disabled = st.stage === 'checking' || st.stage === 'downloading' || st.stage === 'unsupported';
   const action =

@@ -4135,25 +4135,36 @@ function getUpdater() {
     setUpdateState({ stage: 'downloading', percent: Math.round(p?.percent || 0) })
   );
   autoUpdater.on('update-downloaded', (info) => onUpdateDownloaded(info?.version || null));
-  autoUpdater.on('error', (err) => {
-    // Offline is the common case, and it reads as a stack trace otherwise
-    const raw = String(err?.message || err || 'unknown error');
-    const offline = /ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|net::/i.test(raw);
-    // A release cut before this feature existed carries the exes but no
-    // latest.yml, and the 404 that produces says nothing a reader can act on
-    const noInfo = /404|latest\.yml/i.test(raw);
-    setUpdateState({
-      stage: 'error',
-      percent: 0,
-      message: offline
-        ? 'No connection to GitHub.'
-        : noInfo
-          ? 'The newest release carries no update info — see the releases page.'
-          : raw.split('\n')[0]
-    });
-  });
+  autoUpdater.on('error', onUpdateError);
   updater = autoUpdater;
   return updater;
+}
+
+function onUpdateError(err) {
+  // Offline is the common case, and it reads as a stack trace otherwise
+  const raw = String(err?.message || err || 'unknown error');
+  const offline = /ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|net::/i.test(raw);
+  // electron-updater's text is a chain of wrapped errors ending in the HTTP
+  // status ("Cannot parse releases feed: Error: Unable to find latest version
+  // on GitHub (...), please ensure a production release exists: HttpError:
+  // 504"), and only that last number means anything to a reader. GitHub
+  // answers anonymous traffic with 5xx during its own incidents, so that case
+  // is said plainly; the raw text stays one hover away for a bug report.
+  const m = raw.match(/HttpError:\s*(\d{3})|status(?:Code)?\D{0,3}(\d{3})/i);
+  const status = m ? Number(m[1] || m[2]) : 0;
+  // A release cut before this feature existed carries the exes but no
+  // latest.yml, and the 404 that produces says nothing a reader can act on
+  const noInfo = status === 404 || /latest\.yml/i.test(raw);
+  const message = offline
+    ? 'No connection to GitHub.'
+    : status >= 500
+      ? "GitHub isn't answering right now. Frost will try again later."
+      : status === 403 || status === 429
+        ? 'GitHub is limiting requests right now. Frost will try again later.'
+        : noInfo
+          ? 'The newest release carries no update info — see the release notes.'
+          : 'The update check failed. Frost will try again later.';
+  setUpdateState({ stage: 'error', percent: 0, message, detail: raw.split('\n')[0] });
 }
 
 function onUpdateDownloaded(version) {
@@ -4225,8 +4236,10 @@ ipcMain.handle('update:justUpdated', () => {
 // ---------- fake updates, for trying the notices from source ----------
 // FROST_FAKE_UPDATE=ready plays a whole download a few seconds after launch,
 // ending in the same handler a real one does. =updated makes this launch look
-// like the first after an update. Neither touches the network, and "Restart and
-// install" refuses rather than quitting into an installer that doesn't exist.
+// like the first after an update. =error504 fails the check the way GitHub's
+// outages do, through the same error handler. None touches the network, and
+// "Restart and install" refuses rather than quitting into an installer that
+// doesn't exist.
 
 const FAKE_UPDATE = (process.env.FROST_FAKE_UPDATE || '').toLowerCase() || null;
 
@@ -4285,6 +4298,22 @@ function checkForUpdates({ byUser = false } = {}) {
 function initUpdates() {
   recordLaunchVersion();
   if (FAKE_UPDATE === 'ready') return playFakeUpdate();
+  if (FAKE_UPDATE === 'error504') {
+    const fail = () =>
+      onUpdateError(
+        new Error(
+          'Cannot parse releases feed: Error: Unable to find latest version on GitHub (https://github.com/azekyoo/frost/releases/latest), please ensure a production release exists: HttpError: 504'
+        )
+      );
+    setTimeout(fail, 3000);
+    ipcMain.removeHandler('update:check');
+    ipcMain.handle('update:check', () => {
+      setUpdateState({ stage: 'checking', message: '' });
+      setTimeout(fail, 800);
+      return updateState;
+    });
+    return;
+  }
   const support = updateSupport();
   if (!support.ok) {
     updateState = { ...updateState, stage: 'unsupported', message: support.message };
