@@ -791,6 +791,7 @@ function peekRenderTree() {
       const isOpen = open.has(sub.path);
       row.className = 'peek-row dir' + (isOpen ? ' open' : '') + (sub.changed ? ' changed' : '');
       row.dataset.path = sub.path;
+      row.dataset.key = 'd:' + sub.path;
       row.style.setProperty('--depth', depth);
       row.textContent = sub.name;
       row.addEventListener('click', async () => {
@@ -799,7 +800,7 @@ function peekRenderTree() {
           open.add(sub.path);
           await peekLoadDir(sub.path); // a lazy tree's folder, listed on first unfold
         }
-        peekRenderTree();
+        peekTreeMotion(box, peekRenderTree);
       });
       rows.push(row);
       if (isOpen) walk(sub, depth + 1);
@@ -809,6 +810,7 @@ function peekRenderTree() {
       row.type = 'button';
       const st = tree.status[f.path];
       row.className = 'peek-row file' + (st ? ' st-' + st : '') + (f.path === current ? ' selected' : '');
+      row.dataset.key = 'f:' + f.path;
       row.style.setProperty('--depth', depth);
       row.textContent = f.name;
       if (st) {
@@ -827,6 +829,37 @@ function peekRenderTree() {
   walk(tree.top, 0);
   box.replaceChildren(...rows);
   box.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
+}
+
+// A folder opening pushes the rows below it down and its contents drop in
+// under it; closing pulls the rows below back up. Rows are matched across the
+// rebuild by what they stand for, since every one is a new element.
+const PEEK_TREE_MS = 160;
+
+function peekTreeMotion(box, change) {
+  const before = new Map(
+    [...box.querySelectorAll('.peek-row')].map((r) => [r.dataset.key, r.getBoundingClientRect().top])
+  );
+  change();
+  if (reduceMotion.matches || !before.size) return;
+  for (const r of box.querySelectorAll('.peek-row')) {
+    const was = before.get(r.dataset.key);
+    if (was === undefined) {
+      const a = r.animate([{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'none' }], {
+        duration: PEEK_TREE_MS,
+        easing: MOTION_EASE
+      });
+      a.id = 'motion-peek-row';
+      continue;
+    }
+    const dy = was - r.getBoundingClientRect().top;
+    if (Math.abs(dy) < 0.5) continue;
+    const a = r.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], {
+      duration: PEEK_TREE_MS,
+      easing: MOTION_EASE
+    });
+    a.id = 'motion-peek-row';
+  }
 }
 
 // ---------- file ----------
@@ -1067,6 +1100,11 @@ function peekRenderFile(keepScroll) {
   }
   if (preview) peekRenderMarkdown(peek.text);
   else peekRenderCode(name, peek.text, peek.opts?.line);
+  // another file (or the other view of this one) fades in; a reload of the same
+  // one, which keeps its scroll, must not flicker
+  if (!keepScroll && !reduceMotion.matches) {
+    body.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' }).id = 'motion-peek-file';
+  }
   if (at) {
     body.scrollTop = at.top;
     body.scrollLeft = at.left;
@@ -1119,15 +1157,16 @@ function showPeek(opts, res) {
 
 function closePeek() {
   if (!peek.root?.classList.contains('open')) return;
-  peek.root.classList.remove('open');
   api.peekWatch(null);
   peek.find.bar.classList.remove('open');
   peekClearFind();
-  // a large file is memory
-  peek.root.querySelector('.peek-code code').textContent = '';
-  peek.root.querySelector('.peek-md').textContent = '';
-  peek.text = '';
-  peek.mini = null;
+  // a large file is memory — let go of once it has faded out, not while it still shows
+  closeSurface(peek.root, () => {
+    peek.root.querySelector('.peek-code code').textContent = '';
+    peek.root.querySelector('.peek-md').textContent = '';
+    peek.text = '';
+    peek.mini = null;
+  });
   const back = peek.returnTo;
   peek.returnTo = null;
   if (back?.isConnected) back.focus();

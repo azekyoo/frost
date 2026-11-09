@@ -400,7 +400,7 @@ function renderDiffFile(tab, file) {
   }
   head.append(chev, badge, name, dir, stat);
   head.addEventListener('click', () => {
-    el.classList.toggle('collapsed');
+    foldDiffFile(el, !el.classList.contains('collapsed'));
     if (el.classList.contains('collapsed')) tab.diffCollapsed.add(id);
     else tab.diffCollapsed.delete(id);
     syncFoldButton(tab);
@@ -553,7 +553,7 @@ function renderUntracked(tab, untracked, cwd = tab.diffCwd, id = '\0untracked') 
   name.textContent = `untracked (${untracked.length})`;
   head.append(chev, badge, name);
   head.addEventListener('click', () => {
-    el.classList.toggle('collapsed');
+    foldDiffFile(el, !el.classList.contains('collapsed'));
     if (el.classList.contains('collapsed')) tab.diffCollapsed.add(id);
     else tab.diffCollapsed.delete(id);
     syncFoldButton(tab);
@@ -647,6 +647,39 @@ function renderDiffRepos(tab) {
       return b;
     })
   );
+}
+
+// A file folds shut by drawing its body up under its header, and unfolds by
+// letting it back down — rather than the body blinking out, which loses your
+// place in the files below. The class flips at once (it is the state, and turns
+// the chevron); the body stays on show while it closes.
+const FOLD_MS = 180;
+
+function foldDiffFile(el, folded, animate = true) {
+  const body = el.querySelector('.diff-file-body');
+  const shown = !el.classList.contains('collapsed') || body?.classList.contains('folding');
+  const from = body && shown ? body.offsetHeight : 0;
+  body?.getAnimations().forEach((a) => a.id === 'motion-fold' && a.cancel());
+  body?.classList.remove('folding');
+  el.classList.toggle('collapsed', folded);
+  if (!body || !animate || reduceMotion.matches) return;
+  const pad = getComputedStyle(body);
+  const open = { height: body.offsetHeight + 'px', paddingTop: pad.paddingTop, paddingBottom: pad.paddingBottom, opacity: 1 };
+  const shut = { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 };
+  const now = { height: from + 'px', opacity: from ? 1 : 0 };
+  if (folded) {
+    if (!from) return;
+    body.classList.add('folding');
+    const a = body.animate([now, shut], { duration: FOLD_MS, easing: MOTION_EASE, fill: 'forwards' });
+    a.id = 'motion-fold';
+    a.finished.then(() => {
+      body.classList.remove('folding');
+      a.cancel();
+    }, () => {});
+  } else {
+    const a = body.animate([from ? now : shut, open], { duration: FOLD_MS, easing: MOTION_EASE });
+    a.id = 'motion-fold';
+  }
 }
 
 // The fold button says what clicking it will do: Unfold once every file is

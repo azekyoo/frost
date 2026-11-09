@@ -91,7 +91,7 @@ function openPalette(source = null) {
 }
 
 function closePalette() {
-  el.palette.classList.remove('open');
+  closeSurface(el.palette);
   palette.source = null;
   palette.returnTo?.term.focus();
 }

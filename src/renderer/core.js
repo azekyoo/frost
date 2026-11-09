@@ -30,7 +30,80 @@ const el = {
   customCss: document.getElementById('custom-css')
 };
 
+// A list rebuilt from scratch (the agent rail redraws on every status tick)
+// still moves smoothly: rows are matched across the rebuild by key, any glide
+// a row was in the middle of carries on, a row whose place changed slides
+// there from where it showed, and a row new to the list drifts in. Rows that
+// left simply leave, the ones below closing the gap.
+const LIST_MOTION_MS = 180;
+
+function flipList(list, keyOf, change) {
+  const prior = new Map();
+  for (const r of list.children) {
+    const k = keyOf(r);
+    if (!k) continue;
+    const t = getComputedStyle(r).transform;
+    const shift = t && t !== 'none' ? new DOMMatrixReadOnly(t).m42 : 0;
+    const top = r.getBoundingClientRect().top;
+    prior.set(k, {
+      shown: top,
+      laid: top - shift,
+      anims: r
+        .getAnimations()
+        .filter((a) => a.id?.startsWith('motion-') && a.playState === 'running')
+        .map((a) => ({ id: a.id, frames: a.effect.getKeyframes(), timing: a.effect.getTiming(), at: a.currentTime }))
+    });
+  }
+  const painted = list.motionPainted;
+  change();
+  list.motionPainted = true;
+  if (reduceMotion.matches || !painted) return;
+  const rows = [...list.children].filter(keyOf).map((r) => [r, r.getBoundingClientRect().top]);
+  for (const [r, top] of rows) {
+    const p = prior.get(keyOf(r));
+    if (!p) {
+      r.animate([{ opacity: 0, transform: 'translateX(-10px)' }, { opacity: 1, transform: 'none' }], {
+        duration: LIST_MOTION_MS,
+        easing: MOTION_EASE
+      }).id = 'motion-list-in';
+      continue;
+    }
+    if (Math.abs(p.laid - top) >= 0.5) {
+      r.animate([{ transform: `translateY(${p.shown - top}px)` }, { transform: 'none' }], {
+        duration: LIST_MOTION_MS,
+        easing: MOTION_EASE
+      }).id = 'motion-list-move';
+      continue;
+    }
+    for (const s of p.anims) {
+      const a = r.animate(s.frames, s.timing);
+      a.id = s.id;
+      a.currentTime = s.at;
+    }
+  }
+}
+
 // ---------- helpers ----------
+
+// A floating surface (menu, palette, Peek, a question) loses 'open' at once —
+// as far as the code is concerned it is closed — but stays drawn under
+// 'closing' while it plays its exit. Opening it again simply wins.
+function closeSurface(node, after) {
+  if (!node.classList.contains('open')) return;
+  node.classList.remove('open');
+  if (reduceMotion.matches) return after?.();
+  node.classList.add('closing');
+  let done = false;
+  const end = (ev) => {
+    if (done || (ev && ev.target !== node)) return;
+    done = true;
+    node.removeEventListener('animationend', end);
+    node.classList.remove('closing');
+    if (!node.classList.contains('open')) after?.();
+  };
+  node.addEventListener('animationend', end);
+  setTimeout(end, 400); // in case the animation never runs (hidden window, a design without one)
+}
 
 // ---------- motion ----------
 // Layout changes (a tab opening or closing, a pane splitting) play as a short

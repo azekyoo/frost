@@ -725,7 +725,7 @@ api.onTabAdopt((payload) => {
 // ---------- the tab's own menu ----------
 
 function closeTabMenu() {
-  el.tabMenu.classList.remove('open');
+  closeSurface(el.tabMenu);
 }
 
 function openTabMenu(tab, x, y) {

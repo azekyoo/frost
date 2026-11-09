@@ -223,7 +223,13 @@ function addCenterLeaf(tab, leaf, show) {
 }
 
 function setCenterVisible(tab, leaf) {
+  // switching agents fades the other session in rather than cutting to it
+  const switching =
+    leaf.el.style.display === 'none' && [...tab.centerLeaves].some((l) => l !== leaf && l.el.style.display !== 'none');
   for (const l of tab.centerLeaves) l.el.style.display = l === leaf ? '' : 'none';
+  if (switching && !reduceMotion.matches) {
+    leaf.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' }).id = 'motion-agent-switch';
+  }
   syncDock(tab, leaf);
   markAgentsSeen();
   if (leaf.ptyId) api.ptyMute(leaf.ptyId);
@@ -333,7 +339,7 @@ function buildAgentLayout(tab) {
           <button class="diff-send" hidden title="Send comments to the agent">
             <svg viewBox="0 0 16 16"><path d="M2.75 8h9.5M8.75 4.5 12.25 8l-3.5 3.5" /></svg><span>Send</span>
           </button>
-          <button class="diff-open-tab" title="Open a shell in this session's folder, under the diff">
+          <button class="diff-open-tab" title="Show or put away this session's shell, under the diff (it keeps running)">
             <svg viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" /><path d="m4.75 6.25 2 1.75-2 1.75M8.5 10h2.75" /></svg><span>Shell</span>
           </button>
           <button class="diff-open-editor" title="Browse this session's repo in Peek (Ctrl+Shift+E)">
@@ -348,17 +354,19 @@ function buildAgentLayout(tab) {
     </div>
     <div class="agents-dock-gutter" hidden title="Drag to resize"></div>
     <div class="agents-dock" hidden>
-      <div class="dock-head">
-        <span class="dock-title">
-          <svg viewBox="0 0 16 16"><path d="m3.5 5 3 3-3 3M8.5 11.5h4" /></svg>
-          <span class="dock-name">Shell</span>
-        </span>
-        <button class="dock-send" title="Send the last command's output to this session's agent (Ctrl+Shift+S)">
-          <svg viewBox="0 0 16 16"><path d="M2.75 8h9.5M8.75 4.5 12.25 8l-3.5 3.5" /></svg><span>Send output</span>
-        </button>
-        <button class="dock-close" title="Close this shell"><svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg></button>
+      <div class="dock-inner">
+        <div class="dock-head">
+          <span class="dock-title">
+            <svg viewBox="0 0 16 16"><path d="m3.5 5 3 3-3 3M8.5 11.5h4" /></svg>
+            <span class="dock-name">Shell</span>
+          </span>
+          <button class="dock-send" title="Send the last command's output to this session's agent (Ctrl+Shift+S)">
+            <svg viewBox="0 0 16 16"><path d="M2.75 8h9.5M8.75 4.5 12.25 8l-3.5 3.5" /></svg><span>Send output</span>
+          </button>
+          <button class="dock-close" title="Close this shell"><svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg></button>
+        </div>
+        <div class="dock-body"></div>
       </div>
-      <div class="dock-body"></div>
     </div>
     </div>`;
   tab.contentEl.appendChild(layout);
@@ -397,8 +405,11 @@ function buildAgentLayout(tab) {
     const files = [...tab.els.diffBody.querySelectorAll('.diff-file')];
     // fold everything, unless it is already all folded
     const expand = files.length > 0 && files.every((f) => f.classList.contains('collapsed'));
+    // only the files on screen are animated: the rest just change
+    const view = tab.els.diffBody.getBoundingClientRect();
     for (const f of files) {
-      f.classList.toggle('collapsed', !expand);
+      const r = f.getBoundingClientRect();
+      foldDiffFile(f, !expand, r.bottom > view.top && r.top < view.bottom);
       const p = f.dataset.path;
       if (!p) continue;
       if (expand) tab.diffCollapsed.delete(p);
@@ -410,8 +421,12 @@ function buildAgentLayout(tab) {
   layout.querySelector('.diff-open-tab').addEventListener('click', () => {
     // the selected agent, not diffCwd: that one outlives an agent that has gone
     const agent = globalAgents.get(tab.selected);
-    if (agent?.cwd && tab.centerLeaves.has(agent.leaf)) openDockShell(tab, agent.leaf, agent.cwd);
-    else toast('Select an agent first', { error: true });
+    if (!agent?.cwd || !tab.centerLeaves.has(agent.leaf)) return toast('Select an agent first', { error: true });
+    // the button toggles: a second press puts this session's shell away, still
+    // running, rather than replaying the opening — the × is what ends it
+    const shown = tab.dockShown;
+    if (shown && shown.dockOwner === agent.leaf && !shown.dockClosing) putDockAway(tab, shown);
+    else openDockShell(tab, agent.leaf, agent.cwd);
   });
   layout.querySelector('.diff-open-editor').addEventListener('click', () => {
     // diffCwd as a fallback: the repo is still worth browsing once its agent ends
@@ -420,7 +435,7 @@ function buildAgentLayout(tab) {
     else toast('Select an agent first', { error: true });
   });
   layout.querySelector('.dock-close').addEventListener('click', () => {
-    if (tab.dockShown) closeDockLeaf(tab, tab.dockShown);
+    if (tab.dockShown) closeDockLeaf(tab, tab.dockShown, { animate: true });
   });
   wireDockGutter(tab);
   // Which of the two terminals was typed into last. Remembered, not read off the
@@ -491,6 +506,7 @@ async function openDockShell(tab, owner, cwd) {
     }
     addDockLeaf(tab, leaf, owner, cwd);
   }
+  leaf.dockAway = false;
   // switched away while it started: it waits for its session instead
   if (owner.el.style.display !== 'none') showDockLeaf(tab, leaf, { animate: true });
 }
@@ -513,11 +529,52 @@ function addDockLeaf(tab, leaf, owner, cwd) {
   tab.els.dockBody.appendChild(leaf.el);
 }
 
+// The dock slides up out of the bottom of the column when its button opens it,
+// and back down when it is closed, the diff above giving way as it goes. The
+// shell inside is held at its final size throughout, so the terminal is fitted
+// once rather than on every frame.
+const DOCK_MOTION_MS = 200;
+
+function stopDockSlide(tab) {
+  tab.els.dock.getAnimations().forEach((a) => a.id === 'motion-dock' && a.cancel());
+  tab.els.dock.classList.remove('sliding');
+  tab.els.dock.style.removeProperty('--dock-full');
+}
+
+function slideDock(tab, open, done = () => {}) {
+  const { dock, dockGutter } = tab.els;
+  stopDockSlide(tab);
+  const h = dock.offsetHeight;
+  if (reduceMotion.matches || !h) return done();
+  // header and shell are laid out at the dock's full height, pinned to its
+  // bottom edge: the dock only uncovers them, so nothing inside ever moves
+  dock.style.setProperty('--dock-full', h + 'px');
+  dock.classList.add('sliding');
+  // the gutter above it is folded away too, or the diff would jump by its height
+  const shut = { height: '0px', marginTop: -dockGutter.offsetHeight + 'px', opacity: 0.3 };
+  const full = { height: h + 'px', marginTop: '0px', opacity: 1 };
+  const a = dock.animate(open ? [shut, full] : [full, shut], {
+    duration: DOCK_MOTION_MS,
+    easing: MOTION_EASE,
+    fill: open ? 'none' : 'forwards'
+  });
+  a.id = 'motion-dock';
+  a.finished.then(
+    () => {
+      if (open) stopDockSlide(tab);
+      done();
+      if (!open) stopDockSlide(tab);
+    },
+    // cut short by something else showing or hiding the dock: a close still closes
+    () => !open && done()
+  );
+}
+
 // animate: only when the button opens it. Coming back with its session, the
 // shell simply is there, as it was left.
 function showDockLeaf(tab, leaf, { focus = true, animate = false } = {}) {
+  stopDockSlide(tab);
   for (const l of tab.dockLeaves) l.el.style.display = l === leaf ? '' : 'none';
-  tab.els.dock.classList.toggle('opening', animate);
   tab.dockShown = leaf;
   tab.els.dock.hidden = false;
   tab.els.dockGutter.hidden = false;
@@ -526,15 +583,30 @@ function showDockLeaf(tab, leaf, { focus = true, animate = false } = {}) {
   renderDockSend(tab);
   tab.appliedDock = null;
   applyDockHeight(tab);
+  if (animate) slideDock(tab, true);
   requestAnimationFrame(() => {
     leaf.fit.fit();
     if (focus) leaf.term.focus();
   });
 }
 
+// Put away by its button: slides down and stays down, also when its session is
+// switched away from and back, until the button brings it up again. The shell
+// keeps running behind it, scrollback and all.
+function putDockAway(tab, leaf) {
+  leaf.dockAway = true;
+  slideDock(tab, false, () => {
+    // opened again before the slide finished: that wins
+    if (!leaf.dockAway || tab.dockShown !== leaf) return;
+    hideDock(tab);
+    if (leaf.dockOwner?.el.style.display !== 'none') leaf.dockOwner?.term.focus();
+  });
+}
+
 // Put away, not closed: every shell stays alive for its session to come back to
 function hideDock(tab) {
   if (!tab.dockShown && tab.els.dock.hidden) return;
+  stopDockSlide(tab);
   for (const l of tab.dockLeaves) l.el.style.display = 'none';
   tab.dockShown = null;
   tab.dockTyping = false;
@@ -545,14 +617,24 @@ function hideDock(tab) {
 // The session on show decides what the dock holds
 function syncDock(tab, centerLeaf) {
   if (!tab.dockLeaves) return;
-  const leaf = dockLeafFor(tab, centerLeaf);
+  const found = dockLeafFor(tab, centerLeaf);
+  const leaf = found?.dockAway ? null : found;
   if (leaf === tab.dockShown) return;
   if (leaf) showDockLeaf(tab, leaf, { focus: false });
   else hideDock(tab);
 }
 
-// kill: false for a shell that has already exited on its own
-function closeDockLeaf(tab, leaf, { kill = true } = {}) {
+// kill: false for a shell that has already exited on its own. animate: closed
+// from its button, so it slides away first (and still dies if anything else
+// happens to the dock meanwhile).
+function closeDockLeaf(tab, leaf, { kill = true, animate = false } = {}) {
+  if (!tab.dockLeaves.has(leaf)) return;
+  if (animate && tab.dockShown === leaf) {
+    if (leaf.dockClosing) return;
+    leaf.dockClosing = true;
+    slideDock(tab, false, () => closeDockLeaf(tab, leaf, { kill }));
+    return;
+  }
   tab.dockLeaves.delete(leaf);
   if (kill) destroyLeaf(leaf);
   else {
@@ -850,14 +932,16 @@ function renderAgentList(tab) {
     });
     rows.push(row);
   }
-  tab.els.agentsList.replaceChildren(...rows);
+  flipList(tab.els.agentsList, (r) => r.dataset.agentId, () => {
+    tab.els.agentsList.replaceChildren(...rows);
+    if (!rows.length) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = 'No agents yet — run claude in the terminal';
+      tab.els.agentsList.appendChild(p);
+    }
+  });
   setRailCount(tab.els.agentsList, rows.length);
-  if (!rows.length) {
-    const p = document.createElement('p');
-    p.className = 'hint';
-    p.textContent = 'No agents yet — run claude in the terminal';
-    tab.els.agentsList.appendChild(p);
-  }
   renderSessionList(tab);
 }
 
@@ -1138,6 +1222,7 @@ function renderSessionList(tab) {
     const busy = resuming.has(s.id);
     const row = document.createElement('div');
     row.className = 'agent-row dormant' + (busy ? ' busy' : '') + (s.exists ? '' : ' gone');
+    row.dataset.sessionId = s.id;
     row.title = `${s.cwd}\n${s.id}`;
     row.innerHTML = `
       <span class="agent-dot st-exited"></span>
@@ -1156,14 +1241,16 @@ function renderSessionList(tab) {
     });
     rows.push(row);
   }
-  tab.els.sessionsList.replaceChildren(...rows);
+  flipList(tab.els.sessionsList, (r) => r.dataset.sessionId, () => {
+    tab.els.sessionsList.replaceChildren(...rows);
+    if (!rows.length) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = 'No other Claude Code sessions yet';
+      tab.els.sessionsList.appendChild(p);
+    }
+  });
   setRailCount(tab.els.sessionsList, rows.length);
-  if (!rows.length) {
-    const p = document.createElement('p');
-    p.className = 'hint';
-    p.textContent = 'No other Claude Code sessions yet';
-    tab.els.sessionsList.appendChild(p);
-  }
 }
 
 function openSessionMenu(session, busy, x, y) {

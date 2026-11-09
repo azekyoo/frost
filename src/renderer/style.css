@@ -100,6 +100,49 @@ body {
   }
 }
 
+/* condense played backwards: how every floating surface leaves */
+@keyframes evaporate {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* A surface on its way out is still drawn but no longer there to click */
+.menu.closing:not(.open) {
+  display: block;
+  pointer-events: none;
+  animation: evaporate 0.12s var(--ease) forwards;
+}
+
+#palette.closing:not(.open),
+#peek.closing:not(.open),
+#modal.closing:not(.open) {
+  display: block;
+  pointer-events: none;
+  animation: fade-out 0.14s var(--ease) forwards;
+}
+
+#modal.closing:not(.open) {
+  display: flex;
+}
+
+#palette.closing:not(.open) .palette-box,
+#peek.closing:not(.open) .peek-box,
+#modal.closing:not(.open) .modal-box {
+  animation: evaporate 0.14s var(--ease) forwards;
+}
+
 button {
   font-family: var(--ui-font);
 }
@@ -1823,8 +1866,26 @@ body.agent-reordering * {
   transition: box-shadow 0.2s var(--ease);
 }
 
-.agents-dock.opening {
-  animation: condense 0.2s var(--ease-out);
+/* Header and shell in one block. Mid-slide that block keeps the dock's full
+   height and sits on its bottom edge, so it rises out of the column with
+   everything already in place rather than unrolling downwards. */
+.dock-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agents-dock.sliding {
+  position: relative;
+}
+
+.agents-dock.sliding .dock-inner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--dock-full);
 }
 
 /* lit while it has the keyboard, like a focused pane */
@@ -2319,6 +2380,11 @@ body.agent-reordering * {
 
 .diff-file.collapsed .diff-file-body {
   display: none;
+}
+
+/* still drawn while it folds shut */
+.diff-file.collapsed .diff-file-body.folding {
+  display: block;
 }
 
 .diff-line {

@@ -409,7 +409,7 @@ const modal = {
 function closeModal() {
   const cancel = modal.onCancel;
   modal.onConfirm = modal.onCancel = null;
-  modal.root.classList.remove('open');
+  closeSurface(modal.root);
   activePane()?.term.focus();
   cancel?.();
 }

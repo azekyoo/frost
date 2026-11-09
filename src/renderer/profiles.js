@@ -13,7 +13,7 @@ function agentProfileId() {
 }
 
 function closeProfileMenu() {
-  el.profileMenu.classList.remove('open');
+  closeSurface(el.profileMenu);
 }
 
 function openProfileMenu(anchor) {
