@@ -177,7 +177,9 @@ running and supervising Claude Code agents with live status and diff watching.
   time you quit. Never mid-session: a terminal holds work a restart of its own
   choosing would throw away. Settings shows the version you run beside the
   latest one, checks on demand, and offers **Restart and install** once an
-  update is downloaded. Turn either half off — the checking, or the
+  update is downloaded. A downloaded update raises a Windows notification
+  when Frost is in the background, and the first launch of a new version says
+  so, with a link to its release notes. Turn either half off — the checking, or the
   downloading — in settings. Portable builds and runs from source say so
   instead of checking
 - **Backdrop materials**
@@ -245,7 +247,8 @@ running and supervising Claude Code agents with live status and diff watching.
   - **Shell** docks a terminal under the diff, in the session's folder, for
     running the tests while the agent works. Each session keeps its own: switch
     sessions and the dock follows, and the shell you left comes back as it was —
-    still running, at the height you dragged it to
+    still running, at the height you dragged it to. Press **Shell** again to put
+    it away, still running, until you want it back; the dock's × ends it
   - **send output to the agent**: the dock's **Send output** button (or
     `Ctrl+Shift+S`, from the dock or the agent) pastes the last command into the
     agent's prompt — what was typed, how it ended, what it printed — without

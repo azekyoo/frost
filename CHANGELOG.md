@@ -3,6 +3,30 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.8.0 — 2026-11-09
+
+### Added
+
+- **Frost moves.** Tabs grow in, fold away and slide into place when dragged.
+  Panes open and close with a reveal instead of a jump. Agent and session rows
+  drift in and slide to close gaps, switching agents fades the session in, diff
+  files fold under their headers, and Peek's folders push the rows below them
+  open. Menus, the palette, Peek and dialogs leave the way they came in. With
+  Windows' reduced-motion setting on, everything changes instantly as before.
+- **A notification when an update is ready.** If Frost is in the background
+  when a new version finishes downloading, Windows tells you, and clicking it
+  brings Frost forward. Inside Frost the toast still says it.
+- **"Frost updated" on the first launch of a new version.** The install is
+  silent, so the next launch says which version you are now on, and a click on
+  that toast opens its release notes. It starts with the update after this one,
+  since Frost only now begins remembering which version last ran.
+
+### Changed
+
+- **The Shell button in agent mode toggles.** A second press puts the session's
+  shell away below the diff, still running; it slides back up as it was the
+  next time. The × on the dock is what ends the shell.
+
 ## 2.7.0 — 2026-11-05
 
 ### Added
