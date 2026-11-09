@@ -4134,10 +4134,7 @@ function getUpdater() {
   autoUpdater.on('download-progress', (p) =>
     setUpdateState({ stage: 'downloading', percent: Math.round(p?.percent || 0) })
   );
-  autoUpdater.on('update-downloaded', (info) => {
-    readyVersion = info?.version || null;
-    setUpdateState({ stage: 'ready', latest: readyVersion, percent: 100, message: '' });
-  });
+  autoUpdater.on('update-downloaded', (info) => onUpdateDownloaded(info?.version || null));
   autoUpdater.on('error', (err) => {
     // Offline is the common case, and it reads as a stack trace otherwise
     const raw = String(err?.message || err || 'unknown error');
@@ -4157,6 +4154,97 @@ function getUpdater() {
   });
   updater = autoUpdater;
   return updater;
+}
+
+function onUpdateDownloaded(version) {
+  readyVersion = version;
+  setUpdateState({ stage: 'ready', latest: version, percent: 100, message: '' });
+  notifyUpdateReady(version);
+}
+
+// The in-app toast is enough when someone is looking at Frost. Frost is mostly
+// sitting behind an editor or minimized, though, and an eight-second toast
+// nobody sees meant the update went in at the next quit with no word at all.
+// Once per download, not per check: the checks that find the waiting release
+// again every six hours are not news.
+function notifyUpdateReady(version) {
+  if (!liveWindows().length || anyWindowFocused() || !Notification.isSupported()) return;
+  const n = new Notification({
+    title: version ? `Frost ${version} is ready` : 'A Frost update is ready',
+    body: 'It installs the next time you quit Frost.',
+    icon: NOTIFY_ICON_FILE
+  });
+  n.on('click', () => {
+    const target = focusedWindow() || liveWindows()[0];
+    if (!target) return;
+    if (target.isMinimized()) target.restore();
+    target.focus();
+  });
+  n.show();
+}
+
+// ---------- "Frost updated" on the first launch of a new version ----------
+// The install itself is silent, so without this an update is only ever noticed
+// by someone who happened to see the download toast. The last version that ran
+// is kept beside the rest of the app's own state; a version newer than it means
+// this launch is the first of an update. A fresh install has no record yet and
+// is not an update, so it says nothing.
+
+const LAST_VERSION_FILE = path.join(app.getPath('userData'), 'last-version.json');
+let justUpdated = null; // { from, to }, handed to the first window that asks
+
+function cmpVersion(a, b) {
+  const pa = String(a).split(/[.-]/).map((x) => parseInt(x, 10) || 0);
+  const pb = String(b).split(/[.-]/).map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  return 0;
+}
+
+function recordLaunchVersion() {
+  const now = app.getVersion();
+  let prev = null;
+  try {
+    prev = JSON.parse(fs.readFileSync(LAST_VERSION_FILE, 'utf8')).version || null;
+  } catch {}
+  if (FAKE_UPDATE === 'updated') prev = '0.0.0';
+  if (prev && cmpVersion(now, prev) > 0) justUpdated = { from: prev, to: now };
+  if (prev !== now && FAKE_UPDATE !== 'updated') {
+    try {
+      fs.writeFileSync(LAST_VERSION_FILE, JSON.stringify({ version: now }));
+    } catch {}
+  }
+}
+
+// Every window restored at launch would otherwise say it, so only one does.
+ipcMain.handle('update:justUpdated', () => {
+  const j = justUpdated;
+  justUpdated = null;
+  return j;
+});
+
+// ---------- fake updates, for trying the notices from source ----------
+// FROST_FAKE_UPDATE=ready plays a whole download a few seconds after launch,
+// ending in the same handler a real one does. =updated makes this launch look
+// like the first after an update. Neither touches the network, and "Restart and
+// install" refuses rather than quitting into an installer that doesn't exist.
+
+const FAKE_UPDATE = (process.env.FROST_FAKE_UPDATE || '').toLowerCase() || null;
+
+function playFakeUpdate() {
+  const version = app.getVersion().replace(/^(\d+)\.(\d+)\..*$/, (_m, a, b) => `${a}.${+b + 1}.0`);
+  setTimeout(() => {
+    setUpdateState({ stage: 'checking', message: '' });
+    setTimeout(() => {
+      setUpdateState({ stage: 'available', latest: version, percent: 0, autoDownload: true });
+      let p = 0;
+      const t = setInterval(() => {
+        p += 20;
+        if (p < 100) return setUpdateState({ stage: 'downloading', percent: p });
+        clearInterval(t);
+        onUpdateDownloaded(version);
+      }, 600);
+    }, 1000);
+  }, 8000);
 }
 
 function startUpdateDownload() {
@@ -4195,6 +4283,8 @@ function checkForUpdates({ byUser = false } = {}) {
 }
 
 function initUpdates() {
+  recordLaunchVersion();
+  if (FAKE_UPDATE === 'ready') return playFakeUpdate();
   const support = updateSupport();
   if (!support.ok) {
     updateState = { ...updateState, stage: 'unsupported', message: support.message };
@@ -4216,6 +4306,10 @@ ipcMain.on('update:download', () => {
 });
 ipcMain.on('update:install', () => {
   if (updateState.stage !== 'ready') return;
+  if (FAKE_UPDATE) {
+    setUpdateState({ stage: 'error', message: 'Fake update (FROST_FAKE_UPDATE) — nothing to install.' });
+    return;
+  }
   flushWindowState();
   quitting = true;
   // isSilent: the installer runs without asking anything, since the user just

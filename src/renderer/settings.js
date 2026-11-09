@@ -414,3 +414,14 @@ api.updateGet().then((st) => {
   updateState = st;
   renderUpdate(st);
 });
+
+// First launch after an update: the install was silent, so this is the only
+// place it gets said. A click opens that release's notes.
+api.updateJustUpdated?.().then((j) => {
+  if (!j) return;
+  toast(`Frost updated to ${j.to} — click for what's new.`, {
+    ms: 12000,
+    onClick: () => api.openExternal(`${RELEASES_URL}/tag/v${j.to}`),
+    clickTitle: 'Open the release notes'
+  });
+});

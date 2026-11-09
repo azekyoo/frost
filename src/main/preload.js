@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld('api', {
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateDownload: () => ipcRenderer.send('update:download'),
   updateInstall: () => ipcRenderer.send('update:install'),
+  updateJustUpdated: () => ipcRenderer.invoke('update:justUpdated'),
   onUpdateState: (cb) => ipcRenderer.on('update:state', (_e, m) => cb(m)),
   agentsClaimTab: () => ipcRenderer.invoke('agents:claimTab'),
   agentsReleaseTab: () => ipcRenderer.send('agents:releaseTab')

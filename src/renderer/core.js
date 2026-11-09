@@ -145,18 +145,27 @@ const TOAST_LIMIT = 3;
 function toast(msg, opts) {
   const text = String(msg ?? '').trim();
   if (!text) return;
-  const { error: isError = false, ms } = typeof opts === 'number' ? { ms: opts } : opts || {};
+  // onClick: what a click does before dismissing, with clickTitle as its hover text
+  const {
+    error: isError = false,
+    ms,
+    onClick = null,
+    clickTitle = ''
+  } = typeof opts === 'number' ? { ms: opts } : opts || {};
   const node = document.createElement('div');
   node.className = 'toast' + (isError ? ' error' : '');
   node.textContent = text;
-  node.title = 'Click to dismiss';
+  node.title = onClick ? clickTitle || 'Click to open' : 'Click to dismiss';
 
   const dismiss = () => {
     if (!node.isConnected) return;
     node.classList.remove('show');
     setTimeout(() => node.remove(), 200);
   };
-  node.addEventListener('click', dismiss);
+  node.addEventListener('click', () => {
+    if (onClick) onClick();
+    dismiss();
+  });
   el.toasts.appendChild(node);
   requestAnimationFrame(() => node.classList.add('show'));
 
