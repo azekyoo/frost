@@ -923,18 +923,14 @@ body[data-design='aurora'] .design-tile.active {
 
 /* ---------- scrollbars ---------- */
 
-body[data-design='aurora'] :is(.settings-body, #palette-list, .agents-rail, .agents-diff, .diff-body, .peek-body, .peek-tree) {
-  scrollbar-color: color-mix(in srgb, var(--aurora-b) 30%, transparent) transparent;
-}
-
 body[data-design='aurora']
-  :is(.settings-body, #palette-list, .agents-rail, .agents-diff, .diff-body, .peek-body, .peek-tree)::-webkit-scrollbar-thumb {
+  :is(.settings-body, #palette-list, .agents-rail, .agents-diff, .diff-body, .peek-body, .peek-tree, .select-menu, .peek-md pre, .diff-note textarea)::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, color-mix(in srgb, var(--aurora-a) 30%, transparent), color-mix(in srgb, var(--aurora-b) 35%, transparent));
   background-clip: padding-box;
 }
 
 body[data-design='aurora']
-  :is(.settings-body, #palette-list, .agents-rail, .agents-diff, .diff-body, .peek-body, .peek-tree)::-webkit-scrollbar-thumb:hover {
+  :is(.settings-body, #palette-list, .agents-rail, .agents-diff, .diff-body, .peek-body, .peek-tree, .select-menu, .peek-md pre, .diff-note textarea)::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, color-mix(in srgb, var(--aurora-a) 55%, transparent), color-mix(in srgb, var(--aurora-b) 60%, transparent));
   background-clip: padding-box;
 }

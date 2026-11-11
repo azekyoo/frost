@@ -3305,25 +3305,11 @@ body.ligatures .xterm-rows span {
 
 /* ---------- scrollbars ---------- */
 /* Every panel that scrolls uses this one, the terminal excepted — its scrollbar
-   carries the command ticks and is styled with them. Firefox takes the two
-   standard properties; Chromium wants the pseudo-elements, and it is Chromium
-   that Frost actually runs on, so the palette looked like a web page from 2010
-   until it was listed here too. The thumb is inset by a transparent border so
-   it floats as a thin pill clear of the panel's edge. */
-.settings-body,
-#palette-list,
-.agents-rail,
-.agents-diff,
-.diff-body,
-.peek-body,
-.peek-tree,
-.select-menu,
-.peek-md pre,
-.diff-note textarea {
-  scrollbar-width: thin;
-  scrollbar-color: var(--surface-3) transparent;
-}
-
+   carries the command ticks and is styled with them. Pseudo-elements only:
+   since Chromium 121, an element with the standard scrollbar-width or
+   scrollbar-color set ignores every ::-webkit-scrollbar rule and draws
+   Chromium's own bar, arrows and all, merely recoloured. The thumb is inset by
+   a transparent border so it floats as a thin pill clear of the panel's edge. */
 .settings-body::-webkit-scrollbar,
 #palette-list::-webkit-scrollbar,
 .agents-rail::-webkit-scrollbar,

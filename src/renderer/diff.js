@@ -232,6 +232,7 @@ function openNoteEditor(tab, file, entry, row) {
   box.dataset.key = tab.diffKey; // an editor left open on another agent holds nothing up
   const input = document.createElement('textarea');
   input.rows = 2;
+  input.spellcheck = false; // underlines with no way to act on them: Frost has no suggestion menu
   input.placeholder = 'What should the agent change here?';
   input.value = notes.get(key)?.body || '';
   const bar = document.createElement('div');

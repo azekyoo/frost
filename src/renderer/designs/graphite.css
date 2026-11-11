@@ -1396,7 +1396,10 @@ body[data-design='graphite'] .agents-rail::-webkit-scrollbar-thumb,
 body[data-design='graphite'] .agents-diff::-webkit-scrollbar-thumb,
 body[data-design='graphite'] .diff-body::-webkit-scrollbar-thumb,
 body[data-design='graphite'] .peek-body::-webkit-scrollbar-thumb,
-body[data-design='graphite'] .peek-tree::-webkit-scrollbar-thumb {
+body[data-design='graphite'] .peek-tree::-webkit-scrollbar-thumb,
+body[data-design='graphite'] .select-menu::-webkit-scrollbar-thumb,
+body[data-design='graphite'] .peek-md pre::-webkit-scrollbar-thumb,
+body[data-design='graphite'] .diff-note textarea::-webkit-scrollbar-thumb {
   background: #3a3a3f;
   background-clip: padding-box;
   border-radius: 4px;
@@ -1408,7 +1411,10 @@ body[data-design='graphite'] .agents-rail::-webkit-scrollbar-thumb:hover,
 body[data-design='graphite'] .agents-diff::-webkit-scrollbar-thumb:hover,
 body[data-design='graphite'] .diff-body::-webkit-scrollbar-thumb:hover,
 body[data-design='graphite'] .peek-body::-webkit-scrollbar-thumb:hover,
-body[data-design='graphite'] .peek-tree::-webkit-scrollbar-thumb:hover {
+body[data-design='graphite'] .peek-tree::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] .select-menu::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] .peek-md pre::-webkit-scrollbar-thumb:hover,
+body[data-design='graphite'] .diff-note textarea::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
   background-clip: padding-box;
 }
