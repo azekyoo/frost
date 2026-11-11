@@ -1,0 +1,1389 @@
+/* ==========================================================================
+   Classic Terminal
+   An engineer's terminal with a little personality: a pure black window, the
+   chrome set in the terminal's own monospace, square corners, one-pixel rules,
+   and colour used the way a shell uses it — green for go, cyan for labels,
+   yellow for numbers, magenta for keys, red for trouble. Buttons are outlined
+   and fill in their colour when pointed at. Everything here is scoped to the
+   body attribute, so with any other design picked none of it applies.
+   ========================================================================== */
+
+body[data-design='terminal'] {
+  --accent: #5fd75f;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-mid: color-mix(in srgb, var(--accent) 45%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 35%, transparent);
+  /* ink on a filled accent button: black, recomputed from a custom accent */
+  --t-on-a: #000;
+  --fg: #d7d7d7;
+
+  /* the ANSI family the chrome speaks in */
+  --t-cyan: #5fd7ff;
+  --t-yellow: #ffd75f;
+  --t-magenta: #d787ff;
+  --t-red: #ff5f5f;
+  --t-blue: #5fafff;
+  --t-green: #5fd75f;
+
+  --t-dim: #767676;
+  --t-mid: #a8a8a8;
+  --t-line: #262626;
+  --t-line-strong: #3a3a3a;
+  --t-raise: #121212;
+  /* soft corners: small for chips, medium for controls, large for panels */
+  --t-r-sm: 4px;
+  --t-r: 6px;
+  --t-r-lg: 10px;
+  --t-mono: var(--font, 'Cascadia Mono'), 'Cascadia Mono', Consolas, monospace;
+
+  --hairline: var(--t-line);
+  --hairline-strong: var(--t-line-strong);
+  --surface-1: #0c0c0c;
+  --surface-2: #161616;
+  --surface-3: #202020;
+
+  /* no glass: menus and panels are solid black with a 1px rule */
+  --ice: #000;
+  --ice-strong: #000;
+  --ice-blur: none;
+  --ice-edge: inset 0 0 0 1px var(--t-line-strong);
+  --ice-lift: 0 16px 40px -12px rgba(0, 0, 0, 0.9);
+  --ice-sheen: linear-gradient(transparent, transparent);
+
+  --raised: var(--t-raise);
+  --raised-edge: inset 0 0 0 1px var(--t-line);
+
+  font-family: var(--t-mono);
+}
+
+/* ---------- window ---------- */
+
+body[data-design='terminal'].glass::after {
+  border-color: var(--t-line);
+}
+
+body[data-design='terminal'].glass.win-focused::after {
+  border-color: var(--t-line-strong);
+}
+
+body[data-design='terminal'].glass::before {
+  display: none;
+}
+
+body[data-design='terminal'] ::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Black, all of it: the wash is opaque, so neither wallpaper nor tint shows */
+body[data-design='terminal'] #design-fx {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: #000;
+}
+
+body[data-design='terminal'] #titlebar,
+body[data-design='terminal'] #content {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- titlebar ---------- */
+
+body[data-design='terminal'] #titlebar::after {
+  background: var(--t-line);
+  opacity: 1;
+}
+
+body[data-design='terminal'] #tabstrip {
+  counter-reset: t-tab;
+  gap: 2px;
+}
+
+/* tmux-style: "1:title", the number in yellow, the lit one underlined in green */
+body[data-design='terminal'] #tabstrip .tab {
+  counter-increment: t-tab;
+  gap: 2px;
+  min-width: 130px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--t-r);
+  color: var(--t-dim);
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-design='terminal'] #tabstrip .tab:hover {
+  color: var(--t-mid);
+  background: var(--surface-1);
+}
+
+body[data-design='terminal'] #tabstrip .tab.active {
+  color: var(--fg);
+  background: var(--t-raise);
+  box-shadow: inset 0 0 0 1px var(--t-line);
+}
+
+body[data-design='terminal'] #tabstrip .tab .title {
+  font-size: 12px;
+}
+
+body[data-design='terminal'] #tabstrip .tab::before {
+  content: counter(t-tab) ':';
+  position: static;
+  flex: none;
+  width: auto;
+  height: auto;
+  transform: none;
+  opacity: 0.55;
+  background: none;
+  font-size: 12px;
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] #tabstrip .tab:hover::before,
+body[data-design='terminal'] #tabstrip .tab.active::before {
+  opacity: 1;
+}
+
+/* an agent tab shows its status dot where the number would be */
+body[data-design='terminal'] #tabstrip .tab:has(.tab-dot)::before {
+  display: none;
+}
+
+/* the lit tab's underline: a short solid green bar with rounded ends */
+body[data-design='terminal'] #tabstrip .tab.active::after {
+  left: 10px;
+  right: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] #tabstrip .tab .close {
+  border-radius: var(--t-r-sm);
+}
+
+body[data-design='terminal'] #tabstrip .tab .close:hover {
+  background: color-mix(in srgb, var(--t-red) 18%, transparent);
+  color: var(--t-red);
+}
+
+body[data-design='terminal'] .tab .tab-zoom {
+  border-radius: var(--t-r-sm);
+  color: var(--t-yellow);
+  background: color-mix(in srgb, var(--t-yellow) 12%, transparent);
+}
+
+body[data-design='terminal'] .tab-rename {
+  border-radius: var(--t-r);
+  border-color: var(--accent);
+  background: #000;
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .tab-dot {
+  margin-right: 2px;
+}
+
+/* ---------- titlebar keys ---------- */
+
+body[data-design='terminal'] .tb-group,
+body[data-design='terminal'] #btn-settings {
+  border-radius: var(--t-r);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong);
+}
+
+body[data-design='terminal'] .tb-group:hover,
+body[data-design='terminal'] #btn-settings:hover {
+  background: color-mix(in srgb, var(--t-cyan) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--t-cyan);
+}
+
+body[data-design='terminal'] #btn-newtab,
+body[data-design='terminal'] #btn-newtab-menu {
+  border-radius: var(--t-r);
+  background: transparent;
+  color: var(--fg);
+}
+
+body[data-design='terminal'] #btn-newtab:hover,
+body[data-design='terminal'] #btn-newtab-menu:hover,
+body[data-design='terminal'] #btn-settings:hover {
+  color: var(--t-cyan);
+}
+
+body[data-design='terminal'] #btn-newtab-menu::before {
+  background: var(--t-line-strong);
+}
+
+body[data-design='terminal'] #btn-settings {
+  color: var(--fg);
+}
+
+/* the agent key is the one green key on the strip, and it says what it is */
+body[data-design='terminal'] #btn-agents {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 0 10px 0 8px;
+  border-radius: var(--t-r);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+body[data-design='terminal'] #btn-agents::after {
+  content: 'agent';
+}
+
+body[data-design='terminal'] #btn-agents svg {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  filter: none;
+}
+
+body[data-design='terminal'] #btn-agents:hover {
+  color: var(--t-on-a);
+  background: var(--accent);
+}
+
+body[data-design='terminal'] #win-controls button {
+  border-radius: var(--t-r);
+  color: var(--t-mid);
+}
+
+body[data-design='terminal'] #win-controls button:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+/* ---------- content and panes ---------- */
+
+body[data-design='terminal'] .pane {
+  border-radius: var(--t-r-lg);
+  background: #000;
+  border-color: var(--t-line);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .split .pane,
+body[data-design='terminal'] .agents-center .pane {
+  background: #000;
+  border-color: var(--t-line);
+}
+
+/* the focused screen in a split gets a green frame, nothing else */
+body[data-design='terminal'] .split .pane.focused,
+body[data-design='terminal'] .agents-center .pane.focused {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .tab-content > .pane.focused {
+  border-color: var(--t-line);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .pane.drop-over {
+  border-color: var(--t-cyan) !important;
+  background: color-mix(in srgb, var(--t-cyan) 6%, #000);
+  box-shadow: none !important;
+}
+
+body[data-design='terminal'] .divider::after {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .divider:hover::after,
+body[data-design='terminal'] .divider.dragging::after {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+/* ---------- find bar ---------- */
+
+body[data-design='terminal'] .pane-search {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .pane-search-input {
+  background-color: #000;
+  border-radius: var(--t-r);
+  border-color: var(--t-line-strong);
+  box-shadow: none;
+  caret-color: var(--accent);
+}
+
+body[data-design='terminal'] .pane-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .pane-search-count {
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .pane-search button {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .pane-search button.pane-search-toggle.on {
+  color: var(--t-on-a);
+  background: var(--accent);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+/* ---------- command blocks ---------- */
+
+body[data-design='terminal'] .cmd-band {
+  border-radius: var(--t-r);
+  box-shadow: inset 2px 0 0 var(--band);
+}
+
+body[data-design='terminal'] .cmd-band:not(.failed) {
+  --band: var(--t-green);
+}
+
+body[data-design='terminal'] .cmd-bar {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .cmd-exit {
+  color: var(--t-green);
+  text-shadow: none;
+}
+
+body[data-design='terminal'] .cmd-exit.failed {
+  color: var(--t-red);
+}
+
+body[data-design='terminal'] .cmd-bar button {
+  border-radius: var(--t-r);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong);
+  color: var(--fg);
+}
+
+body[data-design='terminal'] .cmd-bar button:hover:not(:disabled) {
+  color: var(--t-cyan);
+  background: color-mix(in srgb, var(--t-cyan) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--t-cyan);
+}
+
+/* ---------- menus, tooltips ---------- */
+
+body[data-design='terminal'] .menu {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .menu-item {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .menu-item:hover {
+  color: var(--fg);
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* shortcuts in magenta, the way a man page shows keys */
+body[data-design='terminal'] .menu-item em,
+body[data-design='terminal'] .palette-item em {
+  border-radius: var(--t-r-sm);
+  color: var(--t-magenta);
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .menu-sep {
+  background: var(--t-line);
+}
+
+body[data-design='terminal'] #tooltip {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] #tooltip .tip-sub {
+  color: var(--t-magenta);
+}
+
+body[data-design='terminal'] #image-card,
+body[data-design='terminal'] #image-card .image-card-pic {
+  border-radius: var(--t-r);
+}
+
+/* ---------- agent mode ---------- */
+
+body[data-design='terminal'] .agents-gutter::after,
+body[data-design='terminal'] .agents-dock-gutter::after {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .agents-gutter:hover::after,
+body[data-design='terminal'] .agents-gutter.dragging::after,
+body[data-design='terminal'] .agents-dock-gutter:hover::after,
+body[data-design='terminal'] .agents-dock-gutter.dragging::after {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .agents-rail,
+body[data-design='terminal'] .agents-diff,
+body[data-design='terminal'] .agents-dock {
+  border-radius: var(--t-r-lg);
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--t-line);
+  color: var(--fg);
+}
+
+body[data-design='terminal'] .rail-section + .rail-section {
+  border-top-color: var(--t-line);
+}
+
+/* section labels in cyan, lower case, like a prompt's directory */
+body[data-design='terminal'] .rail-head h4,
+body[data-design='terminal'] .diff-title,
+body[data-design='terminal'] .group h3,
+body[data-design='terminal'] .dock-title {
+  font-family: var(--t-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  color: var(--t-cyan);
+}
+
+body[data-design='terminal'] .rail-count {
+  display: inline;
+  margin-left: 8px;
+  font-weight: 600;
+  color: var(--t-yellow);
+  font-variant-numeric: tabular-nums;
+}
+
+body[data-design='terminal'] .rail-new {
+  border-radius: var(--t-r);
+  font-weight: 600;
+  color: var(--accent);
+  border-color: var(--accent);
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .rail-new::before {
+  content: '+ ';
+}
+
+body[data-design='terminal'] .rail-new:hover {
+  color: var(--t-on-a);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+body[data-design='terminal'] .agents-layout .hint {
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .agent-row {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .agent-row:hover {
+  background: var(--surface-2);
+}
+
+body[data-design='terminal'] .agent-row.selected {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+body[data-design='terminal'] .agent-row.selected::before {
+  display: none;
+}
+
+body[data-design='terminal'] .agent-name {
+  font-weight: 600;
+}
+
+body[data-design='terminal'] .agent-meta {
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .meta-st {
+  display: none;
+}
+
+/* the state as a bracketed tag: [working] */
+body[data-design='terminal'] .agent-state {
+  display: inline-block;
+  font-size: 10.5px;
+  white-space: nowrap;
+  color: var(--t-mid);
+}
+
+body[data-design='terminal'] .agent-state::before {
+  content: '[';
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .agent-state::after {
+  content: ']';
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .agent-row[data-status='working'] .agent-state {
+  color: var(--t-blue);
+}
+
+body[data-design='terminal'] .agent-row[data-status='blocked'] .agent-state {
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .agent-row[data-status='done'] .agent-state {
+  color: var(--t-green);
+}
+
+body[data-design='terminal'] .agent-row[data-status='idle'] .agent-state,
+body[data-design='terminal'] .agent-row[data-status='exited'] .agent-state {
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .agent-row.dormant {
+  opacity: 0.7;
+}
+
+body[data-design='terminal'] .agent-row.dormant:hover {
+  opacity: 1;
+}
+
+body[data-design='terminal'] .agent-row.unseen .agent-name {
+  color: #fff;
+}
+
+body[data-design='terminal'] .rail-refresh {
+  border-radius: var(--t-r);
+  color: var(--t-mid);
+  border-color: var(--t-line-strong);
+  background: transparent;
+}
+
+body[data-design='terminal'] .rail-refresh:hover {
+  color: var(--t-cyan);
+  border-color: var(--t-cyan);
+  background: transparent;
+}
+
+/* ---- status dots: flat, square, in the ANSI colours ---- */
+
+body[data-design='terminal'] .st-working,
+body[data-design='terminal'] .st-blocked,
+body[data-design='terminal'] .st-done,
+body[data-design='terminal'] .st-idle,
+body[data-design='terminal'] .st-exited {
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .st-working {
+  background: var(--t-blue);
+}
+
+body[data-design='terminal'] .st-blocked {
+  background: var(--t-yellow);
+}
+
+body[data-design='terminal'] .st-done {
+  background: var(--t-green);
+}
+
+body[data-design='terminal'] .st-idle {
+  background: #4e4e4e;
+}
+
+body[data-design='terminal'] .st-exited {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px #4e4e4e;
+}
+
+body[data-design='terminal'] .agent-row.unseen .agent-dot {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-green) 35%, transparent);
+}
+
+body[data-design='terminal'] .agent-row.seen .agent-dot {
+  box-shadow: none;
+}
+
+/* ---- empty state ---- */
+
+body[data-design='terminal'] .agents-empty {
+  color: var(--t-mid);
+}
+
+body[data-design='terminal'] .agents-empty::before {
+  content: '>_';
+  border-radius: var(--t-r-lg);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--accent);
+  text-shadow: none;
+}
+
+body[data-design='terminal'] .agents-empty b {
+  border-radius: var(--t-r-sm);
+  color: var(--t-magenta);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong);
+}
+
+/* ---- diff panel: git's own colours ---- */
+
+body[data-design='terminal'] .diff-head,
+body[data-design='terminal'] .diff-sub,
+body[data-design='terminal'] .diff-repos {
+  border-bottom-color: var(--t-line);
+}
+
+body[data-design='terminal'] .diff-toggle,
+body[data-design='terminal'] .peek-modes {
+  border-radius: var(--t-r);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong);
+}
+
+body[data-design='terminal'] .diff-toggle button,
+body[data-design='terminal'] .peek-mode {
+  border-radius: var(--t-r-sm);
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .diff-toggle button:hover,
+body[data-design='terminal'] .peek-mode:hover {
+  color: var(--fg);
+}
+
+body[data-design='terminal'] .diff-toggle button.active,
+body[data-design='terminal'] .peek-mode.active {
+  color: var(--t-on-a);
+  background: var(--t-cyan);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .diff-sub {
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .diff-summary .add,
+body[data-design='terminal'] .df-stat .add {
+  color: var(--t-green);
+}
+
+body[data-design='terminal'] .diff-summary .del,
+body[data-design='terminal'] .df-stat .del {
+  color: var(--t-red);
+}
+
+/* ---- buttons: outlined, filling with cyan when pointed at ---- */
+
+body[data-design='terminal'] .diff-tools button,
+body[data-design='terminal'] .dock-send,
+body[data-design='terminal'] .dn-bar button,
+body[data-design='terminal'] .settings-actions button,
+body[data-design='terminal'] .input-row button,
+body[data-design='terminal'] .modal-actions button,
+body[data-design='terminal'] .peek-btn {
+  border: none;
+  border-radius: var(--t-r);
+  color: var(--fg);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong);
+}
+
+body[data-design='terminal'] .diff-tools button:hover,
+body[data-design='terminal'] .dock-send:hover,
+body[data-design='terminal'] .dn-bar button:hover,
+body[data-design='terminal'] .settings-actions button:hover,
+body[data-design='terminal'] .input-row button:hover,
+body[data-design='terminal'] .modal-actions button:hover,
+body[data-design='terminal'] .peek-btn:hover:not(:disabled) {
+  color: var(--t-cyan);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--t-cyan) 10%, transparent);
+  box-shadow: inset 0 0 0 1px var(--t-cyan);
+  filter: none;
+}
+
+body[data-design='terminal'] .diff-tools button:hover svg,
+body[data-design='terminal'] .peek-btn:hover:not(:disabled) svg {
+  color: var(--t-cyan);
+}
+
+/* ---- green buttons: the one action in a row that wants pressing ---- */
+
+body[data-design='terminal'] .diff-tools .diff-send,
+body[data-design='terminal'] .dock-send.selection,
+body[data-design='terminal'] .dn-bar button.primary,
+body[data-design='terminal'] #btn-update-act,
+body[data-design='terminal'] .modal-actions .modal-confirm,
+body[data-design='terminal'] .peek-home,
+body[data-design='terminal'] .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab,
+body[data-design='terminal'] .diff-tools button.on {
+  color: var(--accent) !important;
+  font-weight: 600 !important;
+  background: color-mix(in srgb, var(--accent) 10%, transparent) !important;
+  box-shadow: inset 0 0 0 1px var(--accent) !important;
+}
+
+body[data-design='terminal'] .diff-tools .diff-send:hover,
+body[data-design='terminal'] .dock-send.selection:hover,
+body[data-design='terminal'] .dn-bar button.primary:hover,
+body[data-design='terminal'] #btn-update-act:hover,
+body[data-design='terminal'] .modal-actions .modal-confirm:hover,
+body[data-design='terminal'] .peek-home:hover:not(:disabled),
+body[data-design='terminal'] .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab:hover {
+  color: var(--t-on-a) !important;
+  background: var(--accent) !important;
+}
+
+body[data-design='terminal'] .diff-tools .diff-send svg,
+body[data-design='terminal'] .peek-home svg,
+body[data-design='terminal'] .agents-layout:has(.agents-dock:not([hidden])) .diff-open-tab svg {
+  color: inherit !important;
+}
+
+body[data-design='terminal'] .dock-send.failed {
+  color: var(--t-red);
+  background: color-mix(in srgb, var(--t-red) 12%, transparent);
+  box-shadow: inset 0 0 0 1px var(--t-red);
+}
+
+/* ---- repo chips ---- */
+
+body[data-design='terminal'] .diff-repo {
+  border-radius: var(--t-r-sm);
+  border-color: var(--t-line-strong);
+  color: var(--t-mid);
+}
+
+body[data-design='terminal'] .diff-repo.active {
+  color: var(--t-magenta);
+  background: color-mix(in srgb, var(--t-magenta) 12%, transparent);
+  border-color: var(--t-magenta);
+}
+
+/* ---- file cards ---- */
+
+body[data-design='terminal'] .diff-file {
+  border-radius: var(--t-r);
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--t-line);
+}
+
+body[data-design='terminal'] .diff-file-head {
+  border-radius: var(--t-r) var(--t-r) 0 0;
+  background: var(--t-raise);
+  box-shadow: inset 0 0 0 1px var(--t-line);
+  backdrop-filter: none;
+}
+
+body[data-design='terminal'] .diff-file.collapsed .diff-file-head {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .diff-file-head:hover {
+  background: var(--surface-3);
+}
+
+body[data-design='terminal'] .diff-file-body {
+  border-radius: 0 0 var(--t-r) var(--t-r);
+}
+
+body[data-design='terminal'] .df-badge {
+  border-radius: var(--t-r-sm);
+  font-weight: 700;
+  color: var(--t-mid);
+  background: transparent;
+}
+
+body[data-design='terminal'] .df-badge.added,
+body[data-design='terminal'] .df-badge.untracked {
+  color: var(--t-green);
+}
+
+body[data-design='terminal'] .df-badge.deleted {
+  color: var(--t-red);
+}
+
+body[data-design='terminal'] .df-badge.renamed,
+body[data-design='terminal'] .df-badge.modified {
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .df-dir {
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .diff-line.add {
+  background: color-mix(in srgb, var(--t-green) 8%, transparent);
+  box-shadow: none;
+  color: var(--t-green);
+}
+
+body[data-design='terminal'] .diff-line.del {
+  background: color-mix(in srgb, var(--t-red) 8%, transparent);
+  box-shadow: none;
+  color: var(--t-red);
+}
+
+body[data-design='terminal'] .diff-line.add .dl-word {
+  background: color-mix(in srgb, var(--t-green) 25%, transparent);
+}
+
+body[data-design='terminal'] .diff-line.del .dl-word {
+  background: color-mix(in srgb, var(--t-red) 25%, transparent);
+}
+
+/* hunk headers in cyan, like `git diff` prints them */
+body[data-design='terminal'] .diff-line.hunk {
+  color: var(--t-cyan);
+  background: transparent;
+}
+
+body[data-design='terminal'] .diff-line.untracked-row:hover {
+  background: color-mix(in srgb, var(--t-green) 16%, transparent);
+}
+
+body[data-design='terminal'] .dl-no {
+  color: #4e4e4e;
+}
+
+body[data-design='terminal'] .dl-no.linkable:hover {
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .dl-comment {
+  border-radius: var(--t-r-sm);
+  color: var(--t-on-a);
+  background: var(--t-yellow);
+  box-shadow: none;
+}
+
+/* ---- review notes ---- */
+
+body[data-design='terminal'] .diff-note {
+  border-radius: var(--t-r);
+  background: color-mix(in srgb, var(--t-yellow) 6%, transparent);
+  box-shadow: inset 2px 0 0 var(--t-yellow);
+}
+
+body[data-design='terminal'] .diff-note textarea {
+  border-radius: var(--t-r);
+  background: #000;
+  border-color: var(--t-line-strong);
+  box-shadow: none;
+  caret-color: var(--accent);
+}
+
+body[data-design='terminal'] .diff-note textarea:focus {
+  border-color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .dn-hint {
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .dn-del:hover {
+  color: var(--t-red);
+}
+
+body[data-design='terminal'] .diff-more {
+  color: var(--t-mid);
+  background: transparent;
+  border-top-color: var(--t-line);
+}
+
+body[data-design='terminal'] .diff-more:hover {
+  color: var(--t-cyan);
+  background: var(--surface-1);
+}
+
+/* ---- docked shell ---- */
+
+body[data-design='terminal'] .agents-dock:focus-within {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+body[data-design='terminal'] .dock-head {
+  background: var(--t-raise);
+  border-bottom-color: var(--t-line);
+}
+
+body[data-design='terminal'] .dock-title svg {
+  stroke: var(--accent);
+  filter: none;
+}
+
+body[data-design='terminal'] .dock-name {
+  text-transform: none;
+  color: var(--fg);
+}
+
+body[data-design='terminal'] .dock-close {
+  border-radius: var(--t-r-sm);
+  color: var(--t-mid);
+}
+
+body[data-design='terminal'] .dock-close:hover {
+  color: var(--t-red);
+  background: color-mix(in srgb, var(--t-red) 14%, transparent);
+}
+
+body[data-design='terminal'] .dock-body .pane {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* ---------- settings ---------- */
+
+body[data-design='terminal'] #settings {
+  border-radius: var(--t-r-lg);
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong), var(--ice-lift);
+}
+
+body[data-design='terminal'] #settings::after {
+  display: none;
+}
+
+body[data-design='terminal'] .settings-header {
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom-color: var(--t-line);
+}
+
+/* a prompt before the title */
+body[data-design='terminal'] .settings-header span::before {
+  content: '$ ';
+  color: var(--accent);
+}
+
+body[data-design='terminal'] .settings-header button {
+  border-radius: var(--t-r-sm);
+  color: var(--t-mid);
+  background: transparent;
+}
+
+body[data-design='terminal'] .settings-header button:hover {
+  color: var(--t-red);
+  background: color-mix(in srgb, var(--t-red) 14%, transparent);
+}
+
+body[data-design='terminal'] .group {
+  border-radius: var(--t-r-lg);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--t-line);
+}
+
+/* the heading's tick becomes a comment marker */
+body[data-design='terminal'] .group h3::before {
+  content: '#';
+  width: auto;
+  height: auto;
+  border-radius: var(--t-r);
+  background: none;
+  box-shadow: none;
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .field span {
+  color: var(--t-mid);
+}
+
+/* slider readouts are numbers, so yellow */
+body[data-design='terminal'] .field em {
+  border-radius: var(--t-r);
+  color: var(--t-yellow);
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .field input[type='text'],
+body[data-design='terminal'] .field select,
+body[data-design='terminal'] .field input[type='color'] {
+  border-radius: var(--t-r);
+  border-color: var(--t-line-strong);
+  background-color: #000;
+  box-shadow: none;
+  font-family: var(--t-mono);
+}
+
+body[data-design='terminal'] .field input[type='text'] {
+  caret-color: var(--accent);
+}
+
+body[data-design='terminal'] .field input[type='text']:hover,
+body[data-design='terminal'] .field select:hover {
+  background-color: var(--surface-1);
+  border-color: #4e4e4e;
+}
+
+body[data-design='terminal'] .field input[type='text']:focus,
+body[data-design='terminal'] .field select:focus {
+  border-color: var(--accent);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .field select option {
+  background: #000;
+  color: var(--fg);
+}
+
+body[data-design='terminal'] .field input[type='color']::-webkit-color-swatch {
+  border-radius: var(--t-r-sm);
+}
+
+/* switches: square, grey when off, green when on */
+body[data-design='terminal'] .field input[type='checkbox'] {
+  border-radius: 999px;
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong);
+}
+
+body[data-design='terminal'] .field input[type='checkbox']::before {
+  border-radius: 50%;
+  background: #4e4e4e;
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .field input[type='checkbox']:checked {
+  background: color-mix(in srgb, var(--accent) 18%, #000);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+body[data-design='terminal'] .field input[type='checkbox']:checked::before {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+/* sliders: a thin rule and a block cursor for a thumb */
+body[data-design='terminal'] .field input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: var(--t-r);
+  background: var(--t-line-strong);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .field input[type='range']::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .field input[type='range']:hover::-webkit-slider-thumb {
+  transform: none;
+  background: var(--t-cyan);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .field.row.sub {
+  border-left-color: var(--t-line-strong);
+}
+
+body[data-design='terminal'] .update-box {
+  border-radius: var(--t-r);
+  border-color: var(--t-line);
+  background-color: #000;
+}
+
+body[data-design='terminal'] .update-line b {
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .hint {
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .hint b {
+  color: var(--t-magenta);
+}
+
+/* the design picker */
+body[data-design='terminal'] .design-tile {
+  border-radius: var(--t-r-lg);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--t-line);
+}
+
+body[data-design='terminal'] .design-tile:hover {
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--t-line-strong);
+}
+
+body[data-design='terminal'] .design-tile.active {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+body[data-design='terminal'] .design-swatch {
+  border-radius: var(--t-r);
+}
+
+/* ---------- scrollbars ---------- */
+
+body[data-design='terminal'] .settings-body::-webkit-scrollbar-thumb,
+body[data-design='terminal'] #palette-list::-webkit-scrollbar-thumb,
+body[data-design='terminal'] .agents-rail::-webkit-scrollbar-thumb,
+body[data-design='terminal'] .agents-diff::-webkit-scrollbar-thumb,
+body[data-design='terminal'] .diff-body::-webkit-scrollbar-thumb,
+body[data-design='terminal'] .peek-body::-webkit-scrollbar-thumb,
+body[data-design='terminal'] .peek-tree::-webkit-scrollbar-thumb,
+body[data-design='terminal'] .select-menu::-webkit-scrollbar-thumb,
+body[data-design='terminal'] .peek-md pre::-webkit-scrollbar-thumb,
+body[data-design='terminal'] .diff-note textarea::-webkit-scrollbar-thumb {
+  background: var(--t-line-strong);
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+body[data-design='terminal'] .settings-body::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] #palette-list::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] .agents-rail::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] .agents-diff::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] .diff-body::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] .peek-body::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] .peek-tree::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] .select-menu::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] .peek-md pre::-webkit-scrollbar-thumb:hover,
+body[data-design='terminal'] .diff-note textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: padding-box;
+}
+
+/* ---------- command palette ---------- */
+
+body[data-design='terminal'] #palette,
+body[data-design='terminal'] #peek,
+body[data-design='terminal'] #modal {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+body[data-design='terminal'] .palette-box,
+body[data-design='terminal'] .peek-box,
+body[data-design='terminal'] .modal-box {
+  border-radius: var(--t-r-lg);
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong), 0 30px 80px -16px rgba(0, 0, 0, 0.9);
+}
+
+body[data-design='terminal'] .palette-box::after,
+body[data-design='terminal'] .modal-box::after {
+  display: none;
+}
+
+body[data-design='terminal'] #palette-input {
+  font-family: var(--t-mono);
+  border-bottom-color: var(--t-line);
+  background-color: transparent;
+  caret-color: var(--accent);
+}
+
+body[data-design='terminal'] .palette-item {
+  border-radius: var(--t-r);
+  color: var(--t-mid);
+}
+
+body[data-design='terminal'] .palette-item.selected {
+  color: var(--fg);
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+body[data-design='terminal'] .palette-item.selected::before {
+  display: none;
+}
+
+body[data-design='terminal'] .palette-detail {
+  color: var(--t-dim);
+  opacity: 1;
+}
+
+/* ---------- peek ---------- */
+
+body[data-design='terminal'] .peek-head {
+  background: var(--t-raise);
+  border-bottom-color: var(--t-line);
+}
+
+body[data-design='terminal'] .peek-root {
+  color: var(--t-cyan);
+}
+
+body[data-design='terminal'] .peek-close:hover:not(:disabled) svg {
+  color: var(--t-red);
+}
+
+body[data-design='terminal'] .peek-side {
+  border-right-color: var(--t-line);
+  background: transparent;
+}
+
+body[data-design='terminal'] .peek-row {
+  border-radius: var(--t-r);
+}
+
+body[data-design='terminal'] .peek-row:hover {
+  background: var(--surface-2);
+}
+
+body[data-design='terminal'] .peek-row.selected,
+body[data-design='terminal'] .peek-row.active {
+  background: var(--surface-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* folders in blue, like `ls --color` */
+body[data-design='terminal'] .peek-row.dir {
+  color: var(--t-blue);
+}
+
+body[data-design='terminal'] .peek-gutter {
+  color: #4e4e4e;
+  background: #000;
+  box-shadow: inset -1px 0 0 var(--t-line);
+}
+
+body[data-design='terminal'] .peek-band {
+  background: color-mix(in srgb, var(--t-yellow) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--t-yellow);
+}
+
+body[data-design='terminal'] .peek-add {
+  background: color-mix(in srgb, var(--t-green) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--t-green);
+}
+
+body[data-design='terminal'] .peek-del {
+  background: color-mix(in srgb, var(--t-red) 50%, transparent);
+}
+
+body[data-design='terminal'] .peek-del::before {
+  border-left-color: var(--t-red);
+}
+
+body[data-design='terminal'] .peek-mini {
+  border-left-color: var(--t-line);
+  background: #000;
+}
+
+body[data-design='terminal'] .peek-mini-view {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  box-shadow: inset 0 0 0 1px var(--t-line-strong);
+}
+
+body[data-design='terminal'] .peek-none,
+body[data-design='terminal'] .peek-empty {
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .peek-md h1,
+body[data-design='terminal'] .peek-md h2 {
+  color: var(--t-cyan);
+  border-bottom-color: var(--t-line);
+}
+
+body[data-design='terminal'] .peek-md h3,
+body[data-design='terminal'] .peek-md h4 {
+  color: var(--t-magenta);
+}
+
+body[data-design='terminal'] .peek-md a {
+  color: var(--t-blue);
+}
+
+body[data-design='terminal'] .peek-md code {
+  border-radius: var(--t-r-sm);
+  background: var(--surface-2);
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .peek-md pre {
+  border-radius: var(--t-r);
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--t-line);
+}
+
+body[data-design='terminal'] .peek-md pre code {
+  color: inherit;
+  background: none;
+}
+
+body[data-design='terminal'] .peek-md blockquote {
+  border-left-color: var(--t-dim);
+}
+
+/* ---------- toasts ---------- */
+
+body[data-design='terminal'] .toast {
+  border-radius: var(--t-r-lg);
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--t-line-strong), var(--ice-lift);
+}
+
+body[data-design='terminal'] .toast::before {
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .toast.error {
+  box-shadow: inset 0 0 0 1px var(--t-red), var(--ice-lift);
+}
+
+body[data-design='terminal'] .toast.error::before {
+  background: var(--t-red);
+}
+
+/* ---------- modal ---------- */
+
+body[data-design='terminal'] .modal-icon {
+  border-radius: var(--t-r);
+  color: var(--t-on-a);
+  background: var(--t-yellow);
+  box-shadow: none;
+}
+
+body[data-design='terminal'] .modal-title {
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .modal-detail {
+  color: var(--t-mid);
+}
+
+body[data-design='terminal'] .modal-note {
+  border-radius: var(--t-r-sm);
+  background: #000;
+  box-shadow: inset 0 0 0 1px var(--t-line);
+  color: var(--t-mid);
+}
+
+/* ---------- a custom accent ----------
+   The ink on a filled accent button flips between black and white on the
+   accent's lightness, so a dark accent stays readable. */
+
+body[data-design='terminal'][data-custom-accent] {
+  --t-on-a: oklch(from var(--accent) clamp(0, (0.62 - l) * 1000, 1) 0 h);
+}

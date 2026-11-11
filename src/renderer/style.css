@@ -3303,6 +3303,24 @@ body.ligatures .xterm-rows span {
   box-shadow: inset 0 0 0 1px rgba(255, 106, 43, 0.35);
 }
 
+.design-tile[data-design='terminal'] .design-swatch {
+  background: #000;
+}
+
+.design-tile[data-design='terminal'] .design-swatch::before {
+  background: #121212;
+  box-shadow: inset 0 -2px 0 #5fd75f;
+}
+
+/* the screen: three lines of coloured output */
+.design-tile[data-design='terminal'] .design-swatch::after {
+  background: linear-gradient(#5fd75f, #5fd75f) 5px 5px / 28% 3px no-repeat,
+    linear-gradient(#5fd7ff, #5fd7ff) 5px 12px / 55% 3px no-repeat,
+    linear-gradient(#ffd75f, #ffd75f) 5px 19px / 18% 3px no-repeat,
+    linear-gradient(#d787ff, #d787ff) calc(5px + 22%) 19px / 22% 3px no-repeat, #000;
+  box-shadow: inset 0 0 0 1px #3a3a3a;
+}
+
 /* ---------- scrollbars ---------- */
 /* Every panel that scrolls uses this one, the terminal excepted — its scrollbar
    carries the command ticks and is styled with them. Pseudo-elements only:
