@@ -283,8 +283,23 @@ function openNoteEditor(tab, file, entry, row) {
       close();
     }
   });
+  // Grows with what is typed, so the whole note stays in view: a two-row box
+  // with a scrollbar shows a sliver of it and a thumb too short to drag. The
+  // cap (in CSS) only matters for a long note, where scrolling is then usable.
+  // No scrollbar below the cap: at fractional display scales the whole-pixel
+  // scrollHeight can sit a hair under the text's real height, and Chromium
+  // then shows a scrollbar for that sliver.
+  const fit = () => {
+    input.style.height = 'auto';
+    const want = input.scrollHeight + input.offsetHeight - input.clientHeight;
+    const cap = parseFloat(getComputedStyle(input).maxHeight) || Infinity;
+    input.style.overflowY = want > cap ? 'auto' : 'hidden';
+    input.style.height = want + 'px';
+  };
+  input.addEventListener('input', fit);
   if (shown) shown.replaceWith(box);
   else row.after(box);
+  fit(); // measurable only once it is in the page; an existing note opens at its full size
   input.focus();
 }
 

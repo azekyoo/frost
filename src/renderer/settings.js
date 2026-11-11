@@ -49,6 +49,7 @@ const s = {
 };
 
 function toggleSettings() {
+  closeSelectMenu();
   el.settings.classList.toggle('open');
   const diag = document.getElementById('diag');
   if (el.settings.classList.contains('open') && diag) {
@@ -71,7 +72,7 @@ window.addEventListener(
   (ev) => {
     if (ev.key !== 'Escape' || ev.ctrlKey || ev.altKey || ev.shiftKey || ev.metaKey) return;
     if (!el.settings.classList.contains('open')) return;
-    if (document.querySelector('#modal.open, #palette.open, #peek.open')) return;
+    if (document.querySelector('#modal.open, #palette.open, #peek.open, .select-menu.open')) return;
     ev.preventDefault();
     ev.stopPropagation();
     toggleSettings();
@@ -334,6 +335,115 @@ for (const input of Object.values(s)) {
     input.addEventListener('change', onSettingChange);
   }
 }
+
+// ---------- dropdowns ----------
+// Chromium on Windows draws a <select>'s list as a native popup that no CSS
+// reaches: a flat black box in a frosted drawer. The <select> stays the value
+// holder (settings code reads and writes it as before); only its list is
+// replaced by a Frost menu, opened by the same clicks and keys.
+
+const selectMenu = document.createElement('div');
+selectMenu.className = 'menu select-menu';
+document.body.appendChild(selectMenu);
+let selectOpenFor = null;
+
+function closeSelectMenu() {
+  if (!selectOpenFor) return;
+  selectOpenFor = null;
+  closeSurface(selectMenu);
+}
+
+function pickSelectOption(sel, value) {
+  closeSelectMenu();
+  sel.focus();
+  if (sel.value === value) return;
+  sel.value = value;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function openSelectMenu(sel) {
+  if (selectOpenFor === sel) return closeSelectMenu();
+  selectOpenFor = sel;
+  selectMenu.replaceChildren(
+    ...[...sel.options].map((opt) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'menu-item' + (opt.selected ? ' current' : '');
+      item.disabled = opt.disabled;
+      item.dataset.value = opt.value;
+      const name = document.createElement('span');
+      name.textContent = opt.textContent;
+      item.appendChild(name);
+      item.addEventListener('click', () => pickSelectOption(sel, opt.value));
+      return item;
+    })
+  );
+  const r = sel.getBoundingClientRect();
+  selectMenu.style.minWidth = Math.round(r.width) + 'px';
+  selectMenu.style.left = Math.round(r.left) + 'px';
+  selectMenu.classList.remove('closing');
+  selectMenu.classList.add('open');
+  // Below the field when it fits, above it otherwise; long lists (fonts) scroll
+  const below = window.innerHeight - r.bottom - 12;
+  const above = r.top - 12;
+  const h = selectMenu.scrollHeight;
+  const down = h <= below || below >= above;
+  selectMenu.style.maxHeight = Math.round(Math.max(down ? below : above, 120)) + 'px';
+  const shown = Math.min(h, parseFloat(selectMenu.style.maxHeight));
+  selectMenu.style.top = Math.round(down ? r.bottom + 4 : r.top - 4 - shown) + 'px';
+  selectMenu.style.left = Math.round(Math.min(r.left, window.innerWidth - selectMenu.offsetWidth - 8)) + 'px';
+  const cur = selectMenu.querySelector('.current') || selectMenu.querySelector('.menu-item:not(:disabled)');
+  cur?.focus({ preventScroll: true });
+  cur?.scrollIntoView({ block: 'nearest' });
+}
+
+for (const sel of document.querySelectorAll('#settings select')) {
+  // mousedown is what opens the native popup: cancelling it keeps that closed
+  sel.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    sel.focus();
+    openSelectMenu(sel);
+  });
+  sel.addEventListener('keydown', (ev) => {
+    const opens =
+      ev.key === 'Enter' || ev.key === ' ' || ev.key === 'F4' || (ev.altKey && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'));
+    if (!opens) return; // plain arrows still step through the values in place
+    ev.preventDefault();
+    openSelectMenu(sel);
+  });
+}
+
+selectMenu.addEventListener('keydown', (ev) => {
+  const items = [...selectMenu.querySelectorAll('.menu-item:not(:disabled)')];
+  const i = items.indexOf(document.activeElement);
+  const move = (j) => {
+    ev.preventDefault();
+    items[Math.max(0, Math.min(items.length - 1, j))]?.focus();
+  };
+  if (ev.key === 'ArrowDown') move(i + 1);
+  else if (ev.key === 'ArrowUp') move(i - 1);
+  else if (ev.key === 'Home') move(0);
+  else if (ev.key === 'End') move(items.length - 1);
+  else if (ev.key === 'Escape' || ev.key === 'Tab') {
+    ev.preventDefault();
+    ev.stopPropagation(); // Escape closes the list, not the whole drawer
+    const sel = selectOpenFor;
+    closeSelectMenu();
+    sel?.focus();
+  }
+});
+
+window.addEventListener('mousedown', (ev) => {
+  if (selectOpenFor && !selectMenu.contains(ev.target) && ev.target !== selectOpenFor) closeSelectMenu();
+});
+// The list is pinned to where the field was: scrolling the drawer or resizing
+// would leave it floating over the wrong row
+window.addEventListener('scroll', (ev) => {
+  if (selectOpenFor && !selectMenu.contains(ev.target)) closeSelectMenu();
+}, true);
+window.addEventListener('resize', closeSelectMenu);
+window.addEventListener('blur', closeSelectMenu);
 
 // ---------- updates ----------
 // Main does the checking; this reads its one state object out loud. The action

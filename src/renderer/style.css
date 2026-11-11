@@ -663,6 +663,37 @@ body.glass #glass-tint::after {
   background: transparent;
 }
 
+/* a settings <select>'s list: Frost's menu in place of the native black popup */
+.select-menu {
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.select-menu .menu-item {
+  white-space: nowrap;
+}
+
+.select-menu .menu-item:focus-visible,
+.select-menu .menu-item:focus {
+  outline: none;
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.select-menu .menu-item.current {
+  color: var(--accent);
+}
+
+.select-menu .menu-item.current::after {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .menu-sep {
   height: 1px;
   margin: 4px 8px;
@@ -2541,8 +2572,9 @@ body.agent-reordering * {
 .diff-note textarea {
   width: 100%;
   box-sizing: border-box;
-  resize: vertical;
+  resize: none; /* it sizes itself to the text */
   min-height: 40px;
+  max-height: 240px;
   padding: 5px 7px;
   border: 1px solid var(--hairline);
   border-radius: 5px;
@@ -3284,7 +3316,10 @@ body.ligatures .xterm-rows span {
 .agents-diff,
 .diff-body,
 .peek-body,
-.peek-tree {
+.peek-tree,
+.select-menu,
+.peek-md pre,
+.diff-note textarea {
   scrollbar-width: thin;
   scrollbar-color: var(--surface-3) transparent;
 }
@@ -3295,7 +3330,10 @@ body.ligatures .xterm-rows span {
 .agents-diff::-webkit-scrollbar,
 .diff-body::-webkit-scrollbar,
 .peek-body::-webkit-scrollbar,
-.peek-tree::-webkit-scrollbar {
+.peek-tree::-webkit-scrollbar,
+.select-menu::-webkit-scrollbar,
+.peek-md pre::-webkit-scrollbar,
+.diff-note textarea::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
@@ -3306,7 +3344,10 @@ body.ligatures .xterm-rows span {
 .agents-diff::-webkit-scrollbar-track,
 .diff-body::-webkit-scrollbar-track,
 .peek-body::-webkit-scrollbar-track,
-.peek-tree::-webkit-scrollbar-track {
+.peek-tree::-webkit-scrollbar-track,
+.select-menu::-webkit-scrollbar-track,
+.peek-md pre::-webkit-scrollbar-track,
+.diff-note textarea::-webkit-scrollbar-track {
   background: transparent;
 }
 
@@ -3316,7 +3357,10 @@ body.ligatures .xterm-rows span {
 .agents-diff::-webkit-scrollbar-thumb,
 .diff-body::-webkit-scrollbar-thumb,
 .peek-body::-webkit-scrollbar-thumb,
-.peek-tree::-webkit-scrollbar-thumb {
+.peek-tree::-webkit-scrollbar-thumb,
+.select-menu::-webkit-scrollbar-thumb,
+.peek-md pre::-webkit-scrollbar-thumb,
+.diff-note textarea::-webkit-scrollbar-thumb {
   background: var(--surface-2);
   background-clip: padding-box;
   border: 3px solid transparent;
@@ -3329,9 +3373,17 @@ body.ligatures .xterm-rows span {
 .agents-diff::-webkit-scrollbar-thumb:hover,
 .diff-body::-webkit-scrollbar-thumb:hover,
 .peek-body::-webkit-scrollbar-thumb:hover,
-.peek-tree::-webkit-scrollbar-thumb:hover {
+.peek-tree::-webkit-scrollbar-thumb:hover,
+.select-menu::-webkit-scrollbar-thumb:hover,
+.peek-md pre::-webkit-scrollbar-thumb:hover,
+.diff-note textarea::-webkit-scrollbar-thumb:hover {
   background: var(--surface-3);
   background-clip: padding-box;
+}
+
+/* where two scrollbars meet: defaults to an opaque grey square */
+.peek-md pre::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* where the two scrollbars meet: Chromium paints it white unless told */
