@@ -345,6 +345,9 @@ function buildAgentLayout(tab) {
           <button class="diff-open-editor" title="Browse this session's repo in Peek (Ctrl+Shift+E)">
             <svg viewBox="0 0 16 16"><path d="m5.5 4.5-3.25 3.5 3.25 3.5M10.5 4.5l3.25 3.5-3.25 3.5" /></svg><span>Files</span>
           </button>
+          <button class="diff-explorer" title="Open this repo in File Explorer">
+            <svg viewBox="0 0 16 16"><path d="M1.75 4.25a1.5 1.5 0 0 1 1.5-1.5h2.6l1.5 1.75h5.4a1.5 1.5 0 0 1 1.5 1.5v5.75a1.5 1.5 0 0 1-1.5 1.5h-9.5a1.5 1.5 0 0 1-1.5-1.5z" /></svg>
+          </button>
           <button class="diff-fold" title="Collapse or expand every file">
             <svg viewBox="0 0 16 16"><path d="m5 3 3 3 3-3M5 13l3-3 3 3" /></svg><span>Fold</span>
           </button>
@@ -433,6 +436,15 @@ function buildAgentLayout(tab) {
     const dir = globalAgents.get(tab.selected)?.cwd || tab.diffCwd;
     if (dir) peekBrowseHome(dir, tab);
     else toast('Select an agent first', { error: true });
+  });
+  layout.querySelector('.diff-explorer').addEventListener('click', () => {
+    // the repo chip picked above the diff when there is one, so Explorer shows
+    // the folder whose changes are on screen
+    const dir = tab.diffRepo || globalAgents.get(tab.selected)?.cwd || tab.diffCwd;
+    if (!dir) return toast('Select an agent first', { error: true });
+    api.revealPath({ target: dir }).then((res) => {
+      if (res?.error && !res.opened) toast(res.error, { error: true });
+    });
   });
   layout.querySelector('.dock-close').addEventListener('click', () => {
     if (tab.dockShown) closeDockLeaf(tab, tab.dockShown, { animate: true });
