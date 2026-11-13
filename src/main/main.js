@@ -3805,6 +3805,52 @@ const OS_APP_EXT = new Set([
   '.pdf', '.docx', '.xlsx', '.pptx', '.zip', '.7z',
 ]);
 
+// Explorer opened on the file's folder with the file selected
+ipcMain.handle('paths:reveal', async (_e, { cwd, target }) => {
+  const abs = resolveTarget(cwd, target);
+  if (abs) {
+    shell.showItemInFolder(abs);
+    return { opened: 'explorer' };
+  }
+  const dir = safeDir(target);
+  if (!dir) return { error: 'not found: ' + target };
+  const err = await shell.openPath(dir);
+  return err ? { error: err } : { opened: 'explorer' };
+});
+
+// an absolute folder path that exists, with nothing in it a command line
+// could misread
+function safeDir(target) {
+  if (typeof target !== 'string' || target.length > 400 || /[\0<>|"*?&^%`$]/.test(target)) return null;
+  if (!path.isAbsolute(target)) return null;
+  try {
+    return fs.statSync(target).isDirectory() ? path.resolve(target) : null;
+  } catch {
+    return null;
+  }
+}
+
+// a whole folder in the editor: just the folder as its one argument, which
+// code, cursor, subl and friends all take as "open this as a workspace"
+ipcMain.handle('paths:openDir', (_e, { target }) => {
+  const dir = safeDir(target);
+  if (!dir) return { error: 'not found: ' + target };
+  const editor = resolveEditor();
+  if (!editor) {
+    shell.openPath(dir);
+    return { opened: 'explorer' };
+  }
+  try {
+    const child = spawn(editor.exe, [dir], { detached: true, stdio: 'ignore', shell: false });
+    child.on('error', () => shell.openPath(dir));
+    child.unref();
+    return { opened: path.basename(editor.exe) };
+  } catch (e) {
+    shell.openPath(dir);
+    return { opened: 'explorer', error: String(e) };
+  }
+});
+
 ipcMain.handle('paths:open', async (_e, { cwd, target, line, column }) => {
   const abs = resolveTarget(cwd, target);
   if (!abs) {
