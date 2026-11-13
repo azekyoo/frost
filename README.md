@@ -69,7 +69,8 @@ Run `claude` in any tab and it becomes an agent with live status — working,
 - **Send it what broke** — a failed command in that shell, its output, or
   whatever you've selected goes to the agent in one click (`Ctrl+Shift+S`)
 - **Resume any past session** in one click, or start a new one in any folder
-- **Files** opens the session's repo in [Peek](#peek)
+- **Files** opens the session's repo in [Peek](#peek), the folder button beside
+  it in File Explorer
 
 ## Peek
 
@@ -85,7 +86,7 @@ path — or press `Ctrl+Shift+E` — and the file opens over your terminal:
 - **Live** — when an agent writes to the file you're looking at, Peek updates
   as it happens
 - Read-only on purpose: `Ctrl+Shift+click` or **Open in editor** when it's time
-  to change something
+  to change something, **Show in Explorer** for the file in its folder
 
 ## Install
 
