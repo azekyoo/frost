@@ -326,7 +326,7 @@ function scrollbackFor(theme) {
 
 // The designs Settings offers, in the order it shows them; 'frost' is the
 // default and the only one without a stylesheet of its own.
-const DESIGNS = ['frost', 'liquid', 'aurora', 'graphite'];
+const DESIGNS = ['frost', 'liquid', 'aurora', 'graphite', 'flow'];
 
 function applyTheme(theme, css) {
   if (!theme) return;

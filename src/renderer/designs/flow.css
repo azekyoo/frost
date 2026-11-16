@@ -1,0 +1,137 @@
+/* ==========================================================================
+   Frost Flow
+   Frost exactly, blocks and all, with one change: the space between the
+   blocks is liquid. A bright, moving pour of colour fills the margin round the
+   window's content and every gap between panes, the agent rail, the session,
+   the diff and the shell dock. Frost's blocks are see-through glass, so the
+   liquid can't simply sit behind them: flow.js cuts their shapes out of it,
+   and this file only draws the liquid itself. Scoped to the body attribute, so
+   with any other design picked none of it applies.
+   ========================================================================== */
+
+body[data-design='flow'] {
+  --fl-pink: #ff4f9a;
+  --fl-orange: #ff9a3c;
+  --fl-yellow: #ffd93d;
+  --fl-mint: #2fe0a0;
+  --fl-sky: #3cc8ff;
+  --fl-violet: #a066ff;
+}
+
+/* The liquid: a wide rainbow band sliding underneath, and blobs of colour
+   swimming over it on loops of different lengths, so the pattern never
+   repeats the same way twice. Transforms only, each on a layer of its own:
+   the flow costs the compositor and never repaints anything. flow.js sets the
+   mask that keeps it to the gaps. */
+body[data-design='flow'] #design-fx {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+}
+
+/* until flow.js has measured the blocks, show nothing rather than a window
+   full of colour behind the glass */
+body[data-design='flow'] #design-fx:not([data-masked]) {
+  visibility: hidden;
+}
+
+body[data-design='flow'] #design-fx::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 300%;
+  background: linear-gradient(100deg,
+      var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint), var(--fl-sky), var(--fl-violet),
+      var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint), var(--fl-sky), var(--fl-violet), var(--fl-pink));
+  will-change: transform;
+  animation: fl-slide 18s linear infinite;
+}
+
+@keyframes fl-slide {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    /* one full cycle of the six colours: the band is two cycles wide */
+    transform: translateX(-50%);
+  }
+}
+
+body[data-design='flow'] .fl-blob {
+  position: absolute;
+  width: 46vmax;
+  height: 46vmax;
+  margin: -23vmax 0 0 -23vmax;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--c) 0%, var(--c) 35%, color-mix(in srgb, var(--c) 0%, transparent) 100%);
+  will-change: transform;
+  animation: var(--path) var(--t) ease-in-out infinite alternate;
+}
+
+body[data-design='flow'] .fl-blob:nth-child(1) { --c: var(--fl-pink);   --path: fl-swim-1; --t: 11s; left: 15%; top: 20%; }
+body[data-design='flow'] .fl-blob:nth-child(2) { --c: var(--fl-yellow); --path: fl-swim-2; --t: 13s; left: 80%; top: 25%; }
+body[data-design='flow'] .fl-blob:nth-child(3) { --c: var(--fl-sky);    --path: fl-swim-3; --t: 9s;  left: 50%; top: 85%; }
+body[data-design='flow'] .fl-blob:nth-child(4) { --c: var(--fl-mint);   --path: fl-swim-1; --t: 15s; left: 90%; top: 90%; animation-direction: alternate-reverse; }
+body[data-design='flow'] .fl-blob:nth-child(5) { --c: var(--fl-violet); --path: fl-swim-2; --t: 12s; left: 10%; top: 85%; animation-direction: alternate-reverse; }
+body[data-design='flow'] .fl-blob:nth-child(6) { --c: var(--fl-orange); --path: fl-swim-3; --t: 14s; left: 45%; top: 10%; }
+
+@keyframes fl-swim-1 {
+  0% { transform: translate(0, 0) scale(1, 1); }
+  33% { transform: translate(28vw, 18vh) scale(1.25, 0.85); }
+  66% { transform: translate(8vw, 42vh) scale(0.85, 1.2); }
+  100% { transform: translate(-12vw, 12vh) scale(1.1, 1); }
+}
+
+@keyframes fl-swim-2 {
+  0% { transform: translate(0, 0) scale(1, 1); }
+  33% { transform: translate(-30vw, 22vh) scale(0.85, 1.25); }
+  66% { transform: translate(-10vw, 50vh) scale(1.2, 0.9); }
+  100% { transform: translate(-40vw, 5vh) scale(1, 1.1); }
+}
+
+@keyframes fl-swim-3 {
+  0% { transform: translate(0, 0) scale(1, 1); }
+  33% { transform: translate(22vw, -35vh) scale(1.2, 0.85); }
+  66% { transform: translate(-25vw, -20vh) scale(0.9, 1.2); }
+  100% { transform: translate(5vw, -55vh) scale(1.15, 1); }
+}
+
+/* still while the window is in the background, and for anyone who asked the
+   system for less motion */
+body[data-design='flow']:not(.win-focused) #design-fx::before,
+body[data-design='flow']:not(.win-focused) .fl-blob {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-design='flow'] #design-fx::before,
+  body[data-design='flow'] .fl-blob {
+    animation: none;
+  }
+}
+
+/* above the liquid; the glass layers stay below it at their negative z */
+body[data-design='flow'] #titlebar,
+body[data-design='flow'] #content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Grips over liquid: white rather than the accent, which the colour round
+   them would swallow. */
+body[data-design='flow'] .divider:hover::after,
+body[data-design='flow'] .divider.dragging::after,
+body[data-design='flow'] .agents-gutter:hover::after,
+body[data-design='flow'] .agents-gutter.dragging::after,
+body[data-design='flow'] .agents-dock-gutter:hover::after,
+body[data-design='flow'] .agents-dock-gutter.dragging::after {
+  background: #fff;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
+}
