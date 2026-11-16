@@ -8,6 +8,12 @@
 // rounded shape cut out of it, leaving only the margin and the gaps between.
 // The mask is an SVG redrawn whenever a block moves or resizes, and only while
 // the Flow design is picked.
+//
+// The liquid itself is drawn by flow-liquid.js in a worker, on a small canvas
+// the compositor scales up; the CSS version in flow.css is the fallback for a
+// window that can't run one. The worker also sends back the liquid's colour,
+// which becomes the accent, so everything Frost lights in its accent flows
+// through the same colours as the liquid.
 
 (() => {
   const BLOCKS = '.pane, .agents-rail, .agents-diff, .agents-dock, .agents-center';
@@ -23,12 +29,90 @@
   const resizes = new ResizeObserver(schedule);
 
   // Tabs switching, panes splitting or closing, zoom, the dock sliding: any of
-  // them changes which blocks are where. The terminals themselves churn their
-  // own DOM constantly and never move a block, so their changes are ignored.
+  // them changes which blocks are where, and all of them happen on the layout
+  // elements themselves. What changes inside a block (terminals printing, the
+  // rail's times ticking, the diff refreshing) never moves one, so it's ignored.
+  const LAYOUT = '#content, .tab-content, .split, .divider, .pane, .agents-layout, .agents-side, ' +
+    '.agents-center, .agents-rail, .agents-diff, .agents-dock, .agents-gutter, .agents-dock-gutter, .dock-inner';
   const mutations = new MutationObserver((records) => {
-    if (records.every((r) => r.target.closest?.('.xterm'))) return;
-    schedule();
+    if (records.some((r) => r.target.matches?.(LAYOUT))) schedule();
   });
+
+  // ---- the liquid's clock and worker ----
+  // The clock runs only while the liquid plays, so a pause picks up where it
+  // stopped, as a paused CSS animation does.
+  let worker = null;
+  let canvas = null;
+  let played = 0;
+  let since = null;
+  const absNow = () => performance.timeOrigin + performance.now();
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+
+  function startLiquid() {
+    if (worker) return true;
+    try {
+      canvas = document.createElement('canvas');
+      canvas.className = 'fl-canvas';
+      const off = canvas.transferControlToOffscreen();
+      worker = new Worker('flow-liquid.js');
+      worker.onmessage = ({ data }) => {
+        if (on && data.accent) document.body.style.setProperty('--fl-live', data.accent);
+      };
+      worker.onerror = () => stopLiquid(true);
+      fx.appendChild(canvas);
+      worker.postMessage({ canvas: off, size: [innerWidth, innerHeight] }, [off]);
+      fx.dataset.canvas = '';
+      played = 0;
+      since = null;
+      syncPlay();
+      return true;
+    } catch {
+      stopLiquid(true);
+      return false;
+    }
+  }
+
+  // failed: fall back to the CSS liquid
+  function stopLiquid(fallback) {
+    worker?.terminate();
+    worker = null;
+    canvas?.remove();
+    canvas = null;
+    delete fx.dataset.canvas;
+    document.body.style.removeProperty('--fl-live');
+    if (fallback && on) addBlobs();
+  }
+
+  function syncPlay() {
+    if (!worker) return;
+    const want = on && document.body.classList.contains('win-focused') && !reduced.matches;
+    if (reduced.matches) {
+      played = 0;
+      since = null;
+      worker.postMessage({ pause: true, at: 0 });
+    } else if (want && since === null) {
+      since = absNow();
+      worker.postMessage({ play: true, at: played, wall: since });
+    } else if (!want && since !== null) {
+      played += absNow() - since;
+      since = null;
+      worker.postMessage({ pause: true, at: played });
+    }
+  }
+
+  function addBlobs() {
+    if (fx.querySelector('.fl-blob')) return;
+    for (let i = 0; i < 6; i++) {
+      const blob = document.createElement('div');
+      blob.className = 'fl-blob';
+      fx.appendChild(blob);
+    }
+  }
+
+  function onResize() {
+    worker?.postMessage({ size: [innerWidth, innerHeight] });
+    schedule();
+  }
 
   function schedule() {
     if (!on || frame) return;
@@ -92,13 +176,7 @@
 
   function start() {
     on = true;
-    if (!fx.querySelector('.fl-blob')) {
-      for (let i = 0; i < 6; i++) {
-        const blob = document.createElement('div');
-        blob.className = 'fl-blob';
-        fx.appendChild(blob);
-      }
-    }
+    if (!startLiquid()) addBlobs();
     resizes.observe(content);
     mutations.observe(content, {
       childList: true,
@@ -106,7 +184,8 @@
       attributes: true,
       attributeFilter: ['class', 'hidden', 'style'],
     });
-    window.addEventListener('resize', schedule);
+    window.addEventListener('resize', onResize);
+    reduced.addEventListener('change', syncPlay);
     schedule();
   }
 
@@ -117,7 +196,9 @@
     mutations.disconnect();
     resizes.disconnect();
     watched.clear();
-    window.removeEventListener('resize', schedule);
+    window.removeEventListener('resize', onResize);
+    reduced.removeEventListener('change', syncPlay);
+    stopLiquid(false);
     for (const blob of fx.querySelectorAll('.fl-blob')) blob.remove();
     fx.style.maskImage = '';
     delete fx.dataset.masked;
@@ -130,6 +211,10 @@
     else if (!want && on) stop();
   }
 
-  new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ['data-design'] });
+  // the design switching, and the window gaining or losing focus
+  new MutationObserver(() => {
+    sync();
+    syncPlay();
+  }).observe(document.body, { attributes: true, attributeFilter: ['data-design', 'class'] });
   sync();
 })();

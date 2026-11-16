@@ -16,6 +16,33 @@ body[data-design='flow'] {
   --fl-mint: #2fe0a0;
   --fl-sky: #3cc8ff;
   --fl-violet: #a066ff;
+
+  /* the liquid poured into a line: what lights the chrome, so the tab, the
+     focused pane and the buttons are visibly made of the same stuff */
+  --fl-rainbow: linear-gradient(90deg, var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint),
+      var(--fl-sky), var(--fl-violet), var(--fl-pink));
+  --fl-rainbow-soft: linear-gradient(100deg, color-mix(in srgb, var(--fl-pink) 30%, transparent),
+      color-mix(in srgb, var(--fl-orange) 22%, transparent), color-mix(in srgb, var(--fl-violet) 30%, transparent));
+
+  /* The accent is the liquid's own colour at the middle of the window, sent
+     by flow.js a few times a second, so everything Frost lights in its accent
+     drifts through the liquid's colours with it. Violet until the first one
+     arrives, and for a window without the worker. A picked accent, set on the
+     body itself, still replaces it. */
+  --accent: var(--fl-live, #b47cff);
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-mid: color-mix(in srgb, var(--accent) 45%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* a lit line of liquid that keeps flowing along itself */
+@keyframes fl-shimmer {
+  from {
+    background-position: 0% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
 }
 
 /* The liquid: a wide rainbow band sliding underneath, and blobs of colour
@@ -62,6 +89,20 @@ body[data-design='flow'] #design-fx::before {
     /* one full cycle of the six colours: the band is two cycles wide */
     transform: translateX(-50%);
   }
+}
+
+/* The canvas version, drawn in a worker by flow-liquid.js: one small layer,
+   scaled up, in place of the band and the blobs. The CSS liquid above is the
+   fallback for when it can't run. */
+body[data-design='flow'] #design-fx[data-canvas]::before {
+  display: none;
+}
+
+body[data-design='flow'] .fl-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 body[data-design='flow'] .fl-blob {
@@ -134,4 +175,134 @@ body[data-design='flow'] .agents-dock-gutter:hover::after,
 body[data-design='flow'] .agents-dock-gutter.dragging::after {
   background: #fff;
   box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
+}
+
+/* ==========================================================================
+   The chrome, lit by the liquid. Frost's glass stays as it is; only the
+   places Frost lights in its accent take the liquid's colours instead.
+   ========================================================================== */
+
+/* The window's edge: the liquid already frames the content, so the edge is a
+   quiet line in both states rather than an accent one when focused. */
+body[data-design='flow'].glass::after,
+body[data-design='flow'].glass.win-focused::after {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* the seam under the strip sits right on the liquid's top edge */
+body[data-design='flow'] #titlebar::after {
+  display: none;
+}
+
+/* ---------- tabs ---------- */
+
+/* the strip of light under the lit tab is a strip of liquid, still flowing */
+body[data-design='flow'] .tab.active::after {
+  left: 16%;
+  right: 16%;
+  background: var(--fl-rainbow) 0 0 / 200% 100%;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--fl-pink) 50%, transparent),
+    0 0 4px color-mix(in srgb, var(--fl-sky) 50%, transparent);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  animation: fl-shimmer 8s linear infinite;
+}
+
+/* ---------- panes ---------- */
+
+/* The focused pane is ringed in the liquid it sits in, at a fixed angle: a
+   ring this size flowing would repaint the whole pane every frame. */
+body[data-design='flow'] .split .pane.focused,
+body[data-design='flow'] .agents-center .pane.focused {
+  border-color: transparent;
+  box-shadow: 0 0 24px -12px color-mix(in srgb, var(--fl-pink) 70%, transparent);
+}
+
+body[data-design='flow'] .split .pane.focused::after,
+body[data-design='flow'] .agents-center .pane.focused::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 1px;
+  border-radius: calc(var(--radius) - 1px);
+  background: linear-gradient(135deg, var(--fl-pink), var(--fl-orange) 25%, var(--fl-yellow) 40%, var(--fl-mint) 60%,
+      var(--fl-sky) 78%, var(--fl-violet));
+  opacity: 0.85;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ---------- agent mode ---------- */
+
+/* the rail's primary action: glass with the liquid showing through it */
+body[data-design='flow'] .rail-new {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: var(--fl-rainbow-soft);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 6px 18px -10px color-mix(in srgb, var(--fl-pink) 70%, transparent);
+}
+
+body[data-design='flow'] .rail-new:hover {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--fl-pink) 42%, transparent),
+      color-mix(in srgb, var(--fl-orange) 32%, transparent), color-mix(in srgb, var(--fl-violet) 42%, transparent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 22px -10px color-mix(in srgb, var(--fl-pink) 80%, transparent);
+}
+
+/* the selected agent's mark runs with liquid, top to bottom */
+body[data-design='flow'] .agent-row.selected::before {
+  background: linear-gradient(180deg, var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint), var(--fl-sky),
+      var(--fl-violet), var(--fl-pink)) 0 0 / 100% 200%;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--fl-pink) 60%, transparent);
+  animation: fl-shimmer-down 6s linear infinite;
+}
+
+@keyframes fl-shimmer-down {
+  from {
+    background-position: 0 0%;
+  }
+  to {
+    background-position: 0 200%;
+  }
+}
+
+body[data-design='flow'] .diff-toggle button.active {
+  background: var(--fl-rainbow-soft), rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* ---------- settings ---------- */
+
+body[data-design='flow'] .field input[type='range']::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint), var(--fl-sky),
+      var(--fl-violet));
+  opacity: 0.85;
+}
+
+body[data-design='flow'] .field input[type='range']::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+body[data-design='flow'] .field input[type='range']:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.4), 0 0 14px color-mix(in srgb, var(--fl-pink) 60%, transparent),
+    0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+/* the chosen design tile is ringed in liquid too */
+body[data-design='flow'] .design-tile.active {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 16px -4px color-mix(in srgb, var(--fl-pink) 70%, transparent);
+}
+
+/* still while the window is in the background, and for less motion */
+body[data-design='flow']:not(.win-focused) :is(.tab.active, .agent-row.selected)::after,
+body[data-design='flow']:not(.win-focused) .agent-row.selected::before {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-design='flow'] .tab.active::after,
+  body[data-design='flow'] .agent-row.selected::before {
+    animation: none;
+  }
 }
