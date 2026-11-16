@@ -1225,17 +1225,47 @@ function startDir() {
 }
 
 // `frost .` and the "Open Frost here" shell entry both arrive as a directory
-// argument. Packaged, argv is [exe, ...args]; from source it's [electron, '.', ...].
-function dirFromArgv(argv) {
-  for (const a of argv.slice(app.isPackaged ? 1 : 2)) {
-    if (!a || a.startsWith('-')) continue;
+// argument. `--run "<cmd>"` types a command into that tab once its shell is up
+// (a session manager reopening `claude --resume <id>`), and `--profile <id>`
+// picks the shell. Command line only: nothing else — no link, no protocol
+// handler — may ever produce a run, or a click could execute commands.
+// Packaged, argv is [exe, ...args]; from source it's [electron, '.', ...].
+function launchFromArgv(argv) {
+  const args = argv.slice(app.isPackaged ? 1 : 2);
+  const launch = { dir: null, run: null, profileId: null };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (!a) continue;
+    const flag = /^--(run|profile)(?:=(.*))?$/s.exec(a);
+    if (flag) {
+      // the value is the next argument unless given as --run=...; either way
+      // it is never mistaken for the directory
+      const v = flag[2] !== undefined ? flag[2] : args[++i];
+      if (typeof v === 'string' && v.trim()) launch[flag[1] === 'run' ? 'run' : 'profileId'] = v;
+      continue;
+    }
+    if (a.startsWith('-') || launch.dir) continue;
     try {
       const p = path.resolve(a);
-      if (fs.statSync(p).isDirectory()) return p;
+      if (fs.statSync(p).isDirectory()) launch.dir = p;
     } catch {}
   }
-  return null;
+  return launch.dir || launch.run ? launch : null;
 }
+
+// What reaches a running Frost from a second launch. That launch parsed its own
+// argv, against its own working directory, and passed the result along; the
+// argv the running instance sees can be reordered or carry Chromium switches.
+function cleanLaunch(data) {
+  if (!data || typeof data !== 'object') return null;
+  const str = (v) => (typeof v === 'string' && v.trim() ? v : null);
+  const launch = { dir: str(data.dir), run: str(data.run), profileId: str(data.profileId) };
+  return launch.dir || launch.run ? launch : null;
+}
+
+// This process's own launch, handed to the first window that asks and to no
+// other: a window opened later must not run the command again.
+let startupLaunch = launchFromArgv(process.argv);
 
 // --- IPC ---
 
@@ -1474,6 +1504,15 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
     (cwd && fs.existsSync(cwd) && cwd) ||
     (profile.cwd && fs.existsSync(profile.cwd) && profile.cwd) ||
     startDir();
+  // Detected WSL profiles start in the Linux home (`--cd ~`), which threw away
+  // the folder a tab was asked for: `frost <dir>`, "Open Frost here", --run.
+  // wsl.exe takes an absolute Windows path for --cd. Only an explicit folder
+  // replaces it, and only the stock `~`: a plain new tab still opens at home,
+  // and a --cd the user wrote into the profile is theirs.
+  if (cwd && startCwd === cwd && /^wsl(\.exe)?$/i.test(path.basename(profile.shell || ''))) {
+    const i = args.indexOf('--cd');
+    if (i !== -1 && args[i + 1] === '~') args[i + 1] = cwd;
+  }
   // A profile written before a Store update points into a package directory
   // that no longer exists. Rather than fail the tab with a file-not-found,
   // look the same executable up again and use wherever it lives now.
@@ -1834,13 +1873,17 @@ ipcMain.handle('tab:pending', (event) => {
   return payload;
 });
 
-ipcMain.handle('theme:get', (event) => ({
-  theme: readTheme() || DEFAULT_THEME,
-  css: readCss(),
-  frameless: Boolean(windowOf(event)?.isFramelessMode),
-  home: app.getPath('home'),
-  openDir: dirFromArgv(process.argv)
-}));
+ipcMain.handle('theme:get', (event) => {
+  const launch = startupLaunch;
+  startupLaunch = null;
+  return {
+    theme: readTheme() || DEFAULT_THEME,
+    css: readCss(),
+    frameless: Boolean(windowOf(event)?.isFramelessMode),
+    home: app.getPath('home'),
+    launch
+  };
+});
 
 // ---------- agent mode ----------
 // An agent is a Claude Code session running in one of Frost's panes. Status
@@ -4401,16 +4444,16 @@ ipcMain.on('update:install', () => {
 
 // A shell context-menu click on a second folder should land in the window
 // already open, not start a rival process that fights over window.json.
-if (!app.requestSingleInstanceLock()) {
+if (!app.requestSingleInstanceLock(startupLaunch || {})) {
   app.quit();
 } else {
-  app.on('second-instance', (_e, argv) => {
+  app.on('second-instance', (_e, _argv, _cwd, additionalData) => {
     const target = focusedWindow();
     if (!target) return;
     if (target.isMinimized()) target.restore();
     target.focus();
-    const dir = dirFromArgv(argv);
-    if (dir) target.webContents.send('session:openDir', dir);
+    const launch = cleanLaunch(additionalData);
+    if (launch) target.webContents.send('session:openDir', launch);
   });
 }
 
@@ -4450,7 +4493,7 @@ app.whenReady().then(() => {
   // A directory given on the command line is the point of that launch, so it
   // gets a single fresh window instead.
   const restoring = (readTheme() || {}).restoreSession !== false;
-  const saved = restoring && !dirFromArgv(process.argv) ? readWindowState() : [];
+  const saved = restoring && !startupLaunch ? readWindowState() : [];
   createWindow({ isPrimary: true, restore: saved[0] || null });
   for (const entry of saved.slice(1, 8)) createWindow({ restore: entry });
 
