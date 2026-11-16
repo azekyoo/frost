@@ -125,8 +125,11 @@ function paintTabs() {
       t.appendChild(dot);
     }
     const pane = tab.activePane;
-    t.title = [pane?.cwd, pane?.profileName].filter(Boolean).join('\n') || tabLabel(tab);
-    if (pane?.cwd) t.dataset.tipMono = ''; // the first line is a path
+    // a tab you aren't in shows its preview instead, which names the folder too
+    if (tab === state.activeTab || !previewsOn()) {
+      t.title = [pane?.cwd, pane?.profileName].filter(Boolean).join('\n') || tabLabel(tab);
+      if (pane?.cwd) t.dataset.tipMono = ''; // the first line is a path
+    }
     const title = document.createElement('span');
     title.className = 'title';
     title.textContent = tabLabel(tab);

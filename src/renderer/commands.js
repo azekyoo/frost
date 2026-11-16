@@ -283,6 +283,21 @@ cmd('view.commandBlocks', 'Toggle command blocks (hover a command: copy, run aga
   api.themeSave(state.theme);
   toast(state.theme.commandBlocks ? 'Command blocks on — hover a command' : 'Command blocks off');
 });
+cmd('view.commandRail', 'Toggle command rail (command ticks in the pane margin)', () => {
+  if (!state.theme) return;
+  state.theme.commandRail = state.theme.commandRail === false;
+  api.themeSave(state.theme);
+  refreshAllRails();
+  toast(state.theme.commandRail ? 'Command rail on' : 'Command rail off');
+});
+cmd('view.tabPreviews', 'Toggle tab previews (rest on a tab to see its panes)', () => {
+  if (!state.theme) return;
+  state.theme.tabPreviews = state.theme.tabPreviews === false;
+  api.themeSave(state.theme);
+  hidePreview();
+  renderTabs();
+  toast(state.theme.tabPreviews ? 'Tab previews on — rest on a tab' : 'Tab previews off');
+});
 // Bound here rather than left to a menu: the application menu is gone, because
 // its accelerators took Ctrl+R, Ctrl+W and Ctrl+Q away from the shell.
 cmd('view.devtools', 'Toggle developer tools', () => api.winDevtools());

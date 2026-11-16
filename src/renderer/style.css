@@ -4387,3 +4387,215 @@ body.ligatures .xterm-rows span {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- command rail ----------
+   Every finished command as a tick in the pane's right margin, with a faint
+   window for what's on screen. In the padding, so it covers no text and none
+   of xterm's own scrollbar. */
+.cmd-rail {
+  position: absolute;
+  z-index: 5;
+  width: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s var(--ease);
+}
+
+.cmd-rail.on {
+  opacity: 0.55;
+  pointer-events: auto;
+}
+
+.cmd-rail.on:hover {
+  opacity: 1;
+}
+
+.cmd-rail.pointing {
+  cursor: pointer;
+}
+
+.rail-view {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--fg) 9%, transparent);
+  transition: top 0.1s var(--ease), height 0.1s var(--ease);
+}
+
+.rail-ticks {
+  position: absolute;
+  inset: 0;
+}
+
+.rail-tick {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 1px;
+  background: #2ea043;
+  transition: left 0.12s var(--ease), right 0.12s var(--ease), height 0.12s var(--ease), margin 0.12s var(--ease);
+}
+
+.rail-tick.failed {
+  background: var(--danger);
+}
+
+.rail-tick.hot {
+  left: -1px;
+  right: -1px;
+  height: 4px;
+  margin-top: -2px;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.rail-card {
+  position: absolute;
+  z-index: 10;
+  max-width: min(420px, 70%);
+  padding: 6px 10px 7px;
+  border-radius: 8px;
+  background: var(--ice-sheen), var(--ice-strong);
+  backdrop-filter: var(--ice-blur);
+  box-shadow: var(--ice-edge), 0 12px 30px -8px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.12s var(--ease), transform 0.16s var(--ease-out), top 0.08s var(--ease);
+}
+
+.rail-card.on {
+  opacity: 1;
+  transform: none;
+}
+
+.rail-cmd {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rail-meta {
+  margin-top: 2px;
+  font-family: var(--ui-font);
+  font-size: 11px;
+  color: color-mix(in srgb, var(--st-done) 80%, var(--fg));
+}
+
+.rail-meta.failed {
+  color: color-mix(in srgb, var(--danger) 85%, var(--fg));
+}
+
+/* ---------- tab previews ----------
+   A live, shrunken copy of a tab's panes under the tab the pointer rests on. */
+#tab-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 290;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--ice-sheen), var(--ice-strong);
+  backdrop-filter: var(--ice-blur);
+  box-shadow: var(--ice-edge), var(--ice-lift);
+  pointer-events: none;
+  opacity: 0;
+  translate: 0 -4px;
+  transition: opacity 0.14s var(--ease), translate 0.18s var(--ease-out);
+}
+
+#tab-preview.show {
+  opacity: 1;
+  translate: none;
+}
+
+#tab-preview .pv-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px 7px;
+  min-width: 0;
+}
+
+#tab-preview .pv-title {
+  flex: none;
+  font-family: var(--ui-font);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+#tab-preview .pv-cwd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* the end of a path is the part that names it */
+  text-align: left;
+  font-family: var(--font);
+  font-size: 11px;
+  color: color-mix(in srgb, var(--fg) 50%, transparent);
+}
+
+#tab-preview .pv-stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 7px;
+  background: var(--tint);
+}
+
+#tab-preview .pv-layout {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+#tab-preview .pv-split {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  gap: 12px;
+}
+
+#tab-preview .pv-split.row {
+  flex-direction: row;
+}
+
+#tab-preview .pv-split.col {
+  flex-direction: column;
+}
+
+#tab-preview .pv-layout.pv-leaf,
+#tab-preview .pv-layout.pv-split {
+  display: flex;
+}
+
+#tab-preview .pv-leaf {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--pad);
+  border-radius: 10px;
+  border: 2px solid transparent;
+}
+
+#tab-preview .pv-split > .pv-leaf {
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+
+#tab-preview .pv-split > .pv-leaf.active {
+  border-color: var(--accent-mid);
+}
+
+#tab-preview .pv-leaf pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre;
+  color: color-mix(in srgb, var(--fg) 82%, transparent);
+}

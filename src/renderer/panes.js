@@ -1752,6 +1752,7 @@ async function createPane(opts = {}) {
   attachCwdTracking(node);
   attachCommandMarks(node);
   attachCommandBlocks(node);
+  attachCommandRail(node);
   attachLinks(node);
   attachDrop(node);
   attachTypingGlow(node);
