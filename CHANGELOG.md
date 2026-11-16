@@ -3,6 +3,17 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.9.1 — 2026-11-16
+
+### Fixed
+
+- **Frost no longer freezes and gets closed by Windows while you hover
+  terminal text.** A word starting with `//` or `\\`, like a code comment or
+  the end of a URL, was looked up as a network share. Windows could spend
+  seconds searching the network for it, long enough to close Frost as not
+  responding. Such words are no longer looked up, and link checks no longer
+  hold up the window while a slow drive answers.
+
 ## 2.9.0 — 2026-11-13
 
 ### Added
