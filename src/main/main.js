@@ -3544,7 +3544,16 @@ function resolveEditor() {
 // Turns a candidate found in terminal output into an absolute path, but only if
 // it actually exists as a file. Existence is the filter that keeps ordinary
 // words from being underlined as links.
-function resolveTarget(cwd, candidate) {
+// A path starting with two slashes is a network share (\\host\share), and a
+// stat on one sends Windows looking for that host over SMB, which can take
+// seconds. Terminal text is full of them that aren't paths at all (// comments,
+// the tail of a URL), and a stat held up like that is what froze the main
+// thread long enough for Windows to kill Frost. So they are never looked up.
+const isUnc = (p) => /^[\\/]{2}/.test(p);
+
+// The absolute path a candidate names, or null if it can't be one. String work
+// only: whether it exists is the caller's question.
+function targetPath(base, candidate) {
   if (!candidate || candidate.length > 400) return null;
   // Legal in a Windows filename but shell metacharacters, so a file could be
   // named to inject if anything downstream ever reaches a command line.
@@ -3556,13 +3565,36 @@ function resolveTarget(cwd, candidate) {
     // msys/Git Bash style: /c/dev/x -> C:\dev\x
     target = target[1] + ':' + target.slice(2);
   }
-  const base = cwd && fs.existsSync(cwd) ? cwd : startDir();
+  if (isUnc(target)) return null;
   const abs = path.resolve(base, target);
+  return isUnc(abs) ? null : abs;
+}
+
+function resolveTarget(cwd, candidate) {
+  const base = cwd && !isUnc(cwd) && fs.existsSync(cwd) ? cwd : startDir();
+  const abs = targetPath(base, candidate);
+  if (!abs) return null;
   try {
     return fs.statSync(abs).isFile() ? abs : null;
   } catch {
     return null;
   }
+}
+
+// Async lookups for paths:resolve, which asks about dozens of words on every
+// hover: a slow disk (network drive, sleeping USB) waits off the main thread
+// instead of freezing the app.
+async function statAsync(abs) {
+  try {
+    return await fs.promises.stat(abs);
+  } catch {
+    return null;
+  }
+}
+
+async function baseDirAsync(cwd) {
+  if (cwd && !isUnc(cwd) && (await statAsync(cwd))?.isDirectory()) return cwd;
+  return startDir();
 }
 
 // ---------- images dropped or pasted into a pane ----------
@@ -3695,7 +3727,7 @@ function buildNameIndex(root) {
 
 async function findInRepo(cwd, name) {
   if (/[\\/]/.test(name) || /[\0<>|"*?&^%`$:]/.test(name)) return null;
-  const base = cwd && fs.existsSync(cwd) ? cwd : null;
+  const base = cwd && !isUnc(cwd) && (await statAsync(cwd))?.isDirectory() ? cwd : null;
   const root = base && (await repoRootCached(base));
   if (!root) return null;
   let entry = nameIndexes.get(root.toLowerCase());
@@ -3707,23 +3739,18 @@ async function findInRepo(cwd, name) {
   }
   if (!hits || hits.length !== 1) return null;
   const abs = path.join(root, hits[0]);
-  try {
-    return fs.statSync(abs).isFile() ? abs : null;
-  } catch {
-    return null; // deleted since the list was taken
-  }
+  // null when deleted since the list was taken
+  return (await statAsync(abs))?.isFile() ? abs : null;
 }
 
 // A name a listing cut short to fit its column ("CHANGEL…"): the one file in
 // the folder whose name starts that way. With several ("packag…") there is no
 // guessing which: { dir } instead, for the folder to be searched for them.
-function resolveCut(cwd, candidate) {
+async function resolveCut(dir, candidate) {
   if (!candidate.endsWith('…') || /[\0<>|"*?&^%`$\\/]/.test(candidate)) return null;
   const start = candidate.slice(0, -1).toLowerCase();
-  const dir = cwd && fs.existsSync(cwd) ? cwd : startDir();
   try {
-    const hits = fs
-      .readdirSync(dir, { withFileTypes: true })
+    const hits = (await fs.promises.readdir(dir, { withFileTypes: true }))
       .filter((d) => d.isFile() && d.name.toLowerCase().startsWith(start));
     if (hits.length === 1) return path.join(dir, hits[0].name);
     return hits.length > 1 ? { dir } : null;
@@ -3732,31 +3759,33 @@ function resolveCut(cwd, candidate) {
   }
 }
 
+async function resolveFile(base, candidate) {
+  const abs = targetPath(base, candidate);
+  return abs && (await statAsync(abs))?.isFile() ? abs : null;
+}
+
 // A folder named in output ("assets", "src/renderer") — only where it stands,
 // never searched for: a word naming some folder deep in the repo is prose.
-function resolveFolder(cwd, candidate) {
-  if (!candidate || candidate.length > 400 || /[\0<>|"*?&^%`$]/.test(candidate)) return null;
-  const base = cwd && fs.existsSync(cwd) ? cwd : startDir();
-  const abs = path.resolve(base, candidate.replace(/^~(?=[\\/])/, app.getPath('home')));
-  try {
-    return fs.statSync(abs).isDirectory() ? abs : null;
-  } catch {
-    return null;
-  }
+async function resolveFolder(base, candidate) {
+  const abs = targetPath(base, candidate);
+  return abs && (await statAsync(abs))?.isDirectory() ? abs : null;
 }
 
 // Files under `paths`, folders under `dirs`, names cut short that several files
 // start with under `cuts` (their folder), each keyed by the text asked about.
+// Every disk lookup here is async: it runs on each hover, and one sync stat
+// that hung is what got Frost killed as not responding.
 ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
   const paths = {};
   const dirs = {};
   const cuts = {};
   const list = Array.isArray(candidates) ? candidates.slice(0, 64) : [];
+  const base = await baseDirAsync(cwd);
   await Promise.all(
     list.map(async (candidate) => {
       if (typeof candidate !== 'string') return;
       if (candidate.endsWith('…')) {
-        const hit = resolveCut(cwd, candidate);
+        const hit = await resolveCut(base, candidate);
         if (typeof hit === 'string') paths[candidate] = hit;
         else if (hit) cuts[candidate] = hit.dir;
         return;
@@ -3764,10 +3793,10 @@ ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
       // the repo is searched by name only for something named like a file:
       // every word of prose would otherwise send git through the repo
       const named = /\.[A-Za-z]\w{0,9}$/.test(candidate);
-      const abs = resolveTarget(cwd, candidate) || (named ? await findInRepo(cwd, candidate) : null);
+      const abs = (await resolveFile(base, candidate)) || (named ? await findInRepo(cwd, candidate) : null);
       if (abs) paths[candidate] = abs;
       else {
-        const dir = resolveFolder(cwd, candidate);
+        const dir = await resolveFolder(base, candidate);
         if (dir) dirs[candidate] = dir;
       }
     })
