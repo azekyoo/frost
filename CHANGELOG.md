@@ -3,6 +3,30 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.9.0 — 2026-11-13
+
+### Added
+
+- **Explorer from Peek.** A new button left of **Open in editor** shows the
+  open file in File Explorer, selected. With no file open, both buttons work on
+  the folder Peek is showing: **Open in Explorer** and **Open folder in
+  editor**, which opens it as a workspace.
+- **Explorer from the diff.** A folder button beside **Files** in agent mode
+  opens the session's repo in File Explorer, or the repo whose tab is picked
+  above the diff.
+
+### Changed
+
+- **Settings dropdowns look like Frost.** They open a Frost menu instead of
+  Windows' black popup, and the comment box, dropdown lists and Markdown code
+  blocks in Peek get Frost's own scrollbars. The diff comment box grows with
+  what you type and no longer underlines words as misspelt.
+
+### Fixed
+
+- **A failed update check says what happened.** When GitHub is down or limits
+  requests, Settings says so in a short sentence instead of a raw error.
+
 ## 2.8.0 — 2026-11-09
 
 ### Added

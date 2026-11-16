@@ -197,6 +197,9 @@ function peekBuild() {
           <button class="peek-mode" type="button" data-mode="preview">Preview</button>
           <button class="peek-mode" type="button" data-mode="source">Source</button>
         </div>
+        <button class="peek-btn peek-reveal" type="button" title="Show in File Explorer">
+          <svg viewBox="0 0 16 16"><path d="M1.75 4.25a1.5 1.5 0 0 1 1.5-1.5h2.6l1.5 1.75h5.4a1.5 1.5 0 0 1 1.5 1.5v5.75a1.5 1.5 0 0 1-1.5 1.5h-9.5a1.5 1.5 0 0 1-1.5-1.5zM8 7.25v3.5M6.25 9 8 10.75 9.75 9" /></svg><span>Show in Explorer</span>
+        </button>
         <button class="peek-btn peek-editor" type="button" title="Open in editor (Ctrl+Shift+click)">
           <svg viewBox="0 0 16 16"><path d="M9.25 2.75h4v4M13.25 2.75 7.5 8.5M11.25 9.5v2.75a1 1 0 0 1-1 1h-6.5a1 1 0 0 1-1-1v-6.5a1 1 0 0 1 1-1H6.5" /></svg><span>Open in editor</span>
         </button>
@@ -233,8 +236,24 @@ function peekBuild() {
     if (ev.target === root) closePeek();
   });
   root.querySelector('.peek-close').addEventListener('click', closePeek);
+  // with no file open, both act on the folder the tree shows
+  root.querySelector('.peek-reveal').addEventListener('click', () => {
+    const target = peek.file || peek.tree?.root;
+    if (!target) return;
+    api.revealPath({ cwd: peekDirname(target), target }).then((res) => {
+      if (res?.error && !res.opened) toast(res.error, { error: true });
+    });
+  });
   root.querySelector('.peek-editor').addEventListener('click', () => {
-    if (!peek.file) return;
+    if (!peek.file) {
+      const dir = peek.tree?.root;
+      if (!dir) return;
+      closePeek();
+      api.openDir({ target: dir }).then((res) => {
+        if (res?.error && !res.opened) toast(res.error, { error: true });
+      });
+      return;
+    }
     const opts = { cwd: peekDirname(peek.file), target: peek.file, line: peek.opts?.line };
     closePeek();
     openOutside(opts);
@@ -1063,7 +1082,15 @@ function peekRenderFile(keepScroll) {
   if (!has || preview) peek.mini = null;
   root.querySelector('.peek-modes').hidden = !isMd;
   root.querySelectorAll('.peek-mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === peek.mode));
-  root.querySelector('.peek-editor').disabled = !has;
+  const canDir = !has && !!peek.tree?.root;
+  const ed = root.querySelector('.peek-editor');
+  ed.disabled = !has && !canDir;
+  ed.querySelector('span').textContent = has ? 'Open in editor' : 'Open folder in editor';
+  ed.title = has ? 'Open in editor (Ctrl+Shift+click)' : 'Open this folder in the editor';
+  const rv = root.querySelector('.peek-reveal');
+  rv.disabled = !has && !canDir;
+  rv.querySelector('span').textContent = has ? 'Show in Explorer' : 'Open in Explorer';
+  rv.title = has ? 'Show in File Explorer' : 'Open this folder in File Explorer';
 
   const name = has ? peek.file.split(/[\\/]/).pop() : '';
   // the tree already shows which file this is; without one, the name is all

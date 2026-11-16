@@ -91,6 +91,9 @@ running and supervising Claude Code agents with live status and diff watching.
     opens as fast as a project. Each tab — each session, in the agent tab —
     remembers the folder it browsed to and the file it had open there, and
     **↩** beside **Folder…** goes back to its own folder
+  - **Show in Explorer** and **Open in editor** sit at the top right. With no
+    file open they act on the folder Peek is showing instead: **Open in
+    Explorer**, and **Open folder in editor**, which opens it as a workspace
   - `Ctrl+P` searches the repo's files and folders by name; `Ctrl+F` finds in
     the file with the same bar and the same **Aa** / **ab** / **.*** options as
     the terminal's, matches ticked on the minimap
@@ -243,7 +246,9 @@ running and supervising Claude Code agents with live status and diff watching.
     comment — without submitting it, so you can read it over and press Enter
     yourself. Notes are kept per agent, and survive the diff redrawing
   - **Files** opens Peek on the session's repo, and a line number in the
-    diff opens that line in it (`Shift+click` for your editor)
+    diff opens that line in it (`Shift+click` for your editor). The folder
+    button beside it opens the repo in File Explorer — the picked repo tab's,
+    when the agent works in more than one
   - **Shell** docks a terminal under the diff, in the session's folder, for
     running the tests while the agent works. Each session keeps its own: switch
     sessions and the dock follows, and the shell you left comes back as it was —

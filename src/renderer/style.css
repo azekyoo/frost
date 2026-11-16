@@ -2189,6 +2189,15 @@ body.agent-reordering * {
     transform 0.12s var(--ease);
 }
 
+/* icon only: as much room right of the icon as left of it */
+.diff-tools button.diff-explorer {
+  padding-right: 7px;
+}
+
+body:is([data-design='graphite'], [data-design='liquid']) .diff-tools button.diff-explorer {
+  padding-right: 9px;
+}
+
 .diff-tools button svg {
   width: 13px;
   height: 13px;
