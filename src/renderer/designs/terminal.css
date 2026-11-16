@@ -1,6 +1,6 @@
 /* ==========================================================================
    Classic Terminal
-   An engineer's terminal with a little personality: a pure black window, the
+   An engineer's terminal with a little personality: a near-black window, the
    chrome set in the terminal's own monospace, square corners, one-pixel rules,
    and colour used the way a shell uses it — green for go, cyan for labels,
    yellow for numbers, magenta for keys, red for trouble. Buttons are outlined
@@ -15,6 +15,8 @@ body[data-design='terminal'] {
   --accent-glow: color-mix(in srgb, var(--accent) 35%, transparent);
   /* ink on a filled accent button: black, recomputed from a custom accent */
   --t-on-a: #000;
+  /* window background: terminal near-black, like Windows Terminal */
+  --t-bg: #0c0c0c;
   --fg: #d7d7d7;
 
   /* the ANSI family the chrome speaks in */
@@ -29,7 +31,7 @@ body[data-design='terminal'] {
   --t-mid: #a8a8a8;
   --t-line: #262626;
   --t-line-strong: #3a3a3a;
-  --t-raise: #121212;
+  --t-raise: #171717;
   /* soft corners: small for chips, medium for controls, large for panels */
   --t-r-sm: 4px;
   --t-r: 6px;
@@ -38,13 +40,13 @@ body[data-design='terminal'] {
 
   --hairline: var(--t-line);
   --hairline-strong: var(--t-line-strong);
-  --surface-1: #0c0c0c;
+  --surface-1: #141414;
   --surface-2: #161616;
   --surface-3: #202020;
 
   /* no glass: menus and panels are solid black with a 1px rule */
-  --ice: #000;
-  --ice-strong: #000;
+  --ice: var(--t-bg);
+  --ice-strong: var(--t-bg);
   --ice-blur: none;
   --ice-edge: inset 0 0 0 1px var(--t-line-strong);
   --ice-lift: 0 16px 40px -12px rgba(0, 0, 0, 0.9);
@@ -81,7 +83,7 @@ body[data-design='terminal'] #design-fx {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: #000;
+  background: var(--t-bg);
 }
 
 body[data-design='terminal'] #titlebar,
@@ -180,7 +182,7 @@ body[data-design='terminal'] .tab .tab-zoom {
 body[data-design='terminal'] .tab-rename {
   border-radius: var(--t-r);
   border-color: var(--accent);
-  background: #000;
+  background: var(--t-bg);
   box-shadow: none;
 }
 
@@ -269,14 +271,14 @@ body[data-design='terminal'] #win-controls button:hover {
 
 body[data-design='terminal'] .pane {
   border-radius: var(--t-r-lg);
-  background: #000;
+  background: var(--t-bg);
   border-color: var(--t-line);
   box-shadow: none;
 }
 
 body[data-design='terminal'] .split .pane,
 body[data-design='terminal'] .agents-center .pane {
-  background: #000;
+  background: var(--t-bg);
   border-color: var(--t-line);
 }
 
@@ -294,7 +296,7 @@ body[data-design='terminal'] .tab-content > .pane.focused {
 
 body[data-design='terminal'] .pane.drop-over {
   border-color: var(--t-cyan) !important;
-  background: color-mix(in srgb, var(--t-cyan) 6%, #000);
+  background: color-mix(in srgb, var(--t-cyan) 6%, var(--t-bg));
   box-shadow: none !important;
 }
 
@@ -315,7 +317,7 @@ body[data-design='terminal'] .pane-search {
 }
 
 body[data-design='terminal'] .pane-search-input {
-  background-color: #000;
+  background-color: var(--t-bg);
   border-radius: var(--t-r);
   border-color: var(--t-line-strong);
   box-shadow: none;
@@ -440,7 +442,7 @@ body[data-design='terminal'] .agents-rail,
 body[data-design='terminal'] .agents-diff,
 body[data-design='terminal'] .agents-dock {
   border-radius: var(--t-r-lg);
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset 0 0 0 1px var(--t-line);
   color: var(--fg);
 }
@@ -479,10 +481,6 @@ body[data-design='terminal'] .rail-new {
   box-shadow: none;
 }
 
-body[data-design='terminal'] .rail-new::before {
-  content: '+ ';
-}
-
 body[data-design='terminal'] .rail-new:hover {
   color: var(--t-on-a);
   border-color: var(--accent);
@@ -494,6 +492,8 @@ body[data-design='terminal'] .agents-layout .hint {
 }
 
 body[data-design='terminal'] .agent-row {
+  /* a third column for the [state] tag, or it falls into the dot's column */
+  grid-template-columns: auto minmax(0, 1fr) auto;
   border-radius: var(--t-r);
 }
 
@@ -515,6 +515,7 @@ body[data-design='terminal'] .agent-name {
 }
 
 body[data-design='terminal'] .agent-meta {
+  grid-column: 2 / -1;
   color: var(--t-dim);
 }
 
@@ -785,7 +786,7 @@ body[data-design='terminal'] .diff-repo.active {
 
 body[data-design='terminal'] .diff-file {
   border-radius: var(--t-r);
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset 0 0 0 1px var(--t-line);
 }
 
@@ -834,23 +835,23 @@ body[data-design='terminal'] .df-dir {
 }
 
 body[data-design='terminal'] .diff-line.add {
-  background: color-mix(in srgb, var(--t-green) 8%, transparent);
+  background: color-mix(in srgb, var(--t-green) 5%, transparent);
   box-shadow: none;
   color: var(--t-green);
 }
 
 body[data-design='terminal'] .diff-line.del {
-  background: color-mix(in srgb, var(--t-red) 8%, transparent);
+  background: color-mix(in srgb, var(--t-red) 5%, transparent);
   box-shadow: none;
   color: var(--t-red);
 }
 
 body[data-design='terminal'] .diff-line.add .dl-word {
-  background: color-mix(in srgb, var(--t-green) 25%, transparent);
+  background: color-mix(in srgb, var(--t-green) 18%, transparent);
 }
 
 body[data-design='terminal'] .diff-line.del .dl-word {
-  background: color-mix(in srgb, var(--t-red) 25%, transparent);
+  background: color-mix(in srgb, var(--t-red) 18%, transparent);
 }
 
 /* hunk headers in cyan, like `git diff` prints them */
@@ -888,7 +889,7 @@ body[data-design='terminal'] .diff-note {
 
 body[data-design='terminal'] .diff-note textarea {
   border-radius: var(--t-r);
-  background: #000;
+  background: var(--t-bg);
   border-color: var(--t-line-strong);
   box-shadow: none;
   caret-color: var(--accent);
@@ -958,7 +959,7 @@ body[data-design='terminal'] .dock-body .pane {
 
 body[data-design='terminal'] #settings {
   border-radius: var(--t-r-lg);
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset 0 0 0 1px var(--t-line-strong), var(--ice-lift);
 }
 
@@ -1023,7 +1024,7 @@ body[data-design='terminal'] .field select,
 body[data-design='terminal'] .field input[type='color'] {
   border-radius: var(--t-r);
   border-color: var(--t-line-strong);
-  background-color: #000;
+  background-color: var(--t-bg);
   box-shadow: none;
   font-family: var(--t-mono);
 }
@@ -1045,7 +1046,7 @@ body[data-design='terminal'] .field select:focus {
 }
 
 body[data-design='terminal'] .field select option {
-  background: #000;
+  background: var(--t-bg);
   color: var(--fg);
 }
 
@@ -1056,7 +1057,7 @@ body[data-design='terminal'] .field input[type='color']::-webkit-color-swatch {
 /* switches: square, grey when off, green when on */
 body[data-design='terminal'] .field input[type='checkbox'] {
   border-radius: 999px;
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset 0 0 0 1px var(--t-line-strong);
 }
 
@@ -1067,7 +1068,7 @@ body[data-design='terminal'] .field input[type='checkbox']::before {
 }
 
 body[data-design='terminal'] .field input[type='checkbox']:checked {
-  background: color-mix(in srgb, var(--accent) 18%, #000);
+  background: color-mix(in srgb, var(--accent) 18%, var(--t-bg));
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
@@ -1106,7 +1107,7 @@ body[data-design='terminal'] .field.row.sub {
 body[data-design='terminal'] .update-box {
   border-radius: var(--t-r);
   border-color: var(--t-line);
-  background-color: #000;
+  background-color: var(--t-bg);
 }
 
 body[data-design='terminal'] .update-line b {
@@ -1185,7 +1186,7 @@ body[data-design='terminal'] .palette-box,
 body[data-design='terminal'] .peek-box,
 body[data-design='terminal'] .modal-box {
   border-radius: var(--t-r-lg);
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset 0 0 0 1px var(--t-line-strong), 0 30px 80px -16px rgba(0, 0, 0, 0.9);
 }
 
@@ -1262,7 +1263,7 @@ body[data-design='terminal'] .peek-row.dir {
 
 body[data-design='terminal'] .peek-gutter {
   color: #4e4e4e;
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset -1px 0 0 var(--t-line);
 }
 
@@ -1286,7 +1287,7 @@ body[data-design='terminal'] .peek-del::before {
 
 body[data-design='terminal'] .peek-mini {
   border-left-color: var(--t-line);
-  background: #000;
+  background: var(--t-bg);
 }
 
 body[data-design='terminal'] .peek-mini-view {
@@ -1322,7 +1323,7 @@ body[data-design='terminal'] .peek-md code {
 
 body[data-design='terminal'] .peek-md pre {
   border-radius: var(--t-r);
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset 0 0 0 1px var(--t-line);
 }
 
@@ -1339,7 +1340,7 @@ body[data-design='terminal'] .peek-md blockquote {
 
 body[data-design='terminal'] .toast {
   border-radius: var(--t-r-lg);
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset 0 0 0 1px var(--t-line-strong), var(--ice-lift);
 }
 
@@ -1375,7 +1376,7 @@ body[data-design='terminal'] .modal-detail {
 
 body[data-design='terminal'] .modal-note {
   border-radius: var(--t-r-sm);
-  background: #000;
+  background: var(--t-bg);
   box-shadow: inset 0 0 0 1px var(--t-line);
   color: var(--t-mid);
 }
