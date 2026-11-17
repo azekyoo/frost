@@ -1,7 +1,7 @@
 {
   "name": "frost",
   "productName": "Frost",
-  "version": "2.9.1",
+  "version": "2.10.0",
   "description": "Fully customizable acrylic terminal for Windows with agent mode",
   "main": "src/main/main.js",
   "scripts": {
@@ -25,7 +25,8 @@
     "test:links": "electron tools/linktest.js",
     "test:hover": "electron tools/hovertest.js",
     "test:clear": "electron tools/cleartest.js",
-    "test:loading": "electron tools/loadtest.js"
+    "test:loading": "electron tools/loadtest.js",
+    "test:spare": "electron tools/sparetest.js"
   },
   "license": "MIT",
   "author": "azekyoo",

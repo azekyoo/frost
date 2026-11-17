@@ -499,6 +499,14 @@ for an installed build, in the repo's `config/` when running from source:
   is not kept is gone rather than hidden: not scrollable, not findable. It
   applies to the panes already open the moment it is saved.
 
+  `spareShells` is how many shells of the default profile Frost keeps started
+  in the background, `2` by default, `0` to `3` (**Preloaded shells** in
+  settings). A new tab, split or agent session takes one and opens at its
+  prompt at once instead of waiting for the profile to load. Each costs about
+  70 MB, and only PowerShell profiles are preloaded. A spare is replaced when
+  the profile, start folder or agent detection changes, and after ten idle
+  minutes, so a tool installed since is found on PATH.
+
   `notify` controls background alerts:
   `{ "agentBlocked": true, "agentDone": true, "commandSeconds": 20 }`.
   `commandSeconds` is the threshold for the long-command notification, and `0`

@@ -3,6 +3,24 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.10.0 — 2026-11-17
+
+### Added
+
+- **New panes open at their prompt.** Frost keeps two shells of your default
+  profile started in the background, so a new tab, split or agent session no
+  longer waits seconds for a heavy PowerShell profile to load. **Preloaded
+  shells** in settings sets how many (Off, 1, 2 or 3, about 70 MB each).
+- **A light runs around a pane's border while it starts.** A pane still
+  waiting on its shell, or on claude in an agent session, no longer looks
+  like Frost hanging. Starts under 150 ms show nothing.
+
+### Fixed
+
+- **Freezes are easier to track down.** When Frost's window stops
+  responding, `stalls.log` now names the exact step that held it up, such as
+  `status tick > titles > scan transcripts`, instead of only the outer task.
+
 ## 2.9.1 — 2026-11-16
 
 ### Fixed
