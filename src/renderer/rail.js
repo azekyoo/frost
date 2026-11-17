@@ -6,7 +6,8 @@
 // neither the text nor xterm's own scrollbar.
 
 const RAIL_REFRESH_MS = 120;
-const RAIL_HIT = 6; // px from a tick that still counts as on it
+const RAIL_HIT = 8; // px from a tick that still counts as on it
+const RAIL_W = 10;
 
 const railOn = () => state.theme?.commandRail !== false;
 
@@ -70,16 +71,27 @@ function railPaint(r) {
     return;
   }
 
-  // sits centred in the gap between the terminal's text and the pane's edge
+  // Beside xterm's scrollbar, never under it: the scrollbar runs down the
+  // terminal's right edge and takes the pointer while it shows. The rail sits
+  // in the gap between that edge and the pane's; a pane with too little
+  // padding for it gets it just inside, left of the scrollbar.
   const pane = node.el.getBoundingClientRect();
   const box = screen.getBoundingClientRect();
-  const gap = Math.max(pane.right - box.right, 8);
+  const xr = term.element.getBoundingClientRect().right;
+  const border = node.el.clientLeft || 0;
+  const gap = pane.right - border - xr;
+  const width = Math.min(RAIL_W, Math.max(6, gap - 4));
+  const sb = term.element.querySelector('.xterm-scrollable-element > .scrollbar.vertical');
+  const sbW = sb?.offsetWidth || 14;
+  const left = gap >= width + 2 ? xr + (gap - width) / 2 : xr - sbW - width - 2;
   const top = box.top - pane.top;
   const height = box.height;
   Object.assign(rail.style, {
     top: top + 'px',
     height: height + 'px',
-    right: Math.max(1, Math.round((gap - 8) / 2) - 1) + 'px'
+    width: width + 'px',
+    right: '',
+    left: Math.round(left - pane.left - border) + 'px'
   });
 
   const len = Math.max(buf.length, 1);

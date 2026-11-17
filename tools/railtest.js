@@ -174,6 +174,33 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     const after = await w.eval('activePane().term.buffer.active.viewportY');
     check('clicking a tick scrolls to that command', after === Math.min(jump.line, after) && Math.abs(after - jump.line) <= 1, JSON.stringify({ ...jump, after }));
 
+    // --- beside the scrollbar, and every tick takes a real click ----------------
+    const geo = await w.eval(`(() => {
+      const n = activePane();
+      const rail = n.rail.rail.getBoundingClientRect();
+      const sb = n.term.element.querySelector('.xterm-scrollable-element > .scrollbar.vertical').getBoundingClientRect();
+      const pane = n.el.getBoundingClientRect();
+      return { railL: rail.left, railR: rail.right, sbL: sb.left, sbR: sb.right, paneR: pane.right, w: rail.width,
+        ticks: n.rail.items.map((i) => ({ x: rail.left + rail.width / 2, y: rail.top + i.y, line: i.mark.marker.line, failed: i.mark.exit !== 0 })) };
+    })()`);
+    check('the rail is beside the scrollbar, not under it', geo.railL >= geo.sbR || geo.railR <= geo.sbL, JSON.stringify(geo));
+    check('and inside the pane', geo.railR <= geo.paneR, JSON.stringify(geo));
+    for (const t of geo.ticks) {
+      await w.eval('(() => { activePane().term.scrollToBottom(); return true })()');
+      await sleep(250);
+      // a real pointer: whatever is on top at that spot is what gets the click
+      await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: t.x, y: t.y });
+      await sleep(150);
+      await w.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: t.x, y: t.y, button: 'left', clickCount: 1 });
+      await w.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: t.x, y: t.y, button: 'left', clickCount: 1 });
+      await sleep(400);
+      const top = await w.eval('activePane().term.buffer.active.viewportY');
+      const max = await w.eval('activePane().term.buffer.active.baseY');
+      check(`a real click on the ${t.failed ? 'red' : 'green'} tick at line ${t.line} jumps there`, top === Math.min(t.line, max), JSON.stringify({ top, line: t.line, max }));
+    }
+    await w.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 200, y: 300 });
+    await w.eval('(() => { activePane().term.scrollToBottom(); return true })()');
+
     // --- tab previews -------------------------------------------------------
     await w.eval('(() => { activePane().term.scrollToBottom(); return true })()');
     await w.eval('(async () => { await newTab(); return true })()');

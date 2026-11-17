@@ -4394,8 +4394,8 @@ body.ligatures .xterm-rows span {
    of xterm's own scrollbar. */
 .cmd-rail {
   position: absolute;
-  z-index: 5;
-  width: 8px;
+  z-index: 12;
+  width: 10px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s var(--ease);
@@ -4416,8 +4416,8 @@ body.ligatures .xterm-rows span {
 
 .rail-view {
   position: absolute;
-  left: 1px;
-  right: 1px;
+  left: 0;
+  right: 0;
   border-radius: 3px;
   background: color-mix(in srgb, var(--fg) 9%, transparent);
   transition: top 0.1s var(--ease), height 0.1s var(--ease);
@@ -4430,11 +4430,11 @@ body.ligatures .xterm-rows span {
 
 .rail-tick {
   position: absolute;
-  left: 1px;
-  right: 1px;
-  height: 2px;
-  margin-top: -1px;
-  border-radius: 1px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
   background: #2ea043;
   transition: left 0.12s var(--ease), right 0.12s var(--ease), height 0.12s var(--ease), margin 0.12s var(--ease);
 }
@@ -4444,10 +4444,10 @@ body.ligatures .xterm-rows span {
 }
 
 .rail-tick.hot {
-  left: -1px;
-  right: -1px;
-  height: 4px;
-  margin-top: -2px;
+  left: -2px;
+  right: -2px;
+  height: 6px;
+  margin-top: -3px;
   box-shadow: 0 0 6px currentColor;
 }
 
