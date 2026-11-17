@@ -1844,6 +1844,12 @@ async function createPane(opts = {}) {
   node.ptyId = ptyId;
   node.profileId = profileId;
   node.profileName = profileName;
+  // a shell moved here from another window is already up; anything new waits.
+  // Attached before the pane is reachable by output, so none is missed.
+  if (!claimed) {
+    const dialect = profiles.find((p) => p.id === profileId)?.agentWrapper || 'none';
+    attachLoading(node, { run: opts.run, marked: dialect !== 'none' });
+  }
   panesByPty.set(ptyId, node);
   // Now that this pane is the one output for that shell reaches, anything it
   // said earlier can be let through: a shell started before the window asked for
