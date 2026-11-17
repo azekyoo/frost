@@ -47,9 +47,22 @@ function attachLoading(node, { run, marked }) {
   node.term.onWriteParsed(() => !ld.done && bar.isConnected && placeLoadDots(node, bar));
 
   if (run) {
-    // claude switches on focus reporting once its prompt is up; no shell does
+    // claude switches on focus reporting once its prompt is up. ConPTY does
+    // too, as the shell starts — so only one after the shell's first prompt,
+    // when the command has been typed, is claude's (the order main's type-ahead
+    // goes by). A shell without the hook never says when that is: the same
+    // guess main makes for it.
+    const started = Date.now();
+    let prompted = false;
+    if (marked) {
+      node.term.parser.registerOscHandler(133, (data) => {
+        if (String(data).startsWith('A')) prompted = true;
+        return false;
+      });
+    }
     node.term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
-      if (params.includes(1004)) finish();
+      const typed = marked ? prompted : Date.now() - started > 1500;
+      if (typed && params.includes(1004)) finish();
       return false;
     });
   } else if (marked) {
