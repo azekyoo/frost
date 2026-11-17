@@ -2032,7 +2032,7 @@ function canonPath(p) {
   return path.resolve(String(p).trim()).replace(/[\\/]+$/, '');
 }
 
-function gitInfo(cwd) {
+function gitInfoRaw(cwd) {
   const b = spawnSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' });
   if (b.status !== 0) return { git: false, branch: null, baseCommit: null };
   const h = spawnSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
@@ -2042,6 +2042,7 @@ function gitInfo(cwd) {
     baseCommit: (h.stdout || '').trim() || 'HEAD'
   };
 }
+const gitInfo = stalls.timed('git info', gitInfoRaw);
 
 // What the tracked files looked like when the session started, uncommitted
 // edits included, as a tree object. Diffing against HEAD instead would count
@@ -2372,12 +2373,13 @@ function nearestDir(p) {
 }
 
 // The repo a path lives in, file or folder.
-function repoRootOf(p) {
+function repoRootOfRaw(p) {
   const dir = nearestDir(p);
   if (!dir) return null;
   const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', windowsHide: true });
   return r.status === 0 && r.stdout.trim() ? canonPath(r.stdout.trim()) : null;
 }
+const repoRootOf = stalls.timed('git root', repoRootOfRaw);
 
 const within = (dir, p) => {
   const rel = path.relative(dir, p);
@@ -2770,10 +2772,14 @@ function initAgentInfra() {
         }
       }
     }));
+  // each step labelled, so a freeze in the tick names the one that held it
+  const statuses = stalls.timed('statuses', broadcastStatuses);
+  const titles = stalls.timed('titles', refreshAgentTitles);
+  const edits = stalls.timed('transcript edits', scanTranscriptEdits);
   setInterval(stalls.timed('status tick', () => {
-    broadcastStatuses();
-    refreshAgentTitles();
-    if (diffSel) scanTranscriptEdits(diffSel.agentId);
+    statuses();
+    titles();
+    if (diffSel) edits(diffSel.agentId);
   }), 1500);
 }
 
@@ -2917,7 +2923,7 @@ function readClaudeSession(file, size) {
 // to costs one stat. `maxAge` lets a caller take a parse that recent even if
 // the file has moved on since: a working session's transcript changes on every
 // line claude writes, and re-reading it on each status tick buys nothing.
-function sessionInfo(file, st, maxAge = 0) {
+function sessionInfoRaw(file, st, maxAge = 0) {
   let cached = sessionCache.get(file);
   const fresh = cached && (cached.mtimeMs === st.mtimeMs || Date.now() - cached.readAt < maxAge);
   if (!fresh) {
@@ -2930,8 +2936,9 @@ function sessionInfo(file, st, maxAge = 0) {
   }
   return cached.info;
 }
+const sessionInfo = stalls.timed('read transcript', sessionInfoRaw);
 
-function scanTranscripts() {
+function scanTranscriptsRaw() {
   const files = [];
   let dirs = [];
   try {
@@ -2961,12 +2968,13 @@ function scanTranscripts() {
   }
   return files;
 }
+const scanTranscripts = stalls.timed('scan transcripts', scanTranscriptsRaw);
 
 // Claude Code registers every running process in ~/.claude/sessions/<pid>.json
 // — session id, cwd, and the name /rename gave it. It is not a documented
 // format, so anything unexpected just means "nothing known to be running".
 // A file whose process is gone is left over from a crash, and doesn't count.
-function runningClaudeSessions() {
+function runningClaudeSessionsRaw() {
   const running = new Map(); // session id -> { pid, name, custom }
   const dir = path.join(CLAUDE_DIR, 'sessions');
   let names = [];
@@ -2990,6 +2998,7 @@ function runningClaudeSessions() {
   }
   return running;
 }
+const runningClaudeSessions = stalls.timed('running sessions', runningClaudeSessionsRaw);
 
 // `exclude` is what already shows as a live agent, left out before counting so
 // the list still holds SESSION_LIMIT rows however many are running.
@@ -3589,7 +3598,7 @@ function notifySettings() {
   return { ...DEFAULT_THEME.notify, ...(configured || {}) };
 }
 
-function notify({ title, body, agentId }) {
+function notifyRaw({ title, body, agentId }) {
   if (!liveWindows().length || anyWindowFocused() || !Notification.isSupported()) return;
   const toast = new Notification({
     title,
@@ -3612,6 +3621,7 @@ function notify({ title, body, agentId }) {
     } catch {}
   }
 }
+const notify = stalls.timed('notify', notifyRaw);
 
 ipcMain.on('notify:command', (_e, { seconds, cwd, exit }) => {
   const settings = notifySettings();
