@@ -283,14 +283,6 @@ cmd('view.commandBlocks', 'Toggle command blocks (hover a command: copy, run aga
   api.themeSave(state.theme);
   toast(state.theme.commandBlocks ? 'Command blocks on — hover a command' : 'Command blocks off');
 });
-cmd('view.loadingStyle', 'Cycle the new-pane loading style (border, dots, both)', () => {
-  if (!state.theme) return;
-  const order = ['both', 'border', 'dots'];
-  const next = order[(order.indexOf(state.theme.loadingStyle || 'both') + 1) % order.length];
-  state.theme.loadingStyle = next;
-  api.themeSave(state.theme);
-  toast(`Loading style: ${next} — open a new tab to see it`);
-});
 // Bound here rather than left to a menu: the application menu is gone, because
 // its accelerators took Ctrl+R, Ctrl+W and Ctrl+Q away from the shell.
 cmd('view.devtools', 'Toggle developer tools', () => api.winDevtools());

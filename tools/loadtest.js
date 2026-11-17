@@ -147,9 +147,7 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
         if (on) {
           window.__load.seen = true;
           window.__load.trace = !!on.querySelector('.load-trace');
-          const d = on.querySelector('.load-dots');
-          const r = d && d.getBoundingClientRect();
-          window.__load.dots = !!d && r.width > 4 && r.height > 4;
+          window.__load.dots = !!on.querySelector('.load-dots');
         }
         if (window.__load.seen && n && !n.el.querySelector('.pane-loading') && window.__load.gone === null) {
           window.__load.gone = Date.now() - start;
@@ -168,7 +166,7 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
       await sleep(200);
     }
     check('a new tab shows it loading while its shell starts', res.seen, JSON.stringify(res));
-    check('with the border light and the dots', res.trace && res.dots, JSON.stringify(res));
+    check('as the border light alone', res.trace && !res.dots, JSON.stringify(res));
     check('and it goes once the shell is up', res.gone !== null, JSON.stringify(res));
     check('which is when the first prompt has been drawn', res.prompt === true, JSON.stringify(res));
     check('well before the 20s cap', res.gone !== null && res.gone < 15000, JSON.stringify(res));
