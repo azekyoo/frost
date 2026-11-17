@@ -172,6 +172,16 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     await sleep(500);
     const count = await w.eval(`(() => { const o = commandOutput(activePane()); return o && o.output.join('|'); })()`);
     check('the move is kept out of the history', String(count).trim() === '0', JSON.stringify(count));
+
+    // --- the setting ---------------------------------------------------------
+    const shown = await w.eval(`document.getElementById('s-spares').value`);
+    check('settings shows two preloaded shells by default', shown === '2', shown);
+    await w.eval(`(() => { const el = document.getElementById('s-spares'); el.value = '0'; el.dispatchEvent(new Event('change')); return true })()`);
+    await sleep(12000); // long enough for any spare to have been started again
+    const saved = await w.eval('state.theme.spareShells');
+    check('picking Off saves it', saved === 0, String(saved));
+    const off = await open('(async () => { await newTab(); return activePane(); })()');
+    check('and with it off, a new tab starts its own shell', off.prompt && off.ms > 1200, JSON.stringify({ ms: off.ms }));
   } catch (e) {
     console.error('ERROR:', e.message);
     fail++;
