@@ -4423,3 +4423,59 @@ body.ligatures .xterm-rows span {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- loading ----------
+   While a pane's shell is starting: a light running around its border. */
+@property --load-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.pane-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s var(--ease);
+}
+
+.pane-loading.on {
+  opacity: 1;
+}
+
+/* the border only: a conic light masked down to a 2px ring */
+.load-trace {
+  position: absolute;
+  inset: -1px;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--load-angle),
+    transparent 0deg,
+    transparent 200deg,
+    var(--accent-mid) 270deg,
+    var(--accent) 330deg,
+    #fff 352deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+  animation: load-spin 1.4s linear infinite;
+}
+
+@keyframes load-spin {
+  to {
+    --load-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .load-trace {
+    animation: none;
+  }
+}

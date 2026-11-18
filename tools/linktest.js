@@ -192,6 +192,17 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     check('a cut name one file starts with is that file', /CHANGELOG\.md$/.test(found['CHANGEL…'] || ''), found['CHANGEL…']);
     check('one several start with is their folder, to search', /frost$/i.test(res.cuts['packag…'] || '') && !found['packag…'], res.cuts['packag…']);
 
+    // network shares are never looked up: a stat on one goes out over SMB and
+    // can hold for seconds (10.255.255.1 answers nothing), and terminal text is
+    // full of // that isn't a path
+    const t0 = Date.now();
+    const unc = await w.eval(
+      `api.resolvePaths(${repo}, ['//10.255.255.1/share/a.png', '\\\\\\\\10.255.255.1\\\\share', '//10.255.255.1/share'])`
+    );
+    const uncMs = Date.now() - t0;
+    check('a network share path is not a link', !Object.keys(unc.paths).length && !Object.keys(unc.dirs).length, JSON.stringify(unc));
+    check('and is answered at once, not after a network lookup', uncMs < 1000, uncMs + 'ms');
+
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {
     console.error('ERROR:', e.message);

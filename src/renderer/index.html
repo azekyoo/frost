@@ -157,6 +157,21 @@
           each prompt, which is what puts <b>dir &middot; branch</b> on the tab.
           cmd and WSL can't, so those tabs keep the profile name.
         </p>
+
+        <label class="field">
+          <span>Preloaded shells</span>
+          <select id="s-spares">
+            <option value="0">Off</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+        <p class="hint">
+          Kept started in the background, so a new tab, split or agent session
+          opens at its prompt instantly instead of waiting for your profile to
+          load. About 70&nbsp;MB each. PowerShell profiles only.
+        </p>
       </div>
 
       <div class="group">
@@ -447,6 +462,7 @@
   <script src="diff.js"></script>
   <script src="peek.js"></script>
   <script src="blocks.js"></script>
+  <script src="loading.js"></script>
   <script src="commands.js"></script>
   <script src="palette.js"></script>
   <script src="settings.js"></script>
