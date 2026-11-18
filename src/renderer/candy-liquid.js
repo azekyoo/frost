@@ -1,8 +1,8 @@
 'use strict';
 
-// Frost Flow's liquid, drawn in a worker.
+// Candy Swirl's liquid, drawn in a worker.
 //
-// The same picture designs/flow.css paints with CSS (a rainbow band sliding
+// The same picture designs/candy.css paints with CSS (a rainbow band sliding
 // underneath, six blobs swimming over it) but on one small canvas: the liquid
 // is nothing but soft gradients, so drawing it at a third of the window's size
 // and letting the compositor scale it up looks the same, and costs one layer
@@ -22,7 +22,7 @@ const BAND = [PINK, ORANGE, YELLOW, MINT, SKY, VIOLET, PINK, ORANGE, YELLOW, MIN
 const BAND_MS = 18000;
 const ANGLE = (100 * Math.PI) / 180;
 
-// keyframes as in flow.css: [offset, x vw, y vh, scale x, scale y]
+// keyframes as in candy.css: [offset, x vw, y vh, scale x, scale y]
 const PATHS = {
   1: [[0, 0, 0, 1, 1], [0.33, 28, 18, 1.25, 0.85], [0.66, 8, 42, 0.85, 1.2], [1, -12, 12, 1.1, 1]],
   2: [[0, 0, 0, 1, 1], [0.33, -30, 22, 0.85, 1.25], [0.66, -10, 50, 1.2, 0.9], [1, -40, 5, 1, 1.1]],

@@ -80,16 +80,16 @@ const DEFAULT_KEYS = {
   bindings: []
 };
 
-// The native minimise/maximise/close glyphs. Frost Flow's titlebar is bright
+// The native minimise/maximise/close glyphs. Candy Swirl's titlebar is bright
 // liquid, where the terminal's light foreground would vanish over yellow, so
 // there they are dark ink like the rest of its titlebar.
 function captionInk(theme) {
-  return theme.design === 'flow' ? '#1a1726' : theme.terminal?.foreground || '#ffffff';
+  return theme.design === 'candy' ? '#1a1726' : theme.terminal?.foreground || '#ffffff';
 }
 
 const DEFAULT_THEME = {
   // The look of everything around the terminal: 'frost', 'liquid', 'aurora',
-  // 'graphite', 'terminal' or 'flow'. Pure CSS (src/renderer/designs/), so it switches live.
+  // 'graphite', 'terminal' or 'candy'. Pure CSS (src/renderer/designs/), so it switches live.
   design: 'frost',
   material: 'glass',
   colorMode: 'dark',

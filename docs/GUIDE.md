@@ -206,8 +206,9 @@ running and supervising Claude Code agents with live status and diff watching.
   - **Graphite Studio** — smoked graphite with a signal-orange accent: folder
     tabs joined to the terminal and numbered, keycap buttons, status lights
     that glow
-  - **Frost Flow** — Frost exactly, except the space between the blocks:
-    a bright, moving pour of colour flows in every gap and round the edge
+  - **Candy Swirl** — a bright, moving swirl of candy colours fills the
+    window, and every block is dark tinted glass laid over it; the tabs are
+    inked in a deep shade of the colour under them
 
   Each restyles everything — tabs, panes, agent mode, the diff, settings, the
   palette, Peek, menus, notifications. Your tint, blur, readability, font and
@@ -489,7 +490,7 @@ for an installed build, in the repo's `config/` when running from source:
   **Restart and install** in settings. With `check` off nothing is looked for and
   **Check now** is still there for when you want to ask.
 
-  `design` is `frost` (the default), `liquid`, `aurora`, `graphite` or `flow`. `accent`
+  `design` is `frost` (the default), `liquid`, `aurora`, `graphite` or `candy`. `accent`
   is Frost's accent colour; the other designs keep theirs in `accents`, one
   per design — `{ "graphite": "#3fb950" }` — and one left out shows that
   design's own colour. Every design's stylesheet is in `src/renderer/designs/`

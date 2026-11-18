@@ -1,12 +1,12 @@
 'use strict';
 
-// Frost Flow: glass over liquid.
+// Candy Swirl: glass over liquid.
 //
 // The liquid (#design-fx) fills the whole window, and every block (panes,
 // the agent rail, the diff, the shell dock) is a sheet of tinted glass laid
-// over it by designs/flow.css. This file only runs the liquid: drawn by
-// flow-liquid.js in a worker, on a small canvas the compositor scales up, with
-// the CSS version in flow.css as the fallback for a window that can't run one.
+// over it by designs/candy.css. This file only runs the liquid: drawn by
+// candy-liquid.js in a worker, on a small canvas the compositor scales up, with
+// the CSS version in candy.css as the fallback for a window that can't run one.
 
 (() => {
   const fx = document.getElementById('design-fx');
@@ -28,9 +28,9 @@
     if (worker) return true;
     try {
       canvas = document.createElement('canvas');
-      canvas.className = 'fl-canvas';
+      canvas.className = 'cs-canvas';
       const off = canvas.transferControlToOffscreen();
-      worker = new Worker('flow-liquid.js');
+      worker = new Worker('candy-liquid.js');
       worker.onerror = () => stopLiquid(true);
       fx.appendChild(canvas);
       worker.postMessage({ canvas: off, size: [innerWidth, innerHeight] }, [off]);
@@ -73,10 +73,10 @@
   }
 
   function addBlobs() {
-    if (fx.querySelector('.fl-blob')) return;
+    if (fx.querySelector('.cs-blob')) return;
     for (let i = 0; i < 6; i++) {
       const blob = document.createElement('div');
-      blob.className = 'fl-blob';
+      blob.className = 'cs-blob';
       fx.appendChild(blob);
     }
   }
@@ -97,11 +97,11 @@
     window.removeEventListener('resize', onResize);
     reduced.removeEventListener('change', syncPlay);
     stopLiquid(false);
-    for (const blob of fx.querySelectorAll('.fl-blob')) blob.remove();
+    for (const blob of fx.querySelectorAll('.cs-blob')) blob.remove();
   }
 
   function sync() {
-    const want = document.body.dataset.design === 'flow';
+    const want = document.body.dataset.design === 'candy';
     if (want && !on) start();
     else if (!want && on) stop();
   }

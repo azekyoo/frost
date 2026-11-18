@@ -1,20 +1,20 @@
 /* ==========================================================================
-   Frost Flow
+   Candy Swirl
    Glass over liquid. A bright, moving pour of colour fills the whole window
    in place of the wallpaper, and every block (panes, the agent rail, the diff,
    the shell dock) is a sheet of dark tinted glass laid over it: the liquid
    runs bare in the titlebar and the gaps, and glows through the blocks.
-   flow.js runs the liquid. Scoped to the body attribute, so with any other
+   candy.js runs the liquid. Scoped to the body attribute, so with any other
    design picked none of it applies.
    ========================================================================== */
 
-body[data-design='flow'] {
-  --fl-pink: #ff4f9a;
-  --fl-orange: #ff9a3c;
-  --fl-yellow: #ffd93d;
-  --fl-mint: #2fe0a0;
-  --fl-sky: #3cc8ff;
-  --fl-violet: #a066ff;
+body[data-design='candy'] {
+  --cs-pink: #ff4f9a;
+  --cs-orange: #ff9a3c;
+  --cs-yellow: #ffd93d;
+  --cs-mint: #2fe0a0;
+  --cs-sky: #3cc8ff;
+  --cs-violet: #a066ff;
 
   /* A still accent for the small things Frost lights (focus outlines, dots,
      selection). The marks that should carry the liquid's colour don't use it:
@@ -30,7 +30,7 @@ body[data-design='flow'] {
    swimming over it on loops of different lengths, so the pattern never
    repeats the same way twice. Transforms only, each on a layer of its own:
    the flow costs the compositor and never repaints anything. */
-body[data-design='flow'] #design-fx {
+body[data-design='candy'] #design-fx {
   display: block;
   position: fixed;
   inset: 0;
@@ -39,7 +39,7 @@ body[data-design='flow'] #design-fx {
   pointer-events: none;
 }
 
-body[data-design='flow'] #design-fx::before {
+body[data-design='candy'] #design-fx::before {
   content: '';
   position: absolute;
   top: -20%;
@@ -47,13 +47,13 @@ body[data-design='flow'] #design-fx::before {
   left: 0;
   width: 300%;
   background: linear-gradient(100deg,
-      var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint), var(--fl-sky), var(--fl-violet),
-      var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint), var(--fl-sky), var(--fl-violet), var(--fl-pink));
+      var(--cs-pink), var(--cs-orange), var(--cs-yellow), var(--cs-mint), var(--cs-sky), var(--cs-violet),
+      var(--cs-pink), var(--cs-orange), var(--cs-yellow), var(--cs-mint), var(--cs-sky), var(--cs-violet), var(--cs-pink));
   will-change: transform;
-  animation: fl-slide 18s linear infinite;
+  animation: cs-slide 18s linear infinite;
 }
 
-@keyframes fl-slide {
+@keyframes cs-slide {
   from {
     transform: translateX(0);
   }
@@ -63,21 +63,21 @@ body[data-design='flow'] #design-fx::before {
   }
 }
 
-/* The canvas version, drawn in a worker by flow-liquid.js: one small layer,
+/* The canvas version, drawn in a worker by candy-liquid.js: one small layer,
    scaled up, in place of the band and the blobs. The CSS liquid above is the
    fallback for when it can't run. */
-body[data-design='flow'] #design-fx[data-canvas]::before {
+body[data-design='candy'] #design-fx[data-canvas]::before {
   display: none;
 }
 
-body[data-design='flow'] .fl-canvas {
+body[data-design='candy'] .cs-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-body[data-design='flow'] .fl-blob {
+body[data-design='candy'] .cs-blob {
   position: absolute;
   width: 46vmax;
   height: 46vmax;
@@ -88,28 +88,28 @@ body[data-design='flow'] .fl-blob {
   animation: var(--path) var(--t) ease-in-out infinite alternate;
 }
 
-body[data-design='flow'] .fl-blob:nth-child(1) { --c: var(--fl-pink);   --path: fl-swim-1; --t: 11s; left: 15%; top: 20%; }
-body[data-design='flow'] .fl-blob:nth-child(2) { --c: var(--fl-yellow); --path: fl-swim-2; --t: 13s; left: 80%; top: 25%; }
-body[data-design='flow'] .fl-blob:nth-child(3) { --c: var(--fl-sky);    --path: fl-swim-3; --t: 9s;  left: 50%; top: 85%; }
-body[data-design='flow'] .fl-blob:nth-child(4) { --c: var(--fl-mint);   --path: fl-swim-1; --t: 15s; left: 90%; top: 90%; animation-direction: alternate-reverse; }
-body[data-design='flow'] .fl-blob:nth-child(5) { --c: var(--fl-violet); --path: fl-swim-2; --t: 12s; left: 10%; top: 85%; animation-direction: alternate-reverse; }
-body[data-design='flow'] .fl-blob:nth-child(6) { --c: var(--fl-orange); --path: fl-swim-3; --t: 14s; left: 45%; top: 10%; }
+body[data-design='candy'] .cs-blob:nth-child(1) { --c: var(--cs-pink);   --path: cs-swim-1; --t: 11s; left: 15%; top: 20%; }
+body[data-design='candy'] .cs-blob:nth-child(2) { --c: var(--cs-yellow); --path: cs-swim-2; --t: 13s; left: 80%; top: 25%; }
+body[data-design='candy'] .cs-blob:nth-child(3) { --c: var(--cs-sky);    --path: cs-swim-3; --t: 9s;  left: 50%; top: 85%; }
+body[data-design='candy'] .cs-blob:nth-child(4) { --c: var(--cs-mint);   --path: cs-swim-1; --t: 15s; left: 90%; top: 90%; animation-direction: alternate-reverse; }
+body[data-design='candy'] .cs-blob:nth-child(5) { --c: var(--cs-violet); --path: cs-swim-2; --t: 12s; left: 10%; top: 85%; animation-direction: alternate-reverse; }
+body[data-design='candy'] .cs-blob:nth-child(6) { --c: var(--cs-orange); --path: cs-swim-3; --t: 14s; left: 45%; top: 10%; }
 
-@keyframes fl-swim-1 {
+@keyframes cs-swim-1 {
   0% { transform: translate(0, 0) scale(1, 1); }
   33% { transform: translate(28vw, 18vh) scale(1.25, 0.85); }
   66% { transform: translate(8vw, 42vh) scale(0.85, 1.2); }
   100% { transform: translate(-12vw, 12vh) scale(1.1, 1); }
 }
 
-@keyframes fl-swim-2 {
+@keyframes cs-swim-2 {
   0% { transform: translate(0, 0) scale(1, 1); }
   33% { transform: translate(-30vw, 22vh) scale(0.85, 1.25); }
   66% { transform: translate(-10vw, 50vh) scale(1.2, 0.9); }
   100% { transform: translate(-40vw, 5vh) scale(1, 1.1); }
 }
 
-@keyframes fl-swim-3 {
+@keyframes cs-swim-3 {
   0% { transform: translate(0, 0) scale(1, 1); }
   33% { transform: translate(22vw, -35vh) scale(1.2, 0.85); }
   66% { transform: translate(-25vw, -20vh) scale(0.9, 1.2); }
@@ -118,14 +118,14 @@ body[data-design='flow'] .fl-blob:nth-child(6) { --c: var(--fl-orange); --path: 
 
 /* still while the window is in the background, and for anyone who asked the
    system for less motion */
-body[data-design='flow']:not(.win-focused) #design-fx::before,
-body[data-design='flow']:not(.win-focused) .fl-blob {
+body[data-design='candy']:not(.win-focused) #design-fx::before,
+body[data-design='candy']:not(.win-focused) .cs-blob {
   animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body[data-design='flow'] #design-fx::before,
-  body[data-design='flow'] .fl-blob {
+  body[data-design='candy'] #design-fx::before,
+  body[data-design='candy'] .cs-blob {
     animation: none;
   }
 }
@@ -134,20 +134,20 @@ body[data-design='flow']:not(.win-focused) .fl-blob {
    z-index of their own: a z-index would wall them off into a stacking context
    of their own, and the see-through marks below could no longer blend with the
    liquid behind it. */
-body[data-design='flow'] #titlebar,
-body[data-design='flow'] #content {
+body[data-design='candy'] #titlebar,
+body[data-design='candy'] #content {
   position: relative;
   z-index: auto;
 }
 
 /* Grips over liquid: white rather than the accent, which the colour round
    them would swallow. */
-body[data-design='flow'] .divider:hover::after,
-body[data-design='flow'] .divider.dragging::after,
-body[data-design='flow'] .agents-gutter:hover::after,
-body[data-design='flow'] .agents-gutter.dragging::after,
-body[data-design='flow'] .agents-dock-gutter:hover::after,
-body[data-design='flow'] .agents-dock-gutter.dragging::after {
+body[data-design='candy'] .divider:hover::after,
+body[data-design='candy'] .divider.dragging::after,
+body[data-design='candy'] .agents-gutter:hover::after,
+body[data-design='candy'] .agents-gutter.dragging::after,
+body[data-design='candy'] .agents-dock-gutter:hover::after,
+body[data-design='candy'] .agents-dock-gutter.dragging::after {
   background: #fff;
   box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
 }
@@ -159,13 +159,13 @@ body[data-design='flow'] .agents-dock-gutter.dragging::after {
 
 /* The window's edge: the liquid already frames the content, so the edge is a
    quiet line in both states rather than an accent one when focused. */
-body[data-design='flow'].glass::after,
-body[data-design='flow'].glass.win-focused::after {
+body[data-design='candy'].glass::after,
+body[data-design='candy'].glass.win-focused::after {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
 /* the seam under the strip sits right on the liquid's top edge */
-body[data-design='flow'] #titlebar::after {
+body[data-design='candy'] #titlebar::after {
   display: none;
 }
 
@@ -178,68 +178,68 @@ body[data-design='flow'] #titlebar::after {
    mint, plum on violet) and moves with the liquid, for the price of a blend.
    The native window buttons can't blend; they take a plain dark ink
    (main.js, captionInk). */
-body[data-design='flow'] {
-  --fl-ink: #1a1726;
+body[data-design='candy'] {
+  --cs-ink: #1a1726;
   /* light enough that the hue survives (multiplying by a dark grey comes
      out black whatever the colour), dark enough to read over yellow */
-  --fl-dye: rgb(112, 112, 112);
+  --cs-dye: rgb(112, 112, 112);
 }
 
-body[data-design='flow'] #titlebar :is(button, .tab) {
-  color: var(--fl-dye);
+body[data-design='candy'] #titlebar :is(button, .tab) {
+  color: var(--cs-dye);
 }
 
-body[data-design='flow'] #titlebar :is(button, .tab:not(.active)) > :is(svg, .title, .close) {
+body[data-design='candy'] #titlebar :is(button, .tab:not(.active)) > :is(svg, .title, .close) {
   mix-blend-mode: multiply;
 }
 
-body[data-design='flow'] #titlebar :is(button, .tab):hover {
+body[data-design='candy'] #titlebar :is(button, .tab):hover {
   color: rgb(85, 85, 85);
 }
 
 /* a touch heavier, so the coloured strokes carry */
-body[data-design='flow'] .tab:not(.active) .title {
+body[data-design='candy'] .tab:not(.active) .title {
   font-weight: 600;
 }
 
 /* the lit tab is glass, which keeps the blend from reaching the liquid: its
    title is plain dark ink on the bright glass */
-body[data-design='flow'] #titlebar .tab.active {
-  color: var(--fl-ink);
+body[data-design='candy'] #titlebar .tab.active {
+  color: var(--cs-ink);
 }
 
 /* Frost's own window buttons are drawn in 1px hairlines, which the blend thins
    to nothing over the lighter colours: heavier lines, deeper ink. */
-body[data-design='flow'] #win-controls button {
+body[data-design='candy'] #win-controls button {
   color: rgb(80, 80, 80);
 }
 
-body[data-design='flow'] #win-controls svg {
+body[data-design='candy'] #win-controls svg {
   stroke-width: 1.4;
 }
 
-body[data-design='flow'] #btn-close:hover {
+body[data-design='candy'] #btn-close:hover {
   color: #fff;
 }
 
-body[data-design='flow'] #btn-close:hover > svg {
+body[data-design='candy'] #btn-close:hover > svg {
   mix-blend-mode: normal;
 }
 
 /* No seams between resting tabs: on liquid a seam in ink reads as a text
    cursor, and the tabs are wide enough apart to read as separate anyway. */
-body[data-design='flow'] .tab + .tab::before {
+body[data-design='candy'] .tab + .tab::before {
   display: none;
 }
 
-body[data-design='flow'] .tab:hover {
+body[data-design='candy'] .tab:hover {
   background: rgba(255, 255, 255, 0.22);
 }
 
 /* The lit tab is a pane of liquid glass laid over the pour: clear, bright
    glass that blurs what runs beneath it and catches light on its top edge,
    with the colours still moving through it and the title in dark ink. */
-body[data-design='flow'] .tab.active {
+body[data-design='candy'] .tab.active {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.28) 60%, rgba(255, 255, 255, 0.34));
   -webkit-backdrop-filter: blur(16px) saturate(1.5);
   backdrop-filter: blur(16px) saturate(1.5);
@@ -249,7 +249,7 @@ body[data-design='flow'] .tab.active {
 
 /* the glass is the mark now: a strip of liquid under it would vanish into
    the liquid round it */
-body[data-design='flow'] .tab.active::after {
+body[data-design='candy'] .tab.active::after {
   display: none;
 }
 
@@ -257,8 +257,8 @@ body[data-design='flow'] .tab.active::after {
 
 /* The liquid is the backdrop now, not the wallpaper: the window's own blurred
    wallpaper and its tint stay out of sight under it. */
-body[data-design='flow'] #glass-bg,
-body[data-design='flow'] #glass-tint {
+body[data-design='candy'] #glass-bg,
+body[data-design='candy'] #glass-tint {
   display: none;
 }
 
@@ -267,38 +267,38 @@ body[data-design='flow'] #glass-tint {
    with a fine white rim. No backdrop blur: the liquid is all soft gradients
    already, and re-blurring the whole window every frame would cost the GPU
    far more than it would show. */
-body[data-design='flow'] {
-  --fl-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 40%, rgba(0, 0, 0, 0.06)),
+body[data-design='candy'] {
+  --cs-glass: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015) 40%, rgba(0, 0, 0, 0.06)),
     rgba(10, 12, 24, 0.6);
-  --fl-rim: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-  --fl-lift: 0 14px 32px -18px rgba(0, 0, 0, 0.55);
+  --cs-rim: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+  --cs-lift: 0 14px 32px -18px rgba(0, 0, 0, 0.55);
 }
 
-body[data-design='flow'] .tab-content > .pane,
-body[data-design='flow'] .split .pane,
-body[data-design='flow'] .agents-center .pane,
-body[data-design='flow'] .agents-rail,
-body[data-design='flow'] .agents-diff,
-body[data-design='flow'] .agents-dock {
-  background: var(--fl-glass);
+body[data-design='candy'] .tab-content > .pane,
+body[data-design='candy'] .split .pane,
+body[data-design='candy'] .agents-center .pane,
+body[data-design='candy'] .agents-rail,
+body[data-design='candy'] .agents-diff,
+body[data-design='candy'] .agents-dock {
+  background: var(--cs-glass);
   border-color: transparent;
-  box-shadow: var(--fl-rim), var(--fl-lift);
+  box-shadow: var(--cs-rim), var(--cs-lift);
 }
 
 /* the dock is the glass; the shell inside it is not a second sheet */
-body[data-design='flow'] .agents-dock .pane {
+body[data-design='candy'] .agents-dock .pane {
   background: transparent;
   box-shadow: none;
 }
 
 /* The focused pane is clearer glass with a brighter rim: the liquid glows
    through it a little more than through the rest. */
-body[data-design='flow'] .split .pane.focused,
-body[data-design='flow'] .agents-center .pane.focused {
+body[data-design='candy'] .split .pane.focused,
+body[data-design='candy'] .agents-center .pane.focused {
   border-color: transparent;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02) 40%, rgba(0, 0, 0, 0.04)),
     rgba(10, 12, 24, 0.5);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.3), var(--fl-lift);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.3), var(--cs-lift);
 }
 
 /* ---------- see-through marks ----------
@@ -309,71 +309,71 @@ body[data-design='flow'] .agents-center .pane.focused {
    the liquid's own frame rate, and costs the compositor one small blend
    instead of a repaint. (The grey undoes the glass's 60% tint: dodge divides
    by one minus it.) */
-body[data-design='flow'] {
-  --fl-see: rgb(153, 153, 153);
+body[data-design='candy'] {
+  --cs-see: rgb(153, 153, 153);
 }
 
 /* A see-through mark with a label: the dodge goes on a layer underneath, so
    the label is not blended with it, and the label is dark ink, readable over
    whichever colour the liquid shows there. */
-body[data-design='flow'] :is(.rail-new, .diff-toggle button.active) {
+body[data-design='candy'] :is(.rail-new, .diff-toggle button.active) {
   position: relative;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
-  color: var(--fl-ink);
+  color: var(--cs-ink);
 }
 
-body[data-design='flow'] :is(.rail-new, .diff-toggle button.active)::before {
+body[data-design='candy'] :is(.rail-new, .diff-toggle button.active)::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--fl-see);
+  background: var(--cs-see);
   mix-blend-mode: color-dodge;
   pointer-events: none;
 }
 
 /* the label paints after the layer, so it sits on top of it */
-body[data-design='flow'] :is(.rail-new, .diff-toggle button.active) > span {
+body[data-design='candy'] :is(.rail-new, .diff-toggle button.active) > span {
   position: relative;
 }
 
-body[data-design='flow'] .rail-new:hover {
+body[data-design='candy'] .rail-new:hover {
   background: transparent;
   box-shadow: none;
 }
 
-body[data-design='flow'] .rail-new:hover::before {
+body[data-design='candy'] .rail-new:hover::before {
   background: rgb(170, 170, 170);
 }
 
 /* the selected agent's mark down its left side */
-body[data-design='flow'] .agent-row.selected::before {
+body[data-design='candy'] .agent-row.selected::before {
   width: 3px;
-  background: var(--fl-see);
+  background: var(--cs-see);
   mix-blend-mode: color-dodge;
   box-shadow: none;
 }
 
 /* ---------- settings ---------- */
 
-body[data-design='flow'] .field input[type='range']::-webkit-slider-runnable-track {
-  background: linear-gradient(90deg, var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint), var(--fl-sky),
-      var(--fl-violet));
+body[data-design='candy'] .field input[type='range']::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, var(--cs-pink), var(--cs-orange), var(--cs-yellow), var(--cs-mint), var(--cs-sky),
+      var(--cs-violet));
   opacity: 0.85;
 }
 
-body[data-design='flow'] .field input[type='range']::-webkit-slider-thumb {
+body[data-design='candy'] .field input[type='range']::-webkit-slider-thumb {
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
-body[data-design='flow'] .field input[type='range']:hover::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.4), 0 0 14px color-mix(in srgb, var(--fl-pink) 60%, transparent),
+body[data-design='candy'] .field input[type='range']:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.4), 0 0 14px color-mix(in srgb, var(--cs-pink) 60%, transparent),
     0 2px 6px rgba(0, 0, 0, 0.45);
 }
 
 /* the chosen design tile is ringed in liquid too */
-body[data-design='flow'] .design-tile.active {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 16px -4px color-mix(in srgb, var(--fl-pink) 70%, transparent);
+body[data-design='candy'] .design-tile.active {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 16px -4px color-mix(in srgb, var(--cs-pink) 70%, transparent);
 }
