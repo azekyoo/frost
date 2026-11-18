@@ -208,6 +208,16 @@ body[data-design='flow'] #titlebar .tab.active {
   color: var(--fl-ink);
 }
 
+/* Frost's own window buttons are drawn in 1px hairlines, which the blend thins
+   to nothing over the lighter colours: heavier lines, deeper ink. */
+body[data-design='flow'] #win-controls button {
+  color: rgb(80, 80, 80);
+}
+
+body[data-design='flow'] #win-controls svg {
+  stroke-width: 1.4;
+}
+
 body[data-design='flow'] #btn-close:hover {
   color: #fff;
 }
