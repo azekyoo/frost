@@ -7,8 +7,6 @@
 // over it by designs/flow.css. This file only runs the liquid: drawn by
 // flow-liquid.js in a worker, on a small canvas the compositor scales up, with
 // the CSS version in flow.css as the fallback for a window that can't run one.
-// The worker also sends back the liquid's colour, which becomes the accent, so
-// everything Frost lights in its accent flows through the same colours.
 
 (() => {
   const fx = document.getElementById('design-fx');
@@ -33,9 +31,6 @@
       canvas.className = 'fl-canvas';
       const off = canvas.transferControlToOffscreen();
       worker = new Worker('flow-liquid.js');
-      worker.onmessage = ({ data }) => {
-        if (on && data.accent) document.body.style.setProperty('--fl-live', data.accent);
-      };
       worker.onerror = () => stopLiquid(true);
       fx.appendChild(canvas);
       worker.postMessage({ canvas: off, size: [innerWidth, innerHeight] }, [off]);
@@ -57,7 +52,6 @@
     canvas?.remove();
     canvas = null;
     delete fx.dataset.canvas;
-    document.body.style.removeProperty('--fl-live');
     if (fallback && on) addBlobs();
   }
 

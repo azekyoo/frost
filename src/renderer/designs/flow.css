@@ -16,19 +16,11 @@ body[data-design='flow'] {
   --fl-sky: #3cc8ff;
   --fl-violet: #a066ff;
 
-  /* the liquid poured into a line: what lights the chrome, so the tab, the
-     focused pane and the buttons are visibly made of the same stuff */
-  --fl-rainbow: linear-gradient(90deg, var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint),
-      var(--fl-sky), var(--fl-violet), var(--fl-pink));
-  --fl-rainbow-soft: linear-gradient(100deg, color-mix(in srgb, var(--fl-pink) 30%, transparent),
-      color-mix(in srgb, var(--fl-orange) 22%, transparent), color-mix(in srgb, var(--fl-violet) 30%, transparent));
-
-  /* The accent is the liquid's own colour at the middle of the window, sent
-     by flow.js a few times a second, so everything Frost lights in its accent
-     drifts through the liquid's colours with it. Violet until the first one
-     arrives, and for a window without the worker. A picked accent, set on the
-     body itself, still replaces it. */
-  --accent: var(--fl-live, #b47cff);
+  /* A still accent for the small things Frost lights (focus outlines, dots,
+     selection). The marks that should carry the liquid's colour don't use it:
+     they are windows onto the liquid itself (see "see-through" below). A
+     picked accent, set on the body itself, still replaces it. */
+  --accent: #c4a8ff;
   --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
   --accent-mid: color-mix(in srgb, var(--accent) 45%, transparent);
   --accent-glow: color-mix(in srgb, var(--accent) 55%, transparent);
@@ -138,11 +130,14 @@ body[data-design='flow']:not(.win-focused) .fl-blob {
   }
 }
 
-/* above the liquid; the glass layers stay below it at their negative z */
+/* Above the liquid by coming after it, at the same level, rather than by a
+   z-index of their own: a z-index would wall them off into a stacking context
+   of their own, and the see-through marks below could no longer blend with the
+   liquid behind it. */
 body[data-design='flow'] #titlebar,
 body[data-design='flow'] #content {
   position: relative;
-  z-index: 1;
+  z-index: auto;
 }
 
 /* Grips over liquid: white rather than the accent, which the colour round
@@ -274,42 +269,43 @@ body[data-design='flow'] .agents-center .pane.focused {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.3), var(--fl-lift);
 }
 
-/* ---------- agent mode ---------- */
+/* ---------- see-through marks ----------
+   The marks that carry the liquid's colour don't paint any colour of their
+   own. They are mid-grey, colour-dodged onto what is behind them: the liquid
+   seen through the dark glass, which the dodge brightens back to the liquid's
+   own colour. So each one shows exactly the liquid under it, moving with it at
+   the liquid's own frame rate, and costs the compositor one small blend
+   instead of a repaint. (The grey undoes the glass's 60% tint: dodge divides
+   by one minus it.) */
+body[data-design='flow'] {
+  --fl-see: rgb(153, 153, 153);
+}
 
-/* the rail's primary action: glass with the liquid showing through it */
+/* the rail's primary action */
 body[data-design='flow'] .rail-new {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: var(--fl-rainbow-soft);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 6px 18px -10px color-mix(in srgb, var(--fl-pink) 70%, transparent);
+  border-color: transparent;
+  background: var(--fl-see);
+  mix-blend-mode: color-dodge;
+  box-shadow: none;
 }
 
 body[data-design='flow'] .rail-new:hover {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: linear-gradient(100deg, color-mix(in srgb, var(--fl-pink) 42%, transparent),
-      color-mix(in srgb, var(--fl-orange) 32%, transparent), color-mix(in srgb, var(--fl-violet) 42%, transparent));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 8px 22px -10px color-mix(in srgb, var(--fl-pink) 80%, transparent);
+  background: rgb(170, 170, 170);
+  box-shadow: none;
 }
 
-/* the selected agent's mark runs with liquid, top to bottom */
+/* the selected agent's mark down its left side */
 body[data-design='flow'] .agent-row.selected::before {
-  background: linear-gradient(180deg, var(--fl-pink), var(--fl-orange), var(--fl-yellow), var(--fl-mint), var(--fl-sky),
-      var(--fl-violet), var(--fl-pink)) 0 0 / 100% 200%;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--fl-pink) 60%, transparent);
-  animation: fl-shimmer-down 6s linear infinite;
-}
-
-@keyframes fl-shimmer-down {
-  from {
-    background-position: 0 0%;
-  }
-  to {
-    background-position: 0 200%;
-  }
+  width: 3px;
+  background: var(--fl-see);
+  mix-blend-mode: color-dodge;
+  box-shadow: none;
 }
 
 body[data-design='flow'] .diff-toggle button.active {
-  background: var(--fl-rainbow-soft), rgba(255, 255, 255, 0.06);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 2px 6px -2px rgba(0, 0, 0, 0.4);
+  background: var(--fl-see);
+  mix-blend-mode: color-dodge;
+  box-shadow: none;
 }
 
 /* ---------- settings ---------- */
@@ -332,15 +328,4 @@ body[data-design='flow'] .field input[type='range']:hover::-webkit-slider-thumb 
 /* the chosen design tile is ringed in liquid too */
 body[data-design='flow'] .design-tile.active {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 16px -4px color-mix(in srgb, var(--fl-pink) 70%, transparent);
-}
-
-/* still while the window is in the background, and for less motion */
-body[data-design='flow']:not(.win-focused) .agent-row.selected::before {
-  animation-play-state: paused;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  body[data-design='flow'] .agent-row.selected::before {
-    animation: none;
-  }
 }

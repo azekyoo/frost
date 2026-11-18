@@ -10,8 +10,7 @@
 // printing never stutters it.
 //
 // Time is a clock the page owns, so pausing (window in the background) and
-// resuming carries on where it stopped. The page also gets the liquid's colour
-// at the middle of the window a few times a second: Flow's accent.
+// resuming carries on where it stopped.
 
 const PINK = [0xff, 0x4f, 0x9a];
 const ORANGE = [0xff, 0x9a, 0x3c];
@@ -49,7 +48,6 @@ let H = 0;
 let playing = false;
 let at = 0; // the page's clock when play began
 let wall = 0; // and the wall time it began at
-let lastAccent = 0;
 
 const raf = self.requestAnimationFrame
   ? (fn) => self.requestAnimationFrame(fn)
@@ -131,63 +129,8 @@ function draw() {
     ctx.fillRect(-S / 2, -S / 2, S, S);
     ctx.restore();
   }
-
-  if (T - lastAccent > 200 || T < lastAccent || !playing) {
-    lastAccent = T;
-    self.postMessage({ accent: accentAt(T) });
-  }
 }
 
-// The colour under the middle of the window, worked out rather than read
-// back from the canvas (a readback would stall the GPU): the band there, with
-// each blob laid over it at its own strength. Then kept vivid and light enough
-// to read as an accent on dark glass.
-function accentAt(T) {
-  const px = W / 2;
-  const py = H / 2;
-  const g = bandGeometry(T);
-  let t = ((px - g.sx) * g.dx + (py - g.sy) * g.dy) / g.len;
-  t = Math.min(1, Math.max(0, t)) * (BAND.length - 1);
-  const i = Math.min(BAND.length - 2, Math.floor(t));
-  const f = t - i;
-  let c = [0, 1, 2].map((j) => BAND[i][j] + (BAND[i + 1][j] - BAND[i][j]) * f);
-  const S = 0.46 * Math.max(W, H);
-  for (const b of BLOBS) {
-    const [tx, ty, sx, sy] = blobAt(b, T);
-    const dx = (px - ((b[3] / 100) * W + tx)) / sx;
-    const dy = (py - ((b[4] / 100) * H + ty)) / sy;
-    const r = Math.hypot(dx, dy) / (S / 2);
-    const a = r <= 0.35 ? 1 : r >= 1 ? 0 : 1 - (r - 0.35) / 0.65;
-    c = c.map((v, j) => v + (b[0][j] - v) * a);
-  }
-  return vivid(c);
-}
-
-function vivid([r, g, b]) {
-  r /= 255;
-  g /= 255;
-  b /= 255;
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0;
-  const d = max - min;
-  if (d > 1e-6) {
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h *= 60;
-    if (h < 0) h += 360;
-  }
-  const s = 0.9;
-  const l = 0.66;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = l - c / 2;
-  const [R, G, B] =
-    h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
-  const hex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
-  return `#${hex(R)}${hex(G)}${hex(B)}`;
-}
 
 function loop() {
   if (!playing) return;

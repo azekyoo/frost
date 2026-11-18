@@ -3330,7 +3330,7 @@ body.ligatures .xterm-rows span {
   box-shadow: inset 0 0 0 1px #3a3a3a;
 }
 
-/* Frost's tab and screen, with the liquid running round the screen */
+/* liquid behind, a glass tab and a dark glass screen laid over it */
 .design-tile[data-design='flow'] .design-swatch {
   background: radial-gradient(50% 80% at 10% 90%, #ff4f9a, transparent 70%),
     radial-gradient(50% 80% at 90% 10%, #ffd93d, transparent 70%),
@@ -3340,12 +3340,12 @@ body.ligatures .xterm-rows span {
 
 .design-tile[data-design='flow'] .design-swatch::before {
   background: rgba(255, 255, 255, 0.3);
-  box-shadow: inset 0 -2px 0 #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .design-tile[data-design='flow'] .design-swatch::after {
-  background: linear-gradient(90deg, #1b2236 calc(55% - 2px), transparent calc(55% - 2px) calc(55% + 2px), #1b2236 calc(55% + 2px));
-  opacity: 0.92;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 40%), rgba(10, 12, 24, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
 /* ---------- scrollbars ---------- */
