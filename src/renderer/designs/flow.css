@@ -180,7 +180,9 @@ body[data-design='flow'] #titlebar::after {
    (main.js, captionInk). */
 body[data-design='flow'] {
   --fl-ink: #1a1726;
-  --fl-dye: rgb(70, 70, 70);
+  /* light enough that the hue survives (multiplying by a dark grey comes
+     out black whatever the colour), dark enough to read over yellow */
+  --fl-dye: rgb(112, 112, 112);
 }
 
 body[data-design='flow'] #titlebar :is(button, .tab) {
@@ -192,7 +194,12 @@ body[data-design='flow'] #titlebar :is(button, .tab:not(.active)) > :is(svg, .ti
 }
 
 body[data-design='flow'] #titlebar :is(button, .tab):hover {
-  color: rgb(40, 40, 40);
+  color: rgb(85, 85, 85);
+}
+
+/* a touch heavier, so the coloured strokes carry */
+body[data-design='flow'] .tab:not(.active) .title {
+  font-weight: 600;
 }
 
 /* the lit tab is glass, which keeps the blend from reaching the liquid: its
