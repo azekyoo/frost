@@ -216,10 +216,10 @@ body[data-design='flow'] #btn-close:hover > svg {
   mix-blend-mode: normal;
 }
 
-/* the seams between resting tabs, in the same ink */
+/* No seams between resting tabs: on liquid a seam in ink reads as a text
+   cursor, and the tabs are wide enough apart to read as separate anyway. */
 body[data-design='flow'] .tab + .tab::before {
-  background: rgb(120, 120, 120);
-  mix-blend-mode: multiply;
+  display: none;
 }
 
 body[data-design='flow'] .tab:hover {
