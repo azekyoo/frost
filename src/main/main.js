@@ -979,6 +979,15 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   }
 
   const w = new BrowserWindow(opts);
+  // Windows is signing out or shutting down: a waiting update must not start
+  // installing now, because the session ending kills the installer between
+  // removing the old version and copying the new one, and Frost no longer
+  // starts (2026-11-17). It installs on the next ordinary quit instead. The
+  // installer's own RunOnce retry (build/installer.nsh) covers any kill this
+  // misses.
+  w.on('session-end', () => {
+    if (updater) updater.autoInstallOnAppQuit = false;
+  });
   // The constructor resolves its bounds against the primary display's scale
   // factor, wherever the window is actually going to land. Opening a 976px-wide
   // window on a 150% screen from a 200% primary therefore produces one 732px
