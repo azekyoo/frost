@@ -171,48 +171,45 @@ body[data-design='flow'] #titlebar::after {
 
 /* ---------- tabs ---------- */
 
-/* The tabs sit right on the liquid. Whatever colour runs under them, their
-   labels and the titlebar's icons keep a soft dark shadow, so white stays
-   readable over yellow as well as over violet. */
-body[data-design='flow'] #titlebar {
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 8px rgba(0, 0, 0, 0.35);
+/* The tabs sit right on the liquid, and every colour it runs through (pink,
+   orange, yellow, mint, sky, violet) is bright: white vanishes over yellow and
+   mint, while dark ink reads over all six. So the whole titlebar is written in
+   dark ink, the native window buttons included (main.js, captionInk). */
+body[data-design='flow'] {
+  --fl-ink: #1a1726;
 }
 
-body[data-design='flow'] #titlebar svg {
-  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+body[data-design='flow'] #titlebar :is(button, .tab) {
+  color: color-mix(in srgb, var(--fl-ink) 78%, transparent);
 }
 
-body[data-design='flow'] .tab {
-  color: rgba(255, 255, 255, 0.86);
+body[data-design='flow'] #titlebar :is(button, .tab):hover,
+body[data-design='flow'] #titlebar .tab.active {
+  color: var(--fl-ink);
 }
 
-/* the seams between resting tabs, white like the grips */
+body[data-design='flow'] #btn-close:hover {
+  color: #fff;
+}
+
+/* the seams between resting tabs, in the same ink */
 body[data-design='flow'] .tab + .tab::before {
-  background: rgba(255, 255, 255, 0.4);
+  background: color-mix(in srgb, var(--fl-ink) 30%, transparent);
 }
 
 body[data-design='flow'] .tab:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
 }
 
-/* The lit tab is a pane of liquid glass laid over the pour: it blurs and
-   deepens what runs beneath it, catches light on its top edge, and the colours
-   keep moving through it. */
+/* The lit tab is a pane of liquid glass laid over the pour: clear, bright
+   glass that blurs what runs beneath it and catches light on its top edge,
+   with the colours still moving through it and the title in dark ink. */
 body[data-design='flow'] .tab.active {
-  color: #fff;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0.12));
-  -webkit-backdrop-filter: blur(16px) saturate(1.7) brightness(0.8);
-  backdrop-filter: blur(16px) saturate(1.7) brightness(0.8);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-  /* no dark drop shadow: on liquid it reads as a grey smudge round the glass,
-     and the glass needs no shadow to sit above what it blurs */
-  text-shadow: none;
-}
-
-body[data-design='flow'] .tab.active svg {
-  filter: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.28) 60%, rgba(255, 255, 255, 0.34));
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  backdrop-filter: blur(16px) saturate(1.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 
 /* the glass is the mark now: a strip of liquid under it would vanish into
@@ -281,28 +278,44 @@ body[data-design='flow'] {
   --fl-see: rgb(153, 153, 153);
 }
 
-/* the rail's primary action */
-body[data-design='flow'] .rail-new {
+/* A see-through mark with a label: the dodge goes on a layer underneath, so
+   the label is not blended with it, and the label is dark ink, readable over
+   whichever colour the liquid shows there. */
+body[data-design='flow'] :is(.rail-new, .diff-toggle button.active) {
+  position: relative;
   border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--fl-ink);
+}
+
+body[data-design='flow'] :is(.rail-new, .diff-toggle button.active)::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   background: var(--fl-see);
   mix-blend-mode: color-dodge;
-  box-shadow: none;
+  pointer-events: none;
+}
+
+/* the label paints after the layer, so it sits on top of it */
+body[data-design='flow'] :is(.rail-new, .diff-toggle button.active) > span {
+  position: relative;
 }
 
 body[data-design='flow'] .rail-new:hover {
-  background: rgb(170, 170, 170);
+  background: transparent;
   box-shadow: none;
+}
+
+body[data-design='flow'] .rail-new:hover::before {
+  background: rgb(170, 170, 170);
 }
 
 /* the selected agent's mark down its left side */
 body[data-design='flow'] .agent-row.selected::before {
   width: 3px;
-  background: var(--fl-see);
-  mix-blend-mode: color-dodge;
-  box-shadow: none;
-}
-
-body[data-design='flow'] .diff-toggle button.active {
   background: var(--fl-see);
   mix-blend-mode: color-dodge;
   box-shadow: none;
