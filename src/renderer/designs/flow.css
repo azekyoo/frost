@@ -171,19 +171,32 @@ body[data-design='flow'] #titlebar::after {
 
 /* ---------- tabs ---------- */
 
-/* The tabs sit right on the liquid, and every colour it runs through (pink,
-   orange, yellow, mint, sky, violet) is bright: white vanishes over yellow and
-   mint, while dark ink reads over all six. So the whole titlebar is written in
-   dark ink, the native window buttons included (main.js, captionInk). */
+/* The tabs sit right on the liquid. White vanishes over its yellow and mint,
+   and flat black reads as a hole cut in it, so the titlebar is written in the
+   liquid's own ink: grey multiplied onto it, which comes out as a deep shade of
+   whatever colour runs under each letter (dark amber on yellow, deep green on
+   mint, plum on violet) and moves with the liquid, for the price of a blend.
+   The native window buttons can't blend; they take a plain dark ink
+   (main.js, captionInk). */
 body[data-design='flow'] {
   --fl-ink: #1a1726;
+  --fl-dye: rgb(70, 70, 70);
 }
 
 body[data-design='flow'] #titlebar :is(button, .tab) {
-  color: color-mix(in srgb, var(--fl-ink) 78%, transparent);
+  color: var(--fl-dye);
 }
 
-body[data-design='flow'] #titlebar :is(button, .tab):hover,
+body[data-design='flow'] #titlebar :is(button, .tab:not(.active)) > :is(svg, .title, .close) {
+  mix-blend-mode: multiply;
+}
+
+body[data-design='flow'] #titlebar :is(button, .tab):hover {
+  color: rgb(40, 40, 40);
+}
+
+/* the lit tab is glass, which keeps the blend from reaching the liquid: its
+   title is plain dark ink on the bright glass */
 body[data-design='flow'] #titlebar .tab.active {
   color: var(--fl-ink);
 }
@@ -192,9 +205,14 @@ body[data-design='flow'] #btn-close:hover {
   color: #fff;
 }
 
+body[data-design='flow'] #btn-close:hover > svg {
+  mix-blend-mode: normal;
+}
+
 /* the seams between resting tabs, in the same ink */
 body[data-design='flow'] .tab + .tab::before {
-  background: color-mix(in srgb, var(--fl-ink) 30%, transparent);
+  background: rgb(120, 120, 120);
+  mix-blend-mode: multiply;
 }
 
 body[data-design='flow'] .tab:hover {
