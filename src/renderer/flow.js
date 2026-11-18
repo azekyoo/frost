@@ -4,8 +4,8 @@
 //
 // Frost's blocks are see-through glass, so a layer of colour behind them would
 // show through every pane. Instead the liquid (#design-fx, drawn by
-// designs/flow.css) carries a mask: the content area with every block's
-// rounded shape cut out of it, leaving only the margin and the gaps between.
+// designs/flow.css) carries a mask: the whole window with every block's
+// rounded shape cut out of it, leaving the titlebar, the margin and the gaps.
 // The mask is an SVG redrawn whenever a block moves or resizes, and only while
 // the Flow design is picked.
 //
@@ -135,8 +135,9 @@
     if (!on) return;
     const W = window.innerWidth;
     const H = window.innerHeight;
-    const c = content.getBoundingClientRect();
-    let d = `M${c.left} ${c.top}H${c.right}V${c.bottom}H${c.left}Z`;
+    // The whole window, titlebar and edges included: the tabs sit right on the
+    // liquid, and the lit one is a pane of glass over it (flow.css).
+    let d = `M0 0H${W}V${H}H0Z`;
 
     const blocks = content.querySelectorAll(BLOCKS);
     const seen = new Set();

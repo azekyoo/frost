@@ -35,16 +35,6 @@ body[data-design='flow'] {
   --accent-glow: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-/* a lit line of liquid that keeps flowing along itself */
-@keyframes fl-shimmer {
-  from {
-    background-position: 0% 0;
-  }
-  to {
-    background-position: 200% 0;
-  }
-}
-
 /* The liquid: a wide rainbow band sliding underneath, and blobs of colour
    swimming over it on loops of different lengths, so the pattern never
    repeats the same way twice. Transforms only, each on a layer of its own:
@@ -196,15 +186,47 @@ body[data-design='flow'] #titlebar::after {
 
 /* ---------- tabs ---------- */
 
-/* the strip of light under the lit tab is a strip of liquid, still flowing */
+/* The tabs sit right on the liquid. Whatever colour runs under them, their
+   labels and the titlebar's icons keep a soft dark shadow, so white stays
+   readable over yellow as well as over violet. */
+body[data-design='flow'] #titlebar {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 8px rgba(0, 0, 0, 0.35);
+}
+
+body[data-design='flow'] #titlebar svg {
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.55));
+}
+
+body[data-design='flow'] .tab {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+/* the seams between resting tabs, white like the grips */
+body[data-design='flow'] .tab + .tab::before {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+body[data-design='flow'] .tab:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* The lit tab is a pane of liquid glass laid over the pour: it blurs and
+   deepens what runs beneath it, catches light on its top edge, and the colours
+   keep moving through it. */
+body[data-design='flow'] .tab.active {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.08) 60%, rgba(255, 255, 255, 0.12));
+  -webkit-backdrop-filter: blur(16px) saturate(1.7) brightness(0.8);
+  backdrop-filter: blur(16px) saturate(1.7) brightness(0.8);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 8px 20px -8px rgba(0, 0, 0, 0.55);
+}
+
+/* the glass is the mark now: a strip of liquid under it would vanish into
+   the liquid round it */
 body[data-design='flow'] .tab.active::after {
-  left: 16%;
-  right: 16%;
-  background: var(--fl-rainbow) 0 0 / 200% 100%;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--fl-pink) 50%, transparent),
-    0 0 4px color-mix(in srgb, var(--fl-sky) 50%, transparent);
-  -webkit-mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
-  animation: fl-shimmer 8s linear infinite;
+  display: none;
 }
 
 /* ---------- panes ---------- */
@@ -295,13 +317,11 @@ body[data-design='flow'] .design-tile.active {
 }
 
 /* still while the window is in the background, and for less motion */
-body[data-design='flow']:not(.win-focused) :is(.tab.active, .agent-row.selected)::after,
 body[data-design='flow']:not(.win-focused) .agent-row.selected::before {
   animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body[data-design='flow'] .tab.active::after,
   body[data-design='flow'] .agent-row.selected::before {
     animation: none;
   }
