@@ -510,7 +510,7 @@ app.whenReady().then(async () => {
       const outFile = path.join(OUT, scenario.name + '.png');
       let out;
       if (Array.isArray(captured)) {
-        // one finished shot per design, then the four tiled into the image
+        // one finished shot per design, then all of them tiled into the image
         const tiles = [];
         for (const [n, { label, png }] of captured.entries()) {
           const file = path.join(TMP, `${scenario.name}-${n}.png`);
