@@ -21,7 +21,13 @@ function attachLoading(node, { run, marked }) {
     if (ld.done) return;
     ld.done = true;
     ld.timers.forEach(clearTimeout);
-    if (!bar.isConnected) return;
+    // A tab in the background has its panes taken out of the page, so a shell
+    // that comes up there has nothing on screen to fade: the light goes now,
+    // or it is still sweeping when the tab is next shown, and for good.
+    if (!bar.isConnected) {
+      bar.remove();
+      return;
+    }
     bar.classList.remove('on');
     bar.addEventListener('transitionend', (ev) => ev.target === bar && bar.remove());
     setTimeout(() => bar.remove(), 600); // no transition (hidden tab, reduced motion)
