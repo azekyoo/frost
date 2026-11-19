@@ -2106,14 +2106,20 @@ function canonPath(p) {
   return path.resolve(String(p).trim()).replace(/[\\/]+$/, '');
 }
 
+// One git for both answers: starting git costs ~80ms on Windows, and this runs
+// on the process every terminal's input and output passes through. The
+// --abbrev-ref applies to the HEAD after it only, so the commit comes first.
 function gitInfoRaw(cwd) {
-  const b = spawnSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' });
-  if (b.status !== 0) return { git: false, branch: null, baseCommit: null };
-  const h = spawnSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
+  const r = spawnSync('git', ['-C', cwd, 'rev-parse', 'HEAD', '--abbrev-ref', 'HEAD'], {
+    encoding: 'utf8',
+    windowsHide: true
+  });
+  if (r.status !== 0) return { git: false, branch: null, baseCommit: null };
+  const [hash, branch] = (r.stdout || '').split(/\r?\n/).map((s) => s.trim());
   return {
     git: true,
-    branch: (b.stdout || '').trim() || 'HEAD',
-    baseCommit: (h.stdout || '').trim() || 'HEAD'
+    branch: branch || 'HEAD',
+    baseCommit: hash || 'HEAD'
   };
 }
 const gitInfo = stalls.timed('git info', gitInfoRaw);
@@ -2153,40 +2159,8 @@ function unquotePath(p) {
   return Buffer.from(bytes).toString('utf8');
 }
 
-function snapshotBase(cwd, head) {
-  const untracked = new Set();
-  const st = spawnSync('git', ['-C', cwd, ...UTF8_PATHS, 'status', '--porcelain'], { encoding: 'utf8' });
-  for (const line of (st.stdout || '').split(/\r?\n/)) {
-    if (line.startsWith('??')) untracked.add(line);
-  }
-  if (st.status !== 0 || !st.stdout.trim()) return { base: head, untracked };
-  const tmp = path.join(STATUS_DIR, `idx-${process.pid}-${Date.now()}`);
-  try {
-    const real = spawnSync('git', ['-C', cwd, 'rev-parse', '--path-format=absolute', '--git-path', 'index'], {
-      encoding: 'utf8'
-    });
-    // starting from a copy of the real index keeps its stat cache: only
-    // changed files get re-hashed
-    try {
-      fs.copyFileSync((real.stdout || '').trim(), tmp);
-    } catch {
-      // without the real index to start from, the snapshot would be empty and
-      // every file would read as added; HEAD is the honest fallback
-      return { base: head, untracked };
-    }
-    const env = { ...process.env, GIT_INDEX_FILE: tmp };
-    const add = spawnSync('git', ['-C', cwd, 'add', '-u'], { encoding: 'utf8', env });
-    if (add.status !== 0) return { base: head, untracked };
-    const tree = spawnSync('git', ['-C', cwd, 'write-tree'], { encoding: 'utf8', env });
-    const hash = (tree.stdout || '').trim();
-    return tree.status === 0 && hash ? { base: hash, untracked } : { base: head, untracked };
-  } finally {
-    try { fs.unlinkSync(tmp); } catch {}
-  }
-}
-
-// snapshotBase without holding up the process: taken for a repo an agent
-// reaches into mid-session, while every terminal's output passes through here.
+// Taken without holding up the process: every terminal's input and output
+// passes through here, and the snapshot is several gits.
 function gitRun(cwd, args, env) {
   return new Promise((resolve) => {
     execFile('git', ['-C', cwd, ...args], { encoding: 'utf8', env, windowsHide: true, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) =>
@@ -2205,9 +2179,13 @@ async function snapshotBaseAsync(cwd, head) {
   const tmp = path.join(STATUS_DIR, `idx-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
   try {
     const real = await gitRun(cwd, ['rev-parse', '--path-format=absolute', '--git-path', 'index']);
+    // starting from a copy of the real index keeps its stat cache: only
+    // changed files get re-hashed
     try {
       await fs.promises.copyFile(real.stdout.trim(), tmp);
     } catch {
+      // without the real index to start from, the snapshot would be empty and
+      // every file would read as added; HEAD is the honest fallback
       return { base: head, untracked };
     }
     const env = { ...process.env, GIT_INDEX_FILE: tmp };
@@ -2224,12 +2202,15 @@ function registerDetected(agentId, rawCwd) {
   const cwd = canonPath(rawCwd);
   const ptyId = agentId.slice(3); // 'pty<N>' -> '<N>'
   const info = gitInfo(cwd);
-  const snap = info.git ? snapshotBase(cwd, info.baseCommit) : { base: null, untracked: new Set() };
   const rec = {
     ptyId,
     cwd,
-    baseCommit: snap.base,
-    untrackedAtStart: snap.untracked,
+    // HEAD until the snapshot lands: it takes several gits, half a second and
+    // more, and this runs on the process every terminal's input and output
+    // passes through. The diff waits for it on `ready`, as for an extra repo.
+    baseCommit: info.baseCommit,
+    untrackedAtStart: null,
+    ready: null,
     startedAt: Date.now(),
     snapAt: Date.now(),
     git: info.git,
@@ -2245,6 +2226,14 @@ function registerDetected(agentId, rawCwd) {
   };
   agents.set(agentId, rec);
   agentByPty.set(ptyId, rec);
+  if (info.git) {
+    rec.ready = snapshotBaseAsync(cwd, info.baseCommit).then((snap) => {
+      rec.baseCommit = snap.base;
+      rec.untrackedAtStart = snap.untracked;
+      rec.ready = null;
+      if (diffSel?.agentId === agentId && agents.get(agentId) === rec) selectDiff(agentId, diffSel.mode);
+    });
+  }
   const name = path.basename(cwd);
   if (win) {
     broadcast('agent:detected', {
@@ -2857,15 +2846,23 @@ function initAgentInfra() {
   }), 1500);
 }
 
-ipcMain.handle('fonts:list', () => {
-  const names = new Set();
-  for (const hive of ['HKLM', 'HKCU']) {
-    const r = spawnSync(
-      'reg',
-      ['query', hive + '\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts'],
-      { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }
+// reg runs as a child process: waited on rather than blocked on, since every
+// terminal's input and output passes through this process meanwhile
+function regQuery(key) {
+  return new Promise((resolve) => {
+    execFile('reg', ['query', key], { encoding: 'utf8', windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (_err, stdout) =>
+      resolve(stdout || '')
     );
-    for (const line of (r.stdout || '').split(/\r?\n/)) {
+  });
+}
+
+ipcMain.handle('fonts:list', async () => {
+  const names = new Set();
+  const hives = await Promise.all(
+    ['HKLM', 'HKCU'].map((hive) => regQuery(hive + '\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts'))
+  );
+  for (const stdout of hives) {
+    for (const line of stdout.split(/\r?\n/)) {
       const m = /^\s{4}(.+?)\s+REG_SZ\s+/.exec(line);
       if (!m) continue;
       let name = m[1].replace(/\s*\([^)]*\)\s*$/, '').trim();
@@ -2888,20 +2885,23 @@ ipcMain.handle('dialog:pickDir', async (event) => {
 
 ipcMain.handle('agents:getConfig', () => readAgentsCfg());
 
-ipcMain.handle('agents:spawn', (_e, { spacePath }) => {
+ipcMain.handle('agents:spawn', async (_e, { spacePath }) => {
   const cwd = canonPath(spacePath);
   if (!cwd || !fs.existsSync(cwd)) return { error: 'That folder no longer exists: ' + spacePath };
   // any folder will do; outside git there is just no branch and no diff
   const info = gitInfo(cwd);
   const branch = info.branch || '(no git)';
-  const snap = info.git ? snapshotBase(cwd, info.baseCommit) : { base: null, untracked: new Set() };
 
-  // with auto-detect on, the session wrapper handles hooks + registration;
-  // otherwise pre-register the agent and pass the settings file explicitly
+  // with auto-detect on, the session wrapper handles hooks + registration, and
+  // takes its own snapshot when claude starts: none is needed here
   const autoDetect = (readTheme() || DEFAULT_THEME).autoDetectAgents !== false;
   if (autoDetect) {
     return { agentId: null, cwd, branch, git: info.git, run: 'claude' };
   }
+  // otherwise pre-register the agent and pass the settings file explicitly.
+  // Waited on, not blocked on: several gits, and every terminal's input and
+  // output passes through this process.
+  const snap = info.git ? await snapshotBaseAsync(cwd, info.baseCommit) : { base: null, untracked: new Set() };
   const agentId = 'ag-' + ++agentCounter;
   const settingsFile = hookSettingsFile(agentId);
   agents.set(agentId, {
@@ -3213,29 +3213,61 @@ ipcMain.handle('claude:delete-session', async (_e, id) => {
 const FOLDER_LIMIT = 30;
 const transcriptCwds = new Map(); // file -> cwd, or null for one that never started
 
-function transcriptCwd(file, size) {
+// Read off the main process's back: opening a transcript is where the time
+// goes, the first time after a start especially, with a cold disk cache and the
+// virus scanner looking at every file opened, and every terminal's input and
+// output waits behind this process while it reads.
+async function transcriptCwd(file, size) {
   if (transcriptCwds.has(file)) return transcriptCwds.get(file);
   let cwd = null;
+  let fh = null;
   try {
-    const first = jsonLines(readSlice(file, 0, Math.min(size, 64 * 1024))).find((l) => l.cwd);
-    if (first) cwd = canonPath(first.cwd);
-  } catch {}
+    fh = await fs.promises.open(file, 'r');
+    const len = Math.min(size, 64 * 1024);
+    const buf = Buffer.alloc(len);
+    const { bytesRead } = await fh.read(buf, 0, len, 0);
+    // the cwd is on one of the first lines: stop parsing there
+    for (const line of buf.toString('utf8', 0, bytesRead).split('\n')) {
+      if (!line.startsWith('{') || !line.includes('"cwd"')) continue;
+      try {
+        const l = JSON.parse(line);
+        if (l.cwd) {
+          cwd = canonPath(l.cwd);
+          break;
+        }
+      } catch {} // the cut at the end of the slice
+    }
+  } catch {
+  } finally {
+    await fh?.close().catch(() => {});
+  }
   // an empty one may simply not have been written to yet; ask again next time
   if (cwd || size > 0) transcriptCwds.set(file, cwd);
   return cwd;
 }
 
-function recentClaudeFolders() {
+// Claude Code names each project folder after the directory its sessions ran
+// in, so every transcript in one folder gives the same answer: only the newest
+// of each is opened, rather than all of them. With fewer folders than the limit
+// that used to be every transcript on disk, hundreds of files, and a freeze of
+// seconds the first time New session was opened after a start.
+async function recentClaudeFolders() {
   const files = scanTranscripts().sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
+  const doneDirs = new Set();
   const seen = new Set();
   const out = [];
   for (const f of files) {
     if (out.length >= FOLDER_LIMIT) break;
-    const cwd = transcriptCwd(f.file, f.st.size);
-    const key = String(cwd || '').toLowerCase();
-    if (!cwd || seen.has(key)) continue;
+    const dir = path.dirname(f.file);
+    if (doneDirs.has(dir)) continue;
+    const cwd = await transcriptCwd(f.file, f.st.size);
+    // a session that never started says nothing: the next one in its folder may
+    if (!cwd) continue;
+    doneDirs.add(dir);
+    const key = cwd.toLowerCase();
+    if (seen.has(key)) continue;
     seen.add(key);
-    if (fs.existsSync(cwd)) out.push(cwd);
+    if (await fs.promises.access(cwd).then(() => true, () => false)) out.push(cwd);
   }
   return out;
 }
@@ -3639,7 +3671,8 @@ function selectDiff(agentId, mode) {
     return;
   }
   const repos = [];
-  if (rec.git) {
+  // its snapshot still being taken: left out, and this runs again when it lands
+  if (rec.git && !rec.ready) {
     repos.push({
       main: true,
       cwd: rec.cwd,
@@ -3668,6 +3701,8 @@ function selectDiff(agentId, mode) {
   scanTranscriptEdits(agentId); // calls back here if it finds another repo
   if (!repos.length) {
     watchDiff(null);
+    // a repo whose snapshot is on its way is not "no git": say nothing yet
+    if (rec.ready) return;
     broadcast('agent:diff', { key: 'agent:' + agentId, patch: '', status: '', nogit: true, extra: [] });
     return;
   }
