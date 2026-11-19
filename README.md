@@ -96,7 +96,8 @@ your user only, so no admin is needed. There's also a portable exe that needs no
 install.
 
 The installer adds **Open Frost here** to the folder right-click menu and `frost`
-to your PATH (`frost .` opens a tab in the current folder).
+to your PATH (`frost .` opens a tab in the current folder; `--run "<cmd>"` types
+a command there once the shell is up).
 
 Needs Windows 11 for acrylic and mica (glass works anywhere). Agent mode needs
 [Claude Code](https://claude.com/claude-code) on PATH.

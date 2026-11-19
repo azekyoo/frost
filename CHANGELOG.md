@@ -3,6 +3,46 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 2.11.0 — 2026-11-19
+
+### Added
+
+- **Two new designs: Classic Terminal and Candy Swirl.** Classic Terminal is
+  black with mono chrome and ANSI-coloured accents. Candy Swirl puts a slowly
+  moving liquid gradient behind the whole window, with every block a sheet of
+  tinted glass over it. Both are in Settings next to the other four.
+- **`--run` and `--profile` on the command line.** `frost <dir> --run "<cmd>"`
+  opens a tab in that folder and types the command once the shell is ready,
+  for example a session manager reopening `claude --resume <id>`.
+  `--profile <id>` picks the shell (`pwsh`, `cmd`, `git-bash`, `wsl-ubuntu`
+  and so on). With Frost already running, you get a new tab. Thanks to the
+  issue #15 reporter for the idea.
+
+### Changed
+
+- **Typing stays quick with the GPU renderer on, however many shells are
+  open.** Only panes on screen, plus the two you hid last, hold a GPU
+  context, instead of one per shell. Panes you switch back to are drawn before
+  they show, with no blink.
+- **Fewer short freezes.** Listing session folders and fonts and snapshotting
+  an agent's repo no longer hold up the window.
+
+### Fixed
+
+- **An update cut short by signing out or sleep now finishes.** If Windows
+  stopped the installer partway, Frost could fail to start until reinstalled.
+  The update now completes at your next sign-in. This protects updates from
+  2.11.0 onwards.
+- **The sessions list no longer calls a session open elsewhere after a
+  reboot** just because Windows gave its old process id to another program.
+- **WSL profiles open in the folder you asked for** instead of always at `~`.
+- **Launching `frost` again while it runs no longer breaks a Git Bash tab**
+  in the running window.
+- **The loading light leaves a pane whose shell starts while its tab is in
+  the background.** It used to keep running.
+- **`stalls.log` names more of what held a freeze up**: timers, shell output,
+  and window, power and updater events.
+
 ## 2.10.0 — 2026-11-17
 
 ### Added

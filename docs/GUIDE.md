@@ -169,7 +169,10 @@ running and supervising Claude Code agents with live status and diff watching.
   your agents in two. It moves between windows like any tab, agents and all
 - **Opens where you're working** — `frost .` opens a tab in that directory, and
   the installer adds **Open Frost here** to the folder right-click menu. If Frost
-  is already running you get a new tab, not a second window
+  is already running you get a new tab, not a second window. `frost <dir> --run "<cmd>"`
+  also types a command once the shell is ready (say `claude --resume <id>`),
+  and `--profile <id>` picks the shell: `pwsh`, `powershell`, `cmd`,
+  `git-bash` or `wsl-<distro>`, like `wsl-ubuntu`
 - **Picks up where you left off** — every window comes back with its own size,
   position, maximized state, tabs and split layout, each pane reopened in the
   directory it was in. Written continuously, so a crash doesn't lose it. Toggle
@@ -304,7 +307,9 @@ The installer also adds:
 - **Open Frost here** in the folder right-click menu (on a folder, or on empty
   space inside one)
 - **`frost`** on your PATH — `frost .` opens a tab in that directory. If Frost is
-  already running, it opens a new tab there instead of a second window
+  already running, it opens a new tab there instead of a second window.
+  Add `--run "<cmd>"` to type a command in that tab once its shell is up, and
+  `--profile <id>` to pick the shell
 
 The installed build updates itself: it checks GitHub for a newer release,
 downloads it in the background and installs it when you next quit Frost. The
