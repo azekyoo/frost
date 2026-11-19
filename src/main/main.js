@@ -4758,7 +4758,8 @@ ipcMain.on('update:install', () => {
 
 // A shell context-menu click on a second folder should land in the window
 // already open, not start a rival process that fights over window.json.
-if (!app.requestSingleInstanceLock(startupLaunch || {})) {
+const primaryInstance = app.requestSingleInstanceLock(startupLaunch || {});
+if (!primaryInstance) {
   app.quit();
 } else {
   app.on('second-instance', (_e, _argv, _cwd, additionalData) => {
@@ -4772,6 +4773,11 @@ if (!app.requestSingleInstanceLock(startupLaunch || {})) {
 }
 
 app.whenReady().then(() => {
+  // A second launch has handed its arguments over and is quitting, but quitting
+  // doesn't stop 'ready': without this it went on to start up, and emptied the
+  // agent-status folder the running Frost was using — status files, and the
+  // rc file a Git Bash tab opened for that very launch was about to read.
+  if (!primaryInstance) return;
   // A run from source is launched by electron.exe, so Windows identifies the
   // taskbar button as Electron's and paints Electron's logo whatever icon the
   // window carries. An id of its own breaks that association and sends Windows
