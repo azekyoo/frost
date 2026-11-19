@@ -13,6 +13,10 @@
 //   Windows killing the app is only ever seen this way.
 // Only the synchronous part of a handler is timed: an await hands the thread
 // back, so it can't be what froze it.
+// Labelled: every IPC handler, every timer (named after its function, or its
+// source quoted when slow), shell output and exit, and the events of the
+// windows, app, screen, power monitor and updater. What is left unlabelled is
+// a promise callback, which there is no cheap way to name.
 
 const { Worker } = require('worker_threads');
 const fs = require('fs');
@@ -36,10 +40,19 @@ function write(line) {
   fs.appendFile(logFile, `${new Date().toISOString()} ${line}\n`, () => {});
 }
 
+// The bytes for each name are made once: labels are set on every shell's
+// output and every timer, and building a buffer each time would cost more
+// than the call being labelled.
+const labelBytes = new Map();
 function setLabel(name) {
   if (!label) return;
+  let bytes = labelBytes.get(name);
+  if (!bytes) {
+    bytes = Buffer.from(String(name)).subarray(0, LABEL_BYTES);
+    if (labelBytes.size < 2000) labelBytes.set(name, bytes);
+  }
   label.fill(0);
-  label.set(Buffer.from(String(name)).subarray(0, LABEL_BYTES));
+  label.set(bytes);
 }
 
 // The labelled calls running right now, outermost first, joined with " > ".
@@ -49,23 +62,59 @@ let current = '';
 // inside another labelled one is named by the whole chain ("status tick >
 // titles > scan transcripts"), so a freeze points at the step that held it,
 // and the outer label is put back on the way out.
-function timed(name, fn) {
+// `detail`, if given, is only asked for when the call was slow: a timer is
+// named after its function, and an anonymous one says nothing until its source
+// is quoted.
+function run(name, fn, self, args, detail) {
+  const outer = current;
+  const outerStart = beat ? beat[1] : 0;
+  current = outer ? outer + ' > ' + name : name;
+  setLabel(current);
+  const t = performance.now();
+  if (beat) beat[1] = Date.now();
+  try {
+    return fn.apply(self, args);
+  } finally {
+    const ms = performance.now() - t;
+    if (ms > SLOW_MS) write(`slow ${Math.round(ms)}ms ${current}${detail ? ' — ' + detail() : ''}`);
+    current = outer;
+    setLabel(outer);
+    if (beat) beat[1] = outerStart;
+  }
+}
+
+function timed(name, fn, detail) {
   return function (...args) {
-    const outer = current;
-    const outerStart = beat ? beat[1] : 0;
-    current = outer ? outer + ' > ' + name : name;
-    setLabel(current);
-    const t = performance.now();
-    if (beat) beat[1] = Date.now();
-    try {
-      return fn.apply(this, args);
-    } finally {
-      const ms = performance.now() - t;
-      if (ms > SLOW_MS) write(`slow ${Math.round(ms)}ms ${current}`);
-      current = outer;
-      setLabel(outer);
-      if (beat) beat[1] = outerStart;
-    }
+    return run(name, fn, this, args, detail);
+  };
+}
+
+const sourceOf = (fn) => String(fn).replace(/\s+/g, ' ').slice(0, 160);
+
+// Timers, Frost's own and its libraries': a freeze in one used to be logged as
+// "unlabelled", with nothing to go on.
+function labelTimers() {
+  for (const k of ['setTimeout', 'setInterval', 'setImmediate']) {
+    const orig = global[k];
+    const wrapped = function (fn, ...rest) {
+      if (typeof fn !== 'function') return orig.call(this, fn, ...rest);
+      return orig.call(this, timed('timer ' + (fn.name || 'anonymous'), fn, () => sourceOf(fn)), ...rest);
+    };
+    // util.promisify(setTimeout) looks for this
+    const custom = require('util').promisify.custom;
+    if (orig[custom]) wrapped[custom] = orig[custom];
+    global[k] = wrapped;
+  }
+}
+
+// Every event an object emits, run under `prefix event`: window moves and
+// resizes, power and display changes, the updater. Its listeners are named by
+// the event that called them.
+function labelEmitter(obj, prefix) {
+  if (!obj || typeof obj.emit !== 'function') return;
+  const emit = obj.emit;
+  obj.emit = function (ev, ...args) {
+    return run(prefix + ' ' + String(ev), emit, this, [ev, ...args]);
   };
 }
 
@@ -87,7 +136,7 @@ setInterval(() => {
   if (reported) return;
   reported = beat[0];
   const end = label.indexOf(0);
-  const name = Buffer.from(label.subarray(0, end < 0 ? label.length : end)).toString() || '(unlabelled: window event, watcher or timer)';
+  const name = Buffer.from(label.subarray(0, end < 0 ? label.length : end)).toString() || '(unlabelled: a promise callback, or native code between calls)';
   const since = beat[1] ? Math.round(now - beat[1]) + 'ms in it' : 'not in a labelled call';
   try {
     fs.appendFileSync(workerData.logFile, new Date().toISOString() + ' frozen ' + Math.round(now - beat[0]) + 'ms, running: ' + name + ' (' + since + ')\\n');
@@ -103,6 +152,7 @@ function install(ipcMain, userData) {
     beat = new Float64Array(beatBuf);
     label = new Uint8Array(labelBuf);
     beat[0] = Date.now();
+    // the heartbeat itself stays unlabelled: started before labelTimers
     setInterval(() => (beat[0] = Date.now()), TICK_MS).unref();
     new Worker(WATCHDOG, { eval: true, workerData: { beat: beatBuf, label: labelBuf, logFile } }).unref();
   } catch (e) {
@@ -114,6 +164,7 @@ function install(ipcMain, userData) {
   const handle = ipcMain.handle.bind(ipcMain);
   ipcMain.on = (channel, fn) => on(channel, timed('ipc ' + channel, fn));
   ipcMain.handle = (channel, fn) => handle(channel, timed('ipc ' + channel, fn));
+  labelTimers();
 }
 
-module.exports = { install, timed };
+module.exports = { install, timed, labelEmitter };

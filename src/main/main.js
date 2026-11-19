@@ -9,6 +9,7 @@ const {
   ipcMain,
   shell,
   nativeTheme,
+  powerMonitor,
   screen,
   dialog
 } = require('electron');
@@ -554,12 +555,14 @@ async function buildWallpaperLayout(quick) {
 function loadWallpaper(quick) {
   wallpaperQueue = wallpaperQueue
     .then(() => buildWallpaperLayout(quick))
-    .then((changed) => {
+    // megabytes of images copied into each window, from a promise callback
+    // that nothing else names
+    .then(stalls.timed('send wallpaper', (changed) => {
       if (!changed || quick) return;
       for (const w of liveWindows()) {
         if (w.isFramelessMode) w.webContents.send('glass:wallpaper', wallpaperLayout);
       }
-    })
+    }))
     .catch(() => {});
   return wallpaperQueue;
 }
@@ -986,6 +989,9 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   }
 
   const w = new BrowserWindow(opts);
+  // not its webContents: everything a page sends is an IPC call, labelled
+  // already, and its events would only add a second name on the busiest path
+  stalls.labelEmitter(w, 'window');
   // Windows is signing out or shutting down: a waiting update must not start
   // installing now, because the session ending kills the installer between
   // removing the old version and copying the new one, and Frost no longer
@@ -1559,7 +1565,7 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
   });
   ptys.set(id, p);
   ptyMeta.set(id, { profileId: profile.id, profileName: profile.name });
-  p.onData((data) => {
+  p.onData(stalls.timed('pty data', (data) => {
     const rec = agentByPty.get(id);
     // A resize or a focus change makes ConPTY repaint, and that repaint is not
     // the agent doing work — counting it flipped an idle agent to "working"
@@ -1586,8 +1592,8 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
     spareWatch(id, data);
     const shown = spareFilter(id, data);
     if (shown) sendToOwner(id, 'pty:data', { id, data: shown });
-  });
-  p.onExit(({ exitCode }) => {
+  }));
+  p.onExit(stalls.timed('pty exit', ({ exitCode }) => {
     clearTimeout(typeAhead.get(id)?.timer);
     typeAhead.delete(id);
     spareGone(id);
@@ -1595,7 +1601,7 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
     sendToOwner(id, 'pty:exit', { id, exitCode });
     ptyOwners.delete(id);
     ptyMeta.delete(id);
-  });
+  }));
   // both dialects draw the 133;A prompt marker, with or without the wrapper
   if (run) holdForRun(id, run, dialect !== 'none');
   return { id, profileId: profile.id, profileName: profile.name };
@@ -4553,6 +4559,7 @@ function getUpdater() {
   // place that knows whether the release found is the one already waiting.
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
+  stalls.labelEmitter(autoUpdater, 'updater');
   autoUpdater.on('checking-for-update', () => setUpdateState({ stage: 'checking', message: '' }));
   autoUpdater.on('update-not-available', (info) =>
     setUpdateState({ stage: 'current', latest: info?.version || null, message: '' })
@@ -4813,6 +4820,10 @@ app.whenReady().then(() => {
   // agent-status folder the running Frost was using — status files, and the
   // rc file a Git Bash tab opened for that very launch was about to read.
   if (!primaryInstance) return;
+  // whatever these set off is named in stalls.log, rather than "unlabelled"
+  stalls.labelEmitter(app, 'app');
+  stalls.labelEmitter(screen, 'screen');
+  stalls.labelEmitter(powerMonitor, 'power');
   // A run from source is launched by electron.exe, so Windows identifies the
   // taskbar button as Electron's and paints Electron's logo whatever icon the
   // window carries. An id of its own breaks that association and sends Windows
