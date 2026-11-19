@@ -37,6 +37,10 @@ function attachLoading(node, { run, marked }) {
     }, LOAD_SHOW_AFTER),
     setTimeout(finish, LOAD_CAP_MS)
   );
+  // Any other command is typed at the shell's first prompt and the shell is
+  // ready then, as for a plain pane: only claude has a prompt of its own to
+  // wait for.
+  if (run && !/^\s*claude(\.exe|\.cmd)?(\s|$)/i.test(run)) run = null;
   if (run) {
     // claude switches on focus reporting once its prompt is up. ConPTY does
     // too, as the shell starts — so only one after the shell's first prompt,

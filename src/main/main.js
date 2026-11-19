@@ -1442,6 +1442,17 @@ const RUN_MARKED_CAP_MS = 10000;
 // claude that never draws (not installed, a typo in a profile): give the keys
 // back to the shell rather than swallow them.
 const HOLD_CAP_MS = 15000;
+// Bash draws the marker from PROMPT_COMMAND, just before readline takes the
+// terminal, and Git Bash's readline throws away input that arrived before it
+// did: the command is typed a moment after the marker instead.
+const RUN_AFTER_PROMPT_MS = 150;
+
+// Only claude draws a prompt of its own after the command: anything else
+// (`git status`, `npm test`) is done with once it's typed, and holding the keys
+// for a claude prompt that never comes would swallow them for HOLD_CAP_MS.
+function runsClaude(run) {
+  return /^\s*claude(\.exe|\.cmd)?(\s|$)/i.test(run);
+}
 
 function holdForRun(id, run, marked) {
   const ta = { run, stage: 'shell', held: [], timer: null };
@@ -1457,6 +1468,7 @@ function typeRun(id) {
   try {
     ptys.get(id)?.write(ta.run + '\r');
   } catch {}
+  if (!runsClaude(ta.run)) return releaseTypeAhead(id);
   ta.timer = setTimeout(() => releaseTypeAhead(id), HOLD_CAP_MS);
 }
 
@@ -1476,7 +1488,10 @@ function releaseTypeAhead(id) {
 function watchTypeAhead(id, data) {
   const ta = typeAhead.get(id);
   if (!ta) return;
-  if (ta.stage === 'shell' && data.includes('\x1b]133;A')) typeRun(id);
+  if (ta.stage === 'shell' && data.includes('\x1b]133;A')) {
+    clearTimeout(ta.timer);
+    ta.timer = setTimeout(() => typeRun(id), RUN_AFTER_PROMPT_MS);
+  }
   else if (ta.stage === 'claude' && data.includes('\x1b[?1004h')) releaseTypeAhead(id);
 }
 
