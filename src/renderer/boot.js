@@ -141,8 +141,14 @@ document.getElementById('btn-min').addEventListener('click', () => api.winMinimi
 document.getElementById('btn-max').addEventListener('click', () => api.winMaximize());
 document.getElementById('btn-close').addEventListener('click', () => api.winClose());
 
+// A launch from the command line: a directory, a command to run in it, a
+// profile, any of them optional (main sends none when all are missing).
+function openLaunch({ dir, run, profileId }) {
+  return newTab({ cwd: dir || undefined, run: run || undefined, profileId: profileId || undefined });
+}
+
 (async () => {
-  const { theme, css, frameless, home, openDir } = await api.themeGet();
+  const { theme, css, frameless, home, launch } = await api.themeGet();
   state.home = home || null;
   glassState.active = Boolean(frameless);
   if (frameless) {
@@ -173,17 +179,17 @@ document.getElementById('btn-close').addEventListener('click', () => api.winClos
   const moved = await api.tabPending();
   if (moved) {
     await adoptTab(moved);
-  } else if (openDir) {
-    // launched as `frost <dir>` or from "Open Frost here": that directory is the
-    // whole point of the launch, so it wins over the saved layout
-    await newTab({ cwd: openDir });
+  } else if (launch) {
+    // launched as `frost <dir>`, from "Open Frost here", or with --run: that tab
+    // is the whole point of the launch, so it wins over the saved layout
+    await openLaunch(launch);
   } else {
     const session = theme.restoreSession === false ? null : await api.sessionGet();
     const restored = session?.tabs?.length ? await restoreTabs(session) : false;
     if (!restored) await newTab();
   }
 
-  api.onOpenDir((dir) => newTab({ cwd: dir }));
+  api.onLaunch(openLaunch);
 
   // Belt and braces: one atlas rebuild after boot in case a font swapped late
   setTimeout(() => {

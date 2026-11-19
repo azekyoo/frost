@@ -3,7 +3,7 @@
 
 // ---------- tabs ----------
 
-async function newTab({ profileId, cwd } = {}) {
+async function newTab({ profileId, cwd, run } = {}) {
   const tab = {
     id: 'tab-' + ++tabCounter,
     title: '',
@@ -12,7 +12,7 @@ async function newTab({ profileId, cwd } = {}) {
     contentEl: document.createElement('div')
   };
   tab.contentEl.className = 'tab-content';
-  const leaf = await createPane({ profileId, cwd });
+  const leaf = await createPane({ profileId, cwd, run });
   tab.title = leaf.profileName || 'shell';
   tab.root = leaf;
   state.tabs.push(tab);
