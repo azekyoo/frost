@@ -250,23 +250,104 @@ function pasteInto(node) {
 
 // GPU (WebGL) renderer: enables customGlyphs box-drawing and faster rendering.
 // Falls back to the DOM renderer if WebGL is unavailable.
+//
+// Each WebGL pane owns a whole GL context in the GPU process: its own canvas,
+// glyph atlas and buffers. Handing one to every shell, hidden tabs and spare
+// shells included, put a dozen contexts in the GPU process and made typing lag,
+// against a Chromium ceiling of about sixteen. So a pane holds a context only
+// while it is on screen, plus a couple of recently hidden ones, so flipping
+// between tabs comes back already drawn rather than rebuilding the atlas.
+const GPU_HIDDEN_KEEP = 2;
+const gpuPanes = new Map(); // pane element -> node, for the observer below
+
+const gpuWatch = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const node = gpuPanes.get(e.target);
+    if (!node) continue;
+    node.onScreen = e.isIntersecting;
+    if (!node.onScreen) node.hiddenAt = Date.now();
+    applyGpu(node);
+  }
+  trimHiddenGpu();
+});
+
+// Called once per pane: from then on its context follows its visibility. The
+// addon is never used as an addon; xterm disposes it with the terminal, which
+// is the one place every way of closing a pane goes through.
+function watchGpu(node) {
+  node.onScreen = false;
+  gpuPanes.set(node.el, node);
+  gpuWatch.observe(node.el);
+  node.term.loadAddon({
+    activate() {},
+    dispose() {
+      gpuWatch.unobserve(node.el);
+      gpuPanes.delete(node.el);
+    }
+  });
+}
+
+// The observer only reports a pane coming into view after that frame has been
+// painted, so a pane switched to would flash one frame from the DOM renderer
+// before the GPU one took over. Whatever shows a pane calls this right after,
+// and the context is there for the very first frame.
+function gpuShowWithin(root) {
+  if (state.theme?.gpuRenderer !== true || !root) return;
+  for (const [el, node] of gpuPanes) {
+    // offsetParent is null under display:none, which is how hidden panes hide
+    if (!root.contains(el) || el.offsetParent === null) continue;
+    node.onScreen = true;
+    applyGpu(node);
+    drawNow(node);
+  }
+  trimHiddenGpu();
+}
+
+// xterm pauses a terminal that is out of the page and only resumes on its own
+// IntersectionObserver, which, like ours, reports after the frame is painted.
+// A WebGL canvas made while paused is blank until then: one empty frame, the
+// blink on a tab shown for the first time. Resume it and draw once, now. These
+// are xterm internals (kept by its build, see tools/patch-xterm-alpha.js for
+// another reach-in); if a version renames them this does nothing, and the
+// observer still catches up a frame later.
+function drawNow(node) {
+  const rs = node.term?._core?._renderService;
+  if (!rs || typeof rs._handleIntersectionChange !== 'function' || typeof rs._renderRows !== 'function') return;
+  try {
+    rs._handleIntersectionChange({ isIntersecting: true, intersectionRatio: 1 });
+    rs._renderRows(0, node.term.rows - 1);
+  } catch {}
+}
+
+// Hidden panes past the newest few give their context back.
+function trimHiddenGpu() {
+  const hidden = [...gpuPanes.values()]
+    .filter((n) => n.webgl && !n.onScreen)
+    .sort((a, b) => b.hiddenAt - a.hiddenAt);
+  for (const node of hidden.slice(GPU_HIDDEN_KEEP)) dropGpu(node);
+}
+
+function dropGpu(node) {
+  try {
+    node.webgl?.dispose();
+  } catch {}
+  node.webgl = null;
+}
+
 function applyGpu(node) {
-  // opt-in, not opt-out: see the note on gpuRenderer in the default theme
-  const want = state.theme?.gpuRenderer === true;
+  // opt-in, not opt-out: see the note on gpuRenderer in the default theme.
+  // A pane going off screen keeps what it has; trimHiddenGpu decides that.
+  const want = state.theme?.gpuRenderer === true && (node.onScreen || !!node.webgl);
   if (want && !node.webgl) {
     try {
       node.webgl = new WebglAddon.WebglAddon();
-      node.webgl.onContextLoss(() => {
-        node.webgl?.dispose();
-        node.webgl = null;
-      });
+      node.webgl.onContextLoss(() => dropGpu(node));
       node.term.loadAddon(node.webgl);
     } catch {
       node.webgl = null;
     }
   } else if (!want && node.webgl) {
-    node.webgl.dispose();
-    node.webgl = null;
+    dropGpu(node);
   }
 }
 

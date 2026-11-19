@@ -227,6 +227,7 @@ function setCenterVisible(tab, leaf) {
   const switching =
     leaf.el.style.display === 'none' && [...tab.centerLeaves].some((l) => l !== leaf && l.el.style.display !== 'none');
   for (const l of tab.centerLeaves) l.el.style.display = l === leaf ? '' : 'none';
+  gpuShowWithin(leaf.el);
   if (switching && !reduceMotion.matches) {
     leaf.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' }).id = 'motion-agent-switch';
   }
@@ -590,6 +591,7 @@ function showDockLeaf(tab, leaf, { focus = true, animate = false } = {}) {
   tab.dockShown = leaf;
   tab.els.dock.hidden = false;
   tab.els.dockGutter.hidden = false;
+  gpuShowWithin(leaf.el);
   tab.els.dockName.textContent = String(leaf.dockCwd || '').split(/[\\/]/).pop() || 'Shell';
   tab.els.dockName.title = leaf.dockCwd || '';
   renderDockSend(tab);
@@ -779,6 +781,7 @@ function selectAgent(tab, agentId, { focus = true } = {}) {
     if (focus) setCenterVisible(tab, agent.leaf);
     else {
       for (const l of tab.centerLeaves) l.el.style.display = l === agent.leaf ? '' : 'none';
+      gpuShowWithin(agent.leaf.el);
       syncDock(tab, agent.leaf);
       agent.leaf.fit.fit();
     }

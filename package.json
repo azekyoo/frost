@@ -26,7 +26,8 @@
     "test:hover": "electron tools/hovertest.js",
     "test:clear": "electron tools/cleartest.js",
     "test:loading": "electron tools/loadtest.js",
-    "test:spare": "electron tools/sparetest.js"
+    "test:spare": "electron tools/sparetest.js",
+    "test:gpu": "electron tools/gputest.js"
   },
   "license": "MIT",
   "author": "azekyoo",

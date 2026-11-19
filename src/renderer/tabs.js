@@ -25,6 +25,7 @@ async function newTab({ profileId, cwd, run } = {}) {
 function activateTab(tab) {
   state.activeTab = tab;
   el.content.replaceChildren(tab.contentEl);
+  gpuShowWithin(tab.contentEl);
   renderTabs();
   saveSession();
   markAgentsSeen();

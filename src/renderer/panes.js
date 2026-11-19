@@ -1746,7 +1746,7 @@ async function createPane(opts = {}) {
     branch: null,
     oscTitle: null
   };
-  applyGpu(node);
+  watchGpu(node);
   applyLigatures(node, theme.font?.ligatures !== false);
   attachPaneSearch(node);
   attachCwdTracking(node);
