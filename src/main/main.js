@@ -2983,27 +2983,104 @@ const scanTranscripts = stalls.timed('scan transcripts', scanTranscriptsRaw);
 // — session id, cwd, and the name /rename gave it. It is not a documented
 // format, so anything unexpected just means "nothing known to be running".
 // A file whose process is gone is left over from a crash, and doesn't count.
-function runningClaudeSessionsRaw() {
-  const running = new Map(); // session id -> { pid, name, custom }
+//
+// Nor does one whose pid is alive but belongs to someone else now: a file left
+// behind by a shutdown outlives its claude, and after a reboot Windows hands
+// the same pid to svchost or whatever starts first. Claude Code writes the
+// process's creation time beside the pid (`procStart`, a FILETIME), so the
+// owner of that pid now has to have started at that same instant.
+function readClaudeRegistry() {
+  const out = [];
   const dir = path.join(CLAUDE_DIR, 'sessions');
   let names = [];
   try {
     names = fs.readdirSync(dir);
   } catch {
-    return running;
+    return out;
   }
   for (const n of names) {
     if (!/^\d+\.json$/.test(n)) continue;
     try {
       const s = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'));
-      if (!s.sessionId || !s.pid) continue;
+      if (!s.sessionId || !Number.isInteger(s.pid) || s.pid <= 0) continue;
       try {
         process.kill(s.pid, 0); // signal 0 only asks whether it exists
       } catch (e) {
         if (e.code === 'ESRCH') continue;
       }
-      running.set(s.sessionId, { pid: s.pid, name: s.name || null, custom: s.nameSource === 'user' });
+      out.push(s);
     } catch {}
+  }
+  return out;
+}
+
+// "pid:procStart" -> { ours, at }: whether the process now holding that pid is
+// the one that wrote the file. A no is final — that claude is gone for good —
+// while a yes is asked again after a while, in case it has since died and its
+// pid been reused.
+const procChecks = new Map();
+const PROC_RECHECK_MS = 60000;
+const procKey = (s) => `${s.pid}:${s.procStart}`;
+const canCheckProc = (s) => process.platform === 'win32' && typeof s.procStart === 'string' && /^\d+$/.test(s.procStart);
+
+// Creation times of the given pids, as FILETIME strings; a pid that is gone,
+// or whose start can't be read (another user's, a system service), is left
+// out. Null when the lookup itself failed.
+function processStartTimes(pids) {
+  const script =
+    `Get-Process -Id ${pids.join(',')} -ErrorAction SilentlyContinue | ForEach-Object {` +
+    ` try { '{0} {1}' -f $_.Id, $_.StartTime.ToFileTimeUtc() } catch {} }; 'done'`;
+  return new Promise((resolve) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { encoding: 'utf8', windowsHide: true, timeout: 15000 }, (err, stdout) => {
+        const lines = String(stdout || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (err || lines[lines.length - 1] !== 'done') return resolve(null);
+        const starts = new Map();
+        for (const l of lines) {
+          const m = /^(\d+) (\d+)$/.exec(l);
+          if (m) starts.set(Number(m[1]), m[2]);
+        }
+        resolve(starts);
+      });
+  });
+}
+
+let procCheckRun = null;
+async function checkClaudeProcessesNow() {
+  const now = Date.now();
+  const due = readClaudeRegistry().filter((s) => {
+    if (!canCheckProc(s)) return false;
+    const c = procChecks.get(procKey(s));
+    return !c || (c.ours && now - c.at > PROC_RECHECK_MS);
+  });
+  if (!due.length) return;
+  const starts = await processStartTimes([...new Set(due.map((s) => s.pid))]);
+  for (const s of due) {
+    // a failed lookup proves nothing: trust the pid as before, ask later
+    const ours = starts ? starts.get(s.pid) === s.procStart : true;
+    procChecks.set(procKey(s), { ours, at: Date.now() });
+  }
+}
+
+// Settles every registry file not looked at yet before resolving, so whatever
+// asks next sees the truth; ones only due for a recheck are redone in the
+// background, without holding the caller up.
+function checkClaudeProcesses() {
+  const unknown = readClaudeRegistry().some((s) => canCheckProc(s) && !procChecks.has(procKey(s)));
+  if (!procCheckRun) {
+    procCheckRun = checkClaudeProcessesNow().finally(() => {
+      procCheckRun = null;
+    });
+  }
+  return unknown ? procCheckRun : Promise.resolve();
+}
+
+function runningClaudeSessionsRaw() {
+  const running = new Map(); // session id -> { pid, name, custom }
+  for (const s of readClaudeRegistry()) {
+    // not looked at yet counts as running, as it did before the check existed
+    if (canCheckProc(s) && procChecks.get(procKey(s))?.ours === false) continue;
+    running.set(s.sessionId, { pid: s.pid, name: s.name || null, custom: s.nameSource === 'user' });
   }
   return running;
 }
@@ -3036,7 +3113,10 @@ function listClaudeSessions(exclude = []) {
   return out;
 }
 
-ipcMain.handle('claude:sessions', (_e, exclude) => listClaudeSessions(exclude));
+ipcMain.handle('claude:sessions', async (_e, exclude) => {
+  await checkClaudeProcesses();
+  return listClaudeSessions(exclude);
+});
 
 // Removes a session from disk: its transcript, and the folder beside it that
 // holds its subagents and /rename name. To the Recycle Bin, so a wrong click
@@ -3047,6 +3127,7 @@ ipcMain.handle('claude:delete-session', async (_e, id) => {
   if (!transcriptPaths.has(id)) scanTranscripts();
   const file = transcriptPaths.get(id);
   if (!file) return { error: 'Session not found' };
+  await checkClaudeProcesses();
   if (runningClaudeSessions().has(id)) return { error: 'This session is open somewhere — end it first' };
   try {
     await shell.trashItem(file);
