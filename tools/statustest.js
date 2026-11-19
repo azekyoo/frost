@@ -6,6 +6,7 @@ const { app } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { noteSessions, dropNewSessions } = require('./claude-cleanup');
 
 const ROOT = path.join(__dirname, '..');
 const DEMO = process.env.FROST_SHOT_REPO || 'C:\\dev\\aurora-notes';
@@ -92,6 +93,7 @@ function setup() {
   // a nested claude must not inherit this session's markers
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
 
+  const sessions = noteSessions(DEMO);
   // keep drawing while covered: see the note in panetest.js
   const child = spawn(process.execPath, [ROOT, '--disable-features=CalculateNativeWinOcclusion', `--remote-debugging-port=${PORT}`, `--user-data-dir=${path.join(TMP, 'ud')}`],
     { cwd: ROOT, stdio: 'ignore', env });
@@ -169,6 +171,7 @@ function setup() {
     console.error('FAILED:', e.message);
   } finally {
     spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    await dropNewSessions(sessions);
     app.exit(0);
   }
 })();

@@ -314,6 +314,10 @@ function buildAgentLayout(tab) {
       <div class="rail-section">
         <div class="rail-head">
           <h4>Sessions<span class="rail-count"></span></h4>
+          <button class="rail-sort">
+            <svg class="sort-group" viewBox="0 0 16 16"><path d="M2.5 4.5v8h11v-6.5H8L6.5 4.5z" /></svg>
+            <svg class="sort-time" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3.2l2 1.3" /></svg>
+          </button>
           <button class="rail-refresh" title="Look for new Claude Code sessions">refresh</button>
         </div>
         <div class="sessions-list"></div>
@@ -472,7 +476,13 @@ function buildAgentLayout(tab) {
   }).observe(layout);
 
   layout.querySelector('.rail-refresh').addEventListener('click', () => refreshSessions());
+  layout.querySelector('.rail-sort').addEventListener('click', () => {
+    groupPrefs.sessionsSort = groupPrefs.sessionsSort === 'time' ? 'group' : 'time';
+    saveGroupPrefs();
+    renderSessions();
+  });
   layout.querySelector('.rail-new').addEventListener('click', () => pickSessionFolder(tab));
+  loadGroupPrefs();
 }
 
 // ---------- shell dock ----------
@@ -907,7 +917,7 @@ function setRailCount(list, n) {
 function renderAgentList(tab) {
   // a status tick mid-drag would rebuild the rows out from under the pointer;
   // the drop renders the list again
-  if (agentDrag?.tab === tab) {
+  if (agentDrag?.tab === tab && agentDrag.section === 'agents') {
     renderSessionList(tab);
     return;
   }
@@ -945,19 +955,175 @@ function renderAgentList(tab) {
       ev.preventDefault();
       openAgentMenu(tab, agent, ev.clientX, ev.clientY);
     });
-    rows.push(row);
+    rows.push({ cwd: agent.cwd, row });
   }
-  flipList(tab.els.agentsList, (r) => r.dataset.agentId, () => {
-    tab.els.agentsList.replaceChildren(...rows);
-    if (!rows.length) {
-      const p = document.createElement('p');
-      p.className = 'hint';
-      p.textContent = 'No agents yet — run claude in the terminal';
-      tab.els.agentsList.appendChild(p);
-    }
-  });
+  renderGroups(tab, 'agents', groupItems(rows), 'No agents yet — run claude in the terminal');
   setRailCount(tab.els.agentsList, rows.length);
   renderSessionList(tab);
+}
+
+// ---------- groups ----------
+// Both rail sections are grouped by the repo each session runs in (its git
+// root, else its folder). The groups keep one order across both sections and
+// restarts; a group seen for the first time joins at the bottom. Within a group
+// live agents keep the order they were dragged into, sessions stay newest first.
+
+const groupRoots = new Map(); // cwd -> group root, as main worked it out
+const rootsWanted = new Set(); // cwds asked about, answer not in yet
+let rootsTimer = null;
+// sessionsSort: 'group' (by repo) or 'time' (one list, newest first) — the
+// Sessions section only; live agents are always grouped
+let groupPrefs = { order: [], collapsed: { agents: [], sessions: [] }, sessionsSort: 'group' };
+let groupPrefsLoaded = false;
+let groupPrefsLoading = null;
+let groupSaveTimer = null;
+
+function loadGroupPrefs() {
+  if (groupPrefsLoading) return;
+  groupPrefsLoading = api.agentsGetConfig().then((cfg) => {
+    const g = cfg?.groups;
+    const strs = (a) => (Array.isArray(a) ? a.filter((s) => typeof s === 'string') : []);
+    if (g) {
+      // what was recorded before the file was read stays, after what was saved
+      const order = strs(g.order);
+      for (const k of groupPrefs.order) if (!order.includes(k)) order.push(k);
+      groupPrefs = {
+        order,
+        collapsed: { agents: strs(g.collapsed?.agents), sessions: strs(g.collapsed?.sessions) },
+        sessionsSort: g.sessionsSort === 'time' ? 'time' : 'group'
+      };
+    }
+    groupPrefsLoaded = true;
+    renderAgentLists();
+  });
+}
+
+function saveGroupPrefs() {
+  clearTimeout(groupSaveTimer);
+  groupSaveTimer = setTimeout(() => api.agentsSetGroups(groupPrefs), 300);
+}
+
+// Unknown folders are asked about together, and the lists drawn again once
+// their roots are in. Meanwhile such a row sits in a group of its own folder.
+function wantRoot(cwd) {
+  if (rootsWanted.has(cwd)) return;
+  rootsWanted.add(cwd);
+  clearTimeout(rootsTimer);
+  rootsTimer = setTimeout(async () => {
+    const ask = [...rootsWanted];
+    const got = (await api.claudeRoots(ask)) || {};
+    for (const c of ask) {
+      groupRoots.set(c, got[c] || c);
+      rootsWanted.delete(c);
+    }
+    renderAgentLists();
+  }, 0);
+}
+
+function groupItems(items) {
+  const groups = new Map();
+  for (const { cwd, row } of items) {
+    const known = !cwd || groupRoots.has(cwd);
+    if (!known) wantRoot(cwd);
+    const root = (cwd && groupRoots.get(cwd)) || cwd || '';
+    const key = root.toLowerCase();
+    let g = groups.get(key);
+    if (!g) {
+      g = { key, root, label: root.split(/[\\/]/).pop() || root || 'Elsewhere', rows: [], settled: true };
+      groups.set(key, g);
+    }
+    // a guess at the group: shown, but not given a place in the saved order
+    if (!known) g.settled = false;
+    g.rows.push(row);
+  }
+  if (groupPrefsLoaded) {
+    let added = false;
+    for (const g of groups.values()) {
+      if (g.settled && !groupPrefs.order.includes(g.key)) {
+        groupPrefs.order.push(g.key);
+        added = true;
+      }
+    }
+    if (added) saveGroupPrefs();
+  }
+  const rank = (k) => {
+    const i = groupPrefs.order.indexOf(k);
+    return i < 0 ? Infinity : i;
+  };
+  return [...groups.values()].sort((a, b) => rank(a.key) - rank(b.key));
+}
+
+function toggleGroup(section, key) {
+  const list = groupPrefs.collapsed[section];
+  const i = list.indexOf(key);
+  if (i < 0) list.push(key);
+  else list.splice(i, 1);
+  saveGroupPrefs();
+  renderAgentLists();
+}
+
+function makeGroupEl(tab, section, key) {
+  const el = document.createElement('div');
+  el.className = 'rail-group';
+  el.dataset.group = key;
+  el.innerHTML = `
+    <div class="group-head">
+      <svg class="group-arrow" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4" /></svg>
+      <span class="group-name"></span>
+      <span class="group-count"></span>
+      <button class="group-new"><svg viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></svg></button>
+    </div>
+    <div class="group-rows"></div>`;
+  const head = el.querySelector('.group-head');
+  const add = el.querySelector('.group-new');
+  head.addEventListener('mousedown', (ev) => {
+    if (!add.contains(ev.target)) startGroupDrag(tab, section, el, ev);
+  });
+  head.addEventListener('click', (ev) => {
+    if (dragJustEnded || add.contains(ev.target)) return;
+    toggleGroup(section, key);
+  });
+  add.addEventListener('click', () => {
+    if (el.groupRoot) startSession(tab, el.groupRoot);
+  });
+  return el;
+}
+
+// The group elements are kept from one render to the next, so a row moving
+// within its group, or a group moving in the list, slides there.
+function renderGroups(tab, section, groups, emptyText) {
+  const list = section === 'agents' ? tab.els.agentsList : tab.els.sessionsList;
+  tab.groupEls ??= { agents: new Map(), sessions: new Map() };
+  const els = tab.groupEls[section];
+  const folded = new Set(groupPrefs.collapsed[section]);
+  const rowKey = (r) => r.dataset.agentId || r.dataset.sessionId;
+  const nodes = groups.map((g) => {
+    let el = els.get(g.key);
+    if (!el) {
+      el = makeGroupEl(tab, section, g.key);
+      els.set(g.key, el);
+    }
+    el.groupRoot = g.root;
+    el.querySelector('.group-name').textContent = g.label;
+    el.querySelector('.group-head').title = g.root;
+    el.querySelector('.group-count').textContent = String(g.rows.length);
+    el.querySelector('.group-new').title = `New session in ${g.label}`;
+    el.classList.toggle('collapsed', folded.has(g.key));
+    const rowsEl = el.querySelector('.group-rows');
+    flipList(rowsEl, rowKey, () => rowsEl.replaceChildren(...g.rows));
+    return el;
+  });
+  const shown = new Set(groups.map((g) => g.key));
+  for (const k of [...els.keys()]) if (!shown.has(k)) els.delete(k);
+  flipList(list, (n) => n.dataset?.group, () => {
+    list.replaceChildren(...nodes);
+    if (!nodes.length) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = emptyText;
+      list.appendChild(p);
+    }
+  });
 }
 
 // ---------- reordering agents ----------
@@ -967,13 +1133,44 @@ function renderAgentList(tab) {
 
 const DRAG_THRESHOLD = 4; // px of movement before a press becomes a drag
 
+// An agent row moves only within its own group, so a drop can't carry it into
+// another repo's group; the Map's order is the list's order, in every agent tab.
 function startAgentDrag(tab, row, ev) {
+  startRailDrag(tab, 'agents', row, ev, '.agent-row', (list) => {
+    const order = [...list.querySelectorAll(':scope > .agent-row')].map((r) => r.dataset.agentId);
+    const moved = new Set(order);
+    let i = 0;
+    const ids = [...globalAgents.keys()].map((id) => (moved.has(id) ? order[i++] : id));
+    const entries = ids.map((id) => [id, globalAgents.get(id)]).filter(([, a]) => a);
+    globalAgents.clear();
+    for (const [id, a] of entries) globalAgents.set(id, a);
+  });
+}
+
+// A whole group, by its heading, up or down its section. Both sections share
+// one order, so the same group moves in the other one too.
+function startGroupDrag(tab, section, group, ev) {
+  startRailDrag(tab, section, group, ev, '.rail-group', (list) => {
+    const keys = [...list.querySelectorAll(':scope > .rail-group')]
+      .map((g) => g.dataset.group)
+      .filter((k) => groupPrefs.order.includes(k));
+    const moved = new Set(keys);
+    let i = 0;
+    groupPrefs.order = groupPrefs.order.map((k) => (moved.has(k) ? keys[i++] : k));
+    saveGroupPrefs();
+  });
+}
+
+function startRailDrag(tab, section, row, ev, sel, onDrop) {
   if (ev.button !== 0 || agentDrag) return;
-  const list = tab.els.agentsList;
+  const list = row.parentElement;
   agentDrag = {
     tab,
+    section,
     row,
     list,
+    sel,
+    onDrop,
     startY: ev.clientY,
     grabTop: row.getBoundingClientRect().top,
     base: row.offsetTop,
@@ -998,16 +1195,16 @@ function onAgentDragMove(ev) {
   ev.preventDefault();
   // the row goes in front of the first other row whose middle is below the pointer
   // (judged by where rows sit, not where a slide is showing them mid-way)
-  const others = [...d.list.querySelectorAll('.agent-row')].filter((r) => r !== d.row);
+  const others = [...d.list.querySelectorAll(`:scope > ${d.sel}`)].filter((r) => r !== d.row);
   const next = others.find((r) => {
     const b = r.getBoundingClientRect();
     return ev.clientY < b.top - slideOffset(r) + b.height / 2;
   });
   const last = others[others.length - 1];
   if (next) {
-    if (d.row.nextElementSibling !== next) slideRows(d.list, () => d.list.insertBefore(d.row, next), d.row);
+    if (d.row.nextElementSibling !== next) slideRows(d.list, () => d.list.insertBefore(d.row, next), d.row, d.sel);
   } else if (last && d.row !== last.nextElementSibling) {
-    slideRows(d.list, () => last.after(d.row), d.row);
+    slideRows(d.list, () => last.after(d.row), d.row, d.sel);
   }
   // follow the pointer from wherever the row sits now, kept inside the list
   const listBox = d.list.getBoundingClientRect();
@@ -1022,10 +1219,15 @@ function onAgentDragKey(ev) {
   ev.preventDefault();
   ev.stopPropagation();
   const d = agentDrag;
-  slideRows(d.list, () => {
-    d.list.replaceChildren(...d.before);
-    d.row.style.transform = '';
-  });
+  slideRows(
+    d.list,
+    () => {
+      d.list.replaceChildren(...d.before);
+      d.row.style.transform = '';
+    },
+    null,
+    d.sel
+  );
   finishAgentDrag(false);
 }
 
@@ -1041,18 +1243,11 @@ function finishAgentDrag(keep) {
   agentDrag = null;
   if (!d.moved) return; // a plain click: let it through
   // the row glides from under the pointer into its slot, then the list is rebuilt
-  if (d.row.style.transform) slideRows(d.list, () => (d.row.style.transform = ''));
+  if (d.row.style.transform) slideRows(d.list, () => (d.row.style.transform = ''), null, d.sel);
   document.body.classList.remove('agent-reordering');
   dragJustEnded = true;
   setTimeout(() => (dragJustEnded = false), 0);
-  if (keep) {
-    // the Map's order is the list's order, in every agent tab
-    const order = [...d.list.querySelectorAll('.agent-row')].map((r) => r.dataset.agentId);
-    const entries = order.map((id) => [id, globalAgents.get(id)]).filter(([, a]) => a);
-    for (const [id, a] of globalAgents) if (!order.includes(id)) entries.push([id, a]);
-    globalAgents.clear();
-    for (const [id, a] of entries) globalAgents.set(id, a);
-  }
+  if (keep) d.onDrop(d.list);
   const settle = d.row.getAnimations().find((a) => a.id === 'row-slide');
   const done = () => {
     d.row.classList.remove('reordering');
@@ -1072,8 +1267,8 @@ function slideOffset(row) {
   return t && t !== 'none' ? new DOMMatrixReadOnly(t).m42 : 0;
 }
 
-function slideRows(list, change, skip) {
-  const rows = [...list.querySelectorAll('.agent-row')].filter((r) => r !== skip);
+function slideRows(list, change, skip, sel = '.agent-row') {
+  const rows = [...list.querySelectorAll(`:scope > ${sel}`)].filter((r) => r !== skip);
   const from = new Map(rows.map((r) => [r, r.getBoundingClientRect().top]));
   change();
   for (const r of rows) r.getAnimations().forEach((a) => a.id === 'row-slide' && a.cancel());
@@ -1230,6 +1425,8 @@ function timeAgo(ms) {
 
 function renderSessionList(tab) {
   if (!tab.els?.sessionsList) return;
+  // a group heading being dragged: the drop draws the list again
+  if (agentDrag?.tab === tab && agentDrag.section === 'sessions') return;
   const live = new Set([...globalAgents.values()].map((a) => a.sessionId).filter(Boolean));
   const rows = [];
   for (const s of claudeSessions) {
@@ -1254,17 +1451,28 @@ function renderSessionList(tab) {
       ev.preventDefault();
       openSessionMenu(s, busy, ev.clientX, ev.clientY);
     });
-    rows.push(row);
+    rows.push({ cwd: s.cwd, row });
   }
-  flipList(tab.els.sessionsList, (r) => r.dataset.sessionId, () => {
-    tab.els.sessionsList.replaceChildren(...rows);
-    if (!rows.length) {
-      const p = document.createElement('p');
-      p.className = 'hint';
-      p.textContent = 'No other Claude Code sessions yet';
-      tab.els.sessionsList.appendChild(p);
-    }
-  });
+  const byTime = groupPrefs.sessionsSort === 'time';
+  const sortBtn = tab.els.layout.querySelector('.rail-sort');
+  // the icon says how the list is sorted now; the tooltip, what a click does
+  sortBtn.dataset.mode = byTime ? 'time' : 'group';
+  sortBtn.title = byTime ? 'Newest first — click to group by repo' : 'Grouped by repo — click to list newest first';
+  if (byTime) {
+    // one list, newest first, as main sends it; the folder is on each row
+    const list = tab.els.sessionsList;
+    flipList(list, (r) => r.dataset?.sessionId, () => {
+      list.replaceChildren(...rows.map((r) => r.row));
+      if (!rows.length) {
+        const p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = 'No other Claude Code sessions yet';
+        list.appendChild(p);
+      }
+    });
+  } else {
+    renderGroups(tab, 'sessions', groupItems(rows), 'No other Claude Code sessions yet');
+  }
   setRailCount(tab.els.sessionsList, rows.length);
 }
 

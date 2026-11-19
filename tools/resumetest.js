@@ -69,7 +69,7 @@ function connect(url) {
   }));
   // Enough newer sessions to fill the Sessions list, then one in another folder
   // behind them: off the list, but New session still has to offer its folder.
-  for (let i = 0; i < 13; i++) {
+  for (let i = 0; i < 38; i++) {
     const id = `00000000-0000-4000-8000-1000000000${String(i).padStart(2, '0')}`;
     const f = path.join(project, id + '.jsonl');
     fs.writeFileSync(f, JSON.stringify({ type: 'user', cwd: DEMO, sessionId: id, message: { role: 'user', content: 'filler ' + i } }) + '\n');
@@ -182,7 +182,7 @@ function connect(url) {
     check('a later click is still ignored', after2 === after, `${after2} total`);
 
     const listed = await c.eval(`claudeSessions.map((s) => s.cwd.split(/[\\\\/]/).pop())`);
-    check('the old folder is past the end of the Sessions list', listed.length === 15 && !listed.includes('old-project'), `${listed.length} rows`);
+    check('the old folder is past the end of the Sessions list', listed.length === 40 && !listed.includes('old-project'), `${listed.length} rows`);
 
     // New session, with a claude running in a folder no transcript mentions:
     // the running one comes first, then history past the list's end
@@ -238,6 +238,92 @@ function connect(url) {
       stuck: resuming.has('${'00000000-0000-4000-8000-000000000002'}')
     })`);
     check('Esc backs out: no pane, no stuck row', !afterEsc.open && afterEsc.panes === paneCount && !afterEsc.stuck, JSON.stringify(afterEsc));
+
+    // ---- groups: by repo, one order for both sections, folded per section ----
+    const sessGroups = await c.eval(`(() => {
+      const list = agentTabs()[0].els.sessionsList;
+      return {
+        groups: [...list.querySelectorAll(':scope > .rail-group')].map((g) => g.querySelector('.group-name').textContent),
+        loose: list.querySelectorAll(':scope > .agent-row').length
+      };
+    })()`);
+    check("sessions sit under their folder's heading", sessGroups.groups.includes('aurora-notes') && sessGroups.loose === 0, JSON.stringify(sessGroups));
+
+    // a live agent in a folder never seen before: its group joins at the bottom
+    await c.eval(`(() => {
+      const leaf = [...agentTabs()[0].centerLeaves][0];
+      globalAgents.set('fake-a', { id: 'fake-a', name: 'demo', cwd: ${JSON.stringify(DEMO)}, branch: 'main', status: 'idle', leaf });
+      globalAgents.set('fake-b', { id: 'fake-b', name: 'live', cwd: ${JSON.stringify(LIVE)}, branch: 'main', status: 'idle', leaf });
+      renderAgentLists();
+      return true;
+    })()`);
+    await sleep(1500);
+    const agentGroups = await c.eval(`[...agentTabs()[0].els.agentsList.querySelectorAll(':scope > .rail-group .group-name')].map((n) => n.textContent)`);
+    check("a new folder's group goes to the bottom", JSON.stringify(agentGroups) === '["aurora-notes","live-project"]', JSON.stringify(agentGroups));
+
+    // dragging live-project's heading above aurora-notes moves it in both sections
+    await c.eval(`(() => {
+      const list = agentTabs()[0].els.agentsList;
+      const [first, last] = [...list.querySelectorAll(':scope > .rail-group')];
+      const head = last.querySelector('.group-head');
+      const top = first.getBoundingClientRect().top;
+      const y0 = head.getBoundingClientRect().top + 4;
+      head.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientY: y0 }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientY: y0 - 10 }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientY: top - 2 }));
+      window.dispatchEvent(new MouseEvent('mouseup', { clientY: top - 2 }));
+      return true;
+    })()`);
+    await sleep(1200);
+    const dragged = await c.eval(`[...agentTabs()[0].els.agentsList.querySelectorAll(':scope > .rail-group .group-name')].map((n) => n.textContent)`);
+    check('dragging a heading reorders the groups', JSON.stringify(dragged) === '["live-project","aurora-notes"]', JSON.stringify(dragged));
+
+    // folding a group under Sessions leaves it open under Agents
+    await c.eval(`(() => {
+      const g = [...agentTabs()[0].els.sessionsList.querySelectorAll(':scope > .rail-group')]
+        .find((x) => x.querySelector('.group-name').textContent === 'aurora-notes');
+      g.querySelector('.group-head').click();
+      return true;
+    })()`);
+    await sleep(800);
+    const folds = await c.eval(`(() => {
+      const find = (list) => [...list.querySelectorAll(':scope > .rail-group')].find((x) => x.querySelector('.group-name').textContent === 'aurora-notes');
+      return { sessions: find(agentTabs()[0].els.sessionsList).classList.contains('collapsed'), agents: find(agentTabs()[0].els.agentsList).classList.contains('collapsed') };
+    })()`);
+    check('folding is per section', folds.sessions && !folds.agents, JSON.stringify(folds));
+    let saved = {};
+    try { saved = JSON.parse(fs.readFileSync(path.join(configDir, 'agents.json'), 'utf8')).groups || {}; } catch {}
+    const names = (saved.order || []).map((k) => k.split(/[\\\\/]/).pop());
+    check('order and folds are saved', names[0] === 'live-project' && names.includes('aurora-notes') && (saved.collapsed?.sessions || []).length === 1, JSON.stringify(saved));
+
+    // the heading's + starts a session in that group's folder
+    const beforePlus = await c.eval(`agentTabs()[0].centerLeaves.size`);
+    await c.eval(`(() => { agentTabs()[0].els.agentsList.querySelector('.rail-group .group-new').click(); return true; })()`);
+    await sleep(2500);
+    const plus = await c.eval(`(() => { const ls = [...agentTabs()[0].centerLeaves]; return { n: ls.length, cwd: ls[ls.length - 1].cwd }; })()`);
+    check('+ opens a session in that folder', plus.n === beforePlus + 1 && /live-project$/i.test(String(plus.cwd).replace(/[\\\\/]+$/, '')), JSON.stringify(plus));
+    await c.eval(`(() => { globalAgents.delete('fake-a'); globalAgents.delete('fake-b'); renderAgentLists(); return true; })()`);
+
+    // by time: one list, newest first, no headings; and it is remembered
+    await c.eval(`(() => { agentTabs()[0].els.layout.querySelector('.rail-sort').click(); return true; })()`);
+    await sleep(800);
+    const flat = await c.eval(`(() => {
+      const list = agentTabs()[0].els.sessionsList;
+      return {
+        groups: list.querySelectorAll('.rail-group').length,
+        rows: list.querySelectorAll(':scope > .agent-row').length,
+        first: list.querySelector(':scope > .agent-row .agent-name')?.textContent,
+        label: agentTabs()[0].els.layout.querySelector('.rail-sort').dataset.mode
+      };
+    })()`);
+    let sort = '';
+    try { sort = JSON.parse(fs.readFileSync(path.join(configDir, 'agents.json'), 'utf8')).groups?.sessionsSort; } catch {}
+    check('by time lists sessions flat, newest first, and is saved',
+      flat.groups === 0 && flat.rows > 0 && flat.label === 'time' && sort === 'time', JSON.stringify({ ...flat, sort }));
+    await c.eval(`(() => { agentTabs()[0].els.layout.querySelector('.rail-sort').click(); return true; })()`);
+    await sleep(500);
+    const back = await c.eval(`agentTabs()[0].els.sessionsList.querySelectorAll(':scope > .rail-group').length`);
+    check('clicking again groups them by repo', back > 0, `${back} group(s)`);
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {

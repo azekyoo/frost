@@ -491,6 +491,34 @@ body[data-design='terminal'] .agents-layout .hint {
   color: var(--t-dim);
 }
 
+body[data-design='terminal'] .group-head {
+  font-family: var(--t-mono);
+  border-radius: var(--t-r);
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .group-head:hover,
+body[data-design='terminal'] .group-new:hover {
+  color: var(--t-cyan);
+}
+
+body[data-design='terminal'] .rail-sort {
+  border-radius: var(--t-r);
+  color: var(--t-dim);
+}
+
+body[data-design='terminal'] .rail-sort:hover {
+  color: var(--t-cyan);
+}
+
+body[data-design='terminal'] .group-count {
+  color: var(--t-yellow);
+}
+
+body[data-design='terminal'] .rail-group.reordering {
+  border-radius: var(--t-r);
+}
+
 body[data-design='terminal'] .agent-row {
   /* a third column for the [state] tag, or it falls into the dot's column */
   grid-template-columns: auto minmax(0, 1fr) auto;

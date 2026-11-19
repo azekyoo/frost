@@ -1651,6 +1651,46 @@ body.agent-reordering * {
   transition: background 0.12s var(--ease), border-color 0.12s var(--ease), color 0.12s var(--ease);
 }
 
+/* by repo / by time: a folder or a clock, pushed right beside refresh */
+.rail-sort {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.rail-sort:hover {
+  background: var(--surface-2);
+  color: #fff;
+}
+
+.rail-sort svg {
+  grid-area: 1 / 1;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rail-sort[data-mode='group'] .sort-time,
+.rail-sort[data-mode='time'] .sort-group,
+.rail-sort:not([data-mode]) .sort-time {
+  display: none;
+}
+
 .rail-refresh:hover {
   background: var(--surface-2);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
@@ -1764,6 +1804,117 @@ body.agent-reordering * {
   opacity: 0.4;
 }
 
+
+/* a repo's sessions under one heading; the rows keep the list's own spacing,
+   whatever a design sets it to */
+.rail-group,
+.group-rows {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+
+.rail-group + .rail-group {
+  margin-top: 6px;
+}
+
+.rail-group.collapsed .group-rows {
+  display: none;
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.12s var(--ease);
+}
+
+.group-head:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.group-arrow {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transform: rotate(90deg);
+  transition: transform 0.15s var(--ease);
+}
+
+.rail-group.collapsed .group-arrow {
+  transform: none;
+}
+
+.group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.group-count {
+  font-size: 10px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* a new session in this group's repo; faint until the heading is pointed at */
+.group-new {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 0.12s var(--ease), background 0.12s var(--ease);
+}
+
+.group-head:hover .group-new,
+.group-new:focus-visible {
+  opacity: 1;
+}
+
+.group-new:hover {
+  background: var(--surface-1);
+  color: #fff;
+}
+
+.group-new svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+/* a group being dragged by its heading */
+.rail-group.reordering {
+  position: relative;
+  z-index: 2;
+  border-radius: 8px;
+  background: var(--raised);
+  box-shadow: var(--raised-edge), 0 6px 18px rgba(0, 0, 0, 0.35);
+}
 
 /* hooks the other designs show; Frost says the state with the dot and the
    meta line, and has no counts */

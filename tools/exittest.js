@@ -6,6 +6,7 @@ const { app } = require('electron');
 const { spawn, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { noteSessions, dropNewSessions } = require('./claude-cleanup');
 
 const ROOT = path.join(__dirname, '..');
 const DEMO = process.env.FROST_SHOT_REPO || 'C:\\dev\\aurora-notes';
@@ -54,6 +55,7 @@ function connect(url) {
   const env = { ...process.env, FROST_SHOT: JSON.stringify({ configDir, bounds: { x: 60, y: 60, width: 1200, height: 720 } }) };
   for (const k of Object.keys(env)) if (/^CLAUDE/i.test(k)) delete env[k];
   // keep drawing while covered: see the note in panetest.js
+  const sessions = noteSessions(DEMO);
   const child = spawn(process.execPath, [ROOT, '--disable-features=CalculateNativeWinOcclusion', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userData}`],
     { cwd: ROOT, stdio: 'ignore', env });
 
@@ -142,6 +144,7 @@ function connect(url) {
     console.error('ERROR:', e.message); fail++;
   } finally {
     spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    await dropNewSessions(sessions);
     app.exit(fail ? 1 : 0);
   }
 })();

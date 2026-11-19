@@ -2946,7 +2946,7 @@ ipcMain.handle('agents:spawn', async (_e, { spacePath }) => {
 const CLAUDE_DIR =
   SHOT?.claudeDir || process.env.CLAUDE_CONFIG_DIR || path.join(require('os').homedir(), '.claude');
 const CLAUDE_PROJECTS = path.join(CLAUDE_DIR, 'projects');
-const SESSION_LIMIT = 15;
+const SESSION_LIMIT = 40;
 const sessionCache = new Map(); // file -> { mtimeMs, info }
 const transcriptPaths = new Map(); // session id -> transcript file
 
@@ -3279,6 +3279,53 @@ async function recentClaudeFolders() {
 }
 
 ipcMain.handle('claude:folders', () => recentClaudeFolders());
+
+// The rail groups sessions by the repo they run in, so a session started in a
+// subfolder sits with the rest of its repo. A folder outside git, or one that
+// is gone, is its own group. Asked off the main thread and remembered: a
+// folder doesn't change repo, and each git costs ~80ms on Windows.
+const groupRootCache = new Map(); // canon cwd, lower case -> root
+async function groupRootOf(cwd) {
+  const canon = canonPath(cwd);
+  const key = canon.toLowerCase();
+  if (groupRootCache.has(key)) return groupRootCache.get(key);
+  let root = canon;
+  if (await fs.promises.access(canon).then(() => true, () => false)) {
+    const r = await gitRun(canon, ['rev-parse', '--show-toplevel']);
+    const top = r.stdout.trim();
+    if (r.ok && top) root = canonPath(top);
+  }
+  groupRootCache.set(key, root);
+  return root;
+}
+
+ipcMain.handle('claude:roots', async (_e, cwds) => {
+  const out = {};
+  if (!Array.isArray(cwds)) return out;
+  const list = [...new Set(cwds.filter((c) => typeof c === 'string' && c))].slice(0, 200);
+  await Promise.all(list.map(async (c) => (out[c] = await groupRootOf(c))));
+  return out;
+});
+
+// Group order and which groups are folded, kept in agents.json beside the
+// spaces so they outlive a restart. Folded is per section: a project can be
+// folded under Sessions and open under Agents.
+ipcMain.handle('agents:setGroups', (_e, groups) => {
+  const strs = (a) => (Array.isArray(a) ? a.filter((s) => typeof s === 'string').slice(0, 500) : []);
+  const clean = {
+    order: strs(groups?.order),
+    collapsed: { agents: strs(groups?.collapsed?.agents), sessions: strs(groups?.collapsed?.sessions) },
+    sessionsSort: groups?.sessionsSort === 'time' ? 'time' : 'group'
+  };
+  const cfg = readAgentsCfg();
+  cfg.groups = clean;
+  try {
+    fs.writeFileSync(AGENTS_FILE, JSON.stringify(cfg, null, 2));
+  } catch (e) {
+    return { error: e.message };
+  }
+  return { ok: true };
+});
 
 // What a live agent should be called: the name you gave it with /rename, else
 // the title Claude Code made up. Checked on the status tick, so a rename shows
