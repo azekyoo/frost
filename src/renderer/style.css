@@ -3312,6 +3312,42 @@ body.ligatures .xterm-rows span {
   box-shadow: inset 0 0 0 1px rgba(255, 106, 43, 0.35);
 }
 
+.design-tile[data-design='terminal'] .design-swatch {
+  background: #000;
+}
+
+.design-tile[data-design='terminal'] .design-swatch::before {
+  background: #121212;
+  box-shadow: inset 0 -2px 0 #5fd75f;
+}
+
+/* the screen: three lines of coloured output */
+.design-tile[data-design='terminal'] .design-swatch::after {
+  background: linear-gradient(#5fd75f, #5fd75f) 5px 5px / 28% 3px no-repeat,
+    linear-gradient(#5fd7ff, #5fd7ff) 5px 12px / 55% 3px no-repeat,
+    linear-gradient(#ffd75f, #ffd75f) 5px 19px / 18% 3px no-repeat,
+    linear-gradient(#d787ff, #d787ff) calc(5px + 22%) 19px / 22% 3px no-repeat, #000;
+  box-shadow: inset 0 0 0 1px #3a3a3a;
+}
+
+/* liquid behind, a glass tab and a dark glass screen laid over it */
+.design-tile[data-design='candy'] .design-swatch {
+  background: radial-gradient(50% 80% at 10% 90%, #ff4f9a, transparent 70%),
+    radial-gradient(50% 80% at 90% 10%, #ffd93d, transparent 70%),
+    radial-gradient(50% 80% at 95% 95%, #3cc8ff, transparent 70%),
+    linear-gradient(100deg, #a066ff, #ff9a3c 50%, #2fe0a0);
+}
+
+.design-tile[data-design='candy'] .design-swatch::before {
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.design-tile[data-design='candy'] .design-swatch::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 40%), rgba(10, 12, 24, 0.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
 /* ---------- scrollbars ---------- */
 /* Every panel that scrolls uses this one, the terminal excepted — its scrollbar
    carries the command ticks and is styled with them. Pseudo-elements only:
@@ -4385,5 +4421,61 @@ body.ligatures .xterm-rows span {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* ---------- loading ----------
+   While a pane's shell is starting: a light running around its border. */
+@property --load-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.pane-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s var(--ease);
+}
+
+.pane-loading.on {
+  opacity: 1;
+}
+
+/* the border only: a conic light masked down to a 2px ring */
+.load-trace {
+  position: absolute;
+  inset: -1px;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--load-angle),
+    transparent 0deg,
+    transparent 200deg,
+    var(--accent-mid) 270deg,
+    var(--accent) 330deg,
+    #fff 352deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+  animation: load-spin 1.4s linear infinite;
+}
+
+@keyframes load-spin {
+  to {
+    --load-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .load-trace {
+    animation: none;
   }
 }

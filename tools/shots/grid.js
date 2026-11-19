@@ -1,7 +1,9 @@
 'use strict';
 
 // Several finished shots tiled two to a row, each with its name on it — the
-// designs scenario's four, so they can be compared at a glance.
+// designs scenario's, so they can be compared at a glance. Tiles keep the size
+// they have in a 2x2 grid; more than four make the image taller, not the tiles
+// smaller.
 //
 // The ground between them is the scenario's own wallpaper seen through Frost's
 // glass: blurred, smoked and grained the way the window's backdrop is, so the
@@ -9,7 +11,7 @@
 // on it. A module of its own so a grid can be rebuilt from captures already on
 // disk, without driving the app again.
 
-const { BrowserWindow } = require('electron');
+const { BrowserWindow, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -22,36 +24,51 @@ const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const GRAIN =
   "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
 
-function gridHtml(tiles, cols, canvas, wallpaper) {
-  // Sized off the height: each tile has the window's own proportions, so two
-  // rows of full-width tiles would overrun a canvas the same shape as one.
-  const rows = Math.ceil(tiles.length / cols);
-  const tileH = Math.floor((canvas.height - 56 - 22 * (rows - 1)) / rows);
-  const tileW = Math.floor((tileH * canvas.width) / canvas.height);
+const PAD = 28;
+const GAP = 22;
+
+// Tile size, as in a 2x2 grid on the canvas: each tile has the window's own
+// proportions, so two rows of full-width tiles would overrun a canvas the same
+// shape as one. Sized off the height for that reason.
+function tileSize(canvas) {
+  const h = Math.floor((canvas.height - 2 * PAD - GAP) / 2);
+  return { w: Math.floor((h * canvas.width) / canvas.height), h };
+}
+
+// the page: the canvas, or taller when there are more than two rows
+function pageHeight(n, cols, canvas) {
+  const rows = Math.ceil(n / cols);
+  return Math.max(canvas.height, 2 * PAD + rows * tileSize(canvas).h + (rows - 1) * GAP);
+}
+
+function gridHtml(tiles, cols, canvas, wallpaper, height) {
+  const tileW = tileSize(canvas).w;
   return `<!doctype html>
 <meta charset="utf-8">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d14; }
+  html, body { margin: 0; background: #0b0d14; }
+  ::-webkit-scrollbar { display: none; }
+  body { position: relative; height: ${height}px; overflow: hidden; }
   /* the wallpaper through frost: oversized so the blur has no soft edge */
   .ground {
-    position: fixed; inset: -80px;
+    position: absolute; inset: -80px;
     background: url("${url(wallpaper)}") center / cover no-repeat;
     filter: blur(46px) saturate(1.35);
   }
   .ground + .ground {
-    inset: 0; filter: none;
+    position: absolute; inset: 0; filter: none;
     background:
       radial-gradient(ellipse 120% 90% at 50% 40%, transparent 50%, rgba(0, 0, 0, 0.28)),
       linear-gradient(rgba(10, 12, 22, 0.42), rgba(10, 12, 22, 0.42));
   }
   .grain {
-    position: fixed; inset: 0;
+    position: absolute; inset: 0;
     background-image: ${GRAIN}; background-size: 180px;
     opacity: 0.06; mix-blend-mode: overlay;
   }
   main {
-    position: relative; box-sizing: border-box; height: 100%; padding: 28px;
-    display: grid; gap: 22px;
+    position: relative; box-sizing: border-box; height: 100%; padding: ${PAD}px;
+    display: grid; gap: ${GAP}px;
     grid-template-columns: repeat(${cols}, ${tileW}px);
     justify-content: center;
     align-content: center;
@@ -85,9 +102,14 @@ ${tiles.map((t) => `<figure><img src="${url(t.file)}"><figcaption>${esc(t.label)
 
 // `tiles`: [{ label, file }], finished shots. Halved like every other shot:
 // sharp, and a sensible size for a README.
+//
+// A window can't be taller than the screen, and a grid of six is: the page is
+// captured a screenful at a time, scrolling down, and the pieces stacked.
 async function compositeGrid(tiles, canvas, outFile, { wallpaper, tmp }) {
+  const cols = 2;
+  const height = pageHeight(tiles.length, cols, canvas);
   const htmlFile = path.join(tmp, 'grid-' + path.basename(outFile) + '.html');
-  fs.writeFileSync(htmlFile, gridHtml(tiles, 2, canvas, wallpaper));
+  fs.writeFileSync(htmlFile, gridHtml(tiles, cols, canvas, wallpaper, height));
   const win = new BrowserWindow({
     width: canvas.width,
     height: canvas.height,
@@ -99,8 +121,25 @@ async function compositeGrid(tiles, canvas, outFile, { wallpaper, tmp }) {
     await win.loadFile(htmlFile);
     await win.webContents.executeJavaScript('window.ready');
     await sleep(250);
-    const image = await win.webContents.capturePage();
-    const scaled = image.resize({ width: Math.round(image.getSize().width / 1.5), quality: 'best' });
+    const pieces = [];
+    let width = 0;
+    for (let top = 0; top < height; top += canvas.height) {
+      // the last screenful scrolls only as far as the page goes, so keep just
+      // the rows below what the one before it already has
+      const scroll = Math.min(top, height - canvas.height);
+      await win.webContents.executeJavaScript(`window.scrollTo(0, ${scroll}); 0`);
+      await sleep(250);
+      const image = await win.webContents.capturePage();
+      const size = image.getSize();
+      const scale = size.height / canvas.height;
+      const bitmap = image.toBitmap();
+      const skip = Math.round((top - scroll) * scale);
+      pieces.push(bitmap.subarray(skip * size.width * 4));
+      width = size.width;
+    }
+    const full = Buffer.concat(pieces);
+    const image = nativeImage.createFromBitmap(full, { width, height: full.length / (width * 4) });
+    const scaled = image.resize({ width: Math.round(width / 1.5), quality: 'best' });
     fs.writeFileSync(outFile, scaled.toPNG());
     return scaled.getSize();
   } finally {

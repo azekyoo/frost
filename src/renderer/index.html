@@ -11,6 +11,8 @@
   <link rel="stylesheet" href="designs/liquid.css" />
   <link rel="stylesheet" href="designs/aurora.css" />
   <link rel="stylesheet" href="designs/graphite.css" />
+  <link rel="stylesheet" href="designs/terminal.css" />
+  <link rel="stylesheet" href="designs/candy.css" />
   <!-- after every design: pins the measurements they all share -->
   <link rel="stylesheet" href="designs/layout-lock.css" />
   <style id="custom-css"></style>
@@ -66,13 +68,9 @@
           <button type="button" class="design-tile" data-design="liquid"><span class="design-swatch"></span><span>Liquid Glass</span></button>
           <button type="button" class="design-tile" data-design="aurora"><span class="design-swatch"></span><span>Aurora Night</span></button>
           <button type="button" class="design-tile" data-design="graphite"><span class="design-swatch"></span><span>Graphite Studio</span></button>
+          <button type="button" class="design-tile" data-design="terminal"><span class="design-swatch"></span><span>Classic Terminal</span></button>
+          <button type="button" class="design-tile" data-design="candy"><span class="design-swatch"></span><span>Candy Swirl</span></button>
         </div>
-        <p class="hint">
-          The look of everything around the terminal, switched live. Tint, blur,
-          font and the terminal's own colours stay yours in every design. Each
-          design remembers its own accent: the picker below changes the one in
-          use, and Reset puts its own colour back.
-        </p>
       </div>
 
       <div class="group">
@@ -119,6 +117,7 @@
             <input type="color" id="s-accent" />
           </label>
         </div>
+        <p class="hint">Each design keeps its own accent.</p>
 
         <label class="field">
           <span>Tint opacity <em id="s-tint-alpha-val"></em></span>
@@ -152,6 +151,21 @@
           PowerShell and bash profiles also report their directory back to Frost
           each prompt, which is what puts <b>dir &middot; branch</b> on the tab.
           cmd and WSL can't, so those tabs keep the profile name.
+        </p>
+
+        <label class="field">
+          <span>Preloaded shells</span>
+          <select id="s-spares">
+            <option value="0">Off</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </label>
+        <p class="hint">
+          Kept started in the background, so a new tab, split or agent session
+          opens at its prompt instantly instead of waiting for your profile to
+          load. About 70&nbsp;MB each. PowerShell profiles only.
         </p>
       </div>
 
@@ -443,9 +457,11 @@
   <script src="diff.js"></script>
   <script src="peek.js"></script>
   <script src="blocks.js"></script>
+  <script src="loading.js"></script>
   <script src="commands.js"></script>
   <script src="palette.js"></script>
   <script src="settings.js"></script>
+  <script src="candy.js"></script>
   <script src="boot.js"></script>
 </body>
 </html>

@@ -42,21 +42,28 @@ function setLabel(name) {
   label.set(Buffer.from(String(name)).subarray(0, LABEL_BYTES));
 }
 
-// Runs fn under `name`, logging it if it held the thread too long. Nested calls
-// put the outer label back on the way out.
+// The labelled calls running right now, outermost first, joined with " > ".
+let current = '';
+
+// Runs fn under `name`, logging it if it held the thread too long. A call made
+// inside another labelled one is named by the whole chain ("status tick >
+// titles > scan transcripts"), so a freeze points at the step that held it,
+// and the outer label is put back on the way out.
 function timed(name, fn) {
   return function (...args) {
-    const outer = label ? Buffer.from(label) : null;
+    const outer = current;
     const outerStart = beat ? beat[1] : 0;
-    setLabel(name);
+    current = outer ? outer + ' > ' + name : name;
+    setLabel(current);
     const t = performance.now();
     if (beat) beat[1] = Date.now();
     try {
       return fn.apply(this, args);
     } finally {
       const ms = performance.now() - t;
-      if (ms > SLOW_MS) write(`slow ${Math.round(ms)}ms ${name}`);
-      if (outer) label.set(outer);
+      if (ms > SLOW_MS) write(`slow ${Math.round(ms)}ms ${current}`);
+      current = outer;
+      setLabel(outer);
       if (beat) beat[1] = outerStart;
     }
   };

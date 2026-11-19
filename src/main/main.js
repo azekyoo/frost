@@ -80,9 +80,16 @@ const DEFAULT_KEYS = {
   bindings: []
 };
 
+// The native minimise/maximise/close glyphs. Candy Swirl's titlebar is bright
+// liquid, where the terminal's light foreground would vanish over yellow, so
+// there they are dark ink like the rest of its titlebar.
+function captionInk(theme) {
+  return theme.design === 'candy' ? '#1a1726' : theme.terminal?.foreground || '#ffffff';
+}
+
 const DEFAULT_THEME = {
-  // The look of everything around the terminal: 'frost', 'liquid', 'aurora' or
-  // 'graphite'. Pure CSS (src/renderer/designs/), so it switches live.
+  // The look of everything around the terminal: 'frost', 'liquid', 'aurora',
+  // 'graphite', 'terminal' or 'candy'. Pure CSS (src/renderer/designs/), so it switches live.
   design: 'frost',
   material: 'glass',
   colorMode: 'dark',
@@ -746,7 +753,7 @@ function applyWindowTheme(theme) {
     try {
       w.setTitleBarOverlay({
         color: '#00000000',
-        symbolColor: theme.terminal?.foreground || '#ffffff',
+        symbolColor: captionInk(theme),
         // must track the zoom, or changing any theme setting shrinks the native
         // buttons back to their unzoomed height while the titlebar stays tall
         height: Math.round(TITLEBAR_H * (w.webContents.getZoomFactor() || 1))
@@ -949,7 +956,7 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
     opts.titleBarStyle = 'hidden';
     opts.titleBarOverlay = {
       color: '#00000000',
-      symbolColor: theme.terminal?.foreground || '#ffffff',
+      symbolColor: captionInk(theme),
       height: TITLEBAR_H
     };
   }
@@ -979,6 +986,15 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   }
 
   const w = new BrowserWindow(opts);
+  // Windows is signing out or shutting down: a waiting update must not start
+  // installing now, because the session ending kills the installer between
+  // removing the old version and copying the new one, and Frost no longer
+  // starts (2026-11-17). It installs on the next ordinary quit instead. The
+  // installer's own RunOnce retry (build/installer.nsh) covers any kill this
+  // misses.
+  w.on('session-end', () => {
+    if (updater) updater.autoInstallOnAppQuit = false;
+  });
   // The constructor resolves its bounds against the primary display's scale
   // factor, wherever the window is actually going to land. Opening a 976px-wide
   // window on a 150% screen from a 200% primary therefore produces one 732px
@@ -1202,6 +1218,7 @@ function watchConfig() {
           broadcast('theme:changed', { error: 'theme.json: invalid JSON — keeping previous theme' });
           return;
         }
+        fillSpares(SPARE_REFILL_MS); // edited by hand: spares under the old settings go
         // Compared against what the windows actually are, not against the last
         // material that was asked for. Declining the restart leaves the setting
         // ahead of reality, and comparing to it meant the next change looked
@@ -1466,7 +1483,7 @@ function watchTypeAhead(id, data) {
 // owner is the window the output belongs to. It can be null, for a shell that
 // exists before any pane does — nothing does that today, and the buffering
 // below is what a tab in flight between windows relies on.
-function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
+function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
   const id = String(++ptyCounter);
   if (owner) ptyOwners.set(id, owner);
   // No owner yet: whatever the shell prints in the meantime is held, by the
@@ -1498,12 +1515,9 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
     args =
       dialect === 'bash'
         ? ['--rcfile', bashRcFile(withClaude), '-i']
-        : ['-NoLogo', '-NoExit', '-Command', psStartup(withClaude)];
+        : ['-NoLogo', '-NoExit', '-Command', psStartup(withClaude) + (spare ? '; ' + PS_SPARE_HISTORY : '')];
   }
-  const startCwd =
-    (cwd && fs.existsSync(cwd) && cwd) ||
-    (profile.cwd && fs.existsSync(profile.cwd) && profile.cwd) ||
-    startDir();
+  const startCwd = shellCwd(profile, cwd);
   // Detected WSL profiles start in the Linux home (`--cd ~`), which threw away
   // the folder a tab was asked for: `frost <dir>`, "Open Frost here", --run.
   // wsl.exe takes an absolute Windows path for --cd. Only an explicit folder
@@ -1554,11 +1568,14 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
       if (agentId) agentEnded(agentId);
     }
     watchTypeAhead(id, data);
-    sendToOwner(id, 'pty:data', { id, data });
+    spareWatch(id, data);
+    const shown = spareFilter(id, data);
+    if (shown) sendToOwner(id, 'pty:data', { id, data: shown });
   });
   p.onExit(({ exitCode }) => {
     clearTimeout(typeAhead.get(id)?.timer);
     typeAhead.delete(id);
+    spareGone(id);
     ptys.delete(id);
     sendToOwner(id, 'pty:exit', { id, exitCode });
     ptyOwners.delete(id);
@@ -1569,13 +1586,174 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner }) {
   return { id, profileId: profile.id, profileName: profile.name };
 }
 
-ipcMain.handle('pty:create', (event, opts) => spawnShell({ ...opts, owner: event.sender }));
+ipcMain.handle('pty:create', (event, opts) => claimSpare(event.sender, opts) || spawnShell({ ...opts, owner: event.sender }));
+
+// The folder a shell of this profile starts in, asked for or not.
+function shellCwd(profile, cwd) {
+  return (
+    (cwd && fs.existsSync(cwd) && cwd) ||
+    (profile.cwd && fs.existsSync(profile.cwd) && profile.cwd) ||
+    startDir()
+  );
+}
+
+// ---------- spare shells ----------
+// A shell takes seconds to start with a heavy profile, and every new tab, split
+// and agent session used to wait them out on an empty pane. A spare or two of
+// the default profile is kept started in the background instead; a new pane
+// takes one, moves it to the folder it wants, clears it and shows the prompt
+// at once, and a replacement is started behind it. What the spare printed
+// while it waited — the profile's banner, the move — is never shown: the pane
+// starts at the prompt the move ends on.
+//
+// Only PowerShell: the move is typed into it, and it is the dialect whose
+// history Frost can keep that line out of. A setting a shell is started with
+// changing (the profile, the start folder, agent detection) retires the spares
+// started under the old one, and one sitting long enough to miss a newly
+// installed tool on PATH is replaced while nothing is being typed.
+
+const SPARE_MAX = 3;
+const SPARE_DEFAULT = 2;
+const SPARE_FIRST_MS = 4000; // after launch: the restored tabs start first
+const SPARE_REFILL_MS = 1500; // after a claim: not on top of the pane just opened
+const SPARE_STALE_MS = 10 * 60 * 1000;
+const SPARE_QUIET_MS = 30000; // "nothing being typed", for replacing a stale one
+const SPARE_HIDE_CAP_MS = 4000; // the move's prompt never came: show what there is
+
+// The move's own line, kept out of PSReadLine's history. The user's own
+// handler, if they have one, still decides for every other line.
+const PS_SPARE_HISTORY =
+  'try { $global:__frostHistH = (Get-PSReadLineOption).AddToHistoryHandler; ' +
+  'Set-PSReadLineOption -AddToHistoryHandler { param($l) ' +
+  'if ($l -like "*#frost-spare") { return $false }; ' +
+  'if ($global:__frostHistH) { return & $global:__frostHistH $l }; return $true } } catch {}';
+
+const spares = []; // { id, key, born, ready }
+const spareHiding = new Map(); // ptyId -> { osc, timer }: claimed, output not shown yet
+let spareTimer = null;
+let lastTyped = 0;
+
+function spareCount() {
+  const n = readTheme()?.spareShells;
+  return Number.isInteger(n) ? Math.max(0, Math.min(SPARE_MAX, n)) : SPARE_DEFAULT;
+}
+
+// Everything a shell is started with that a setting can change. null: the
+// default profile isn't one spares are kept for.
+function spareKey() {
+  const profile = findProfile();
+  if (!profile || profile.agentWrapper !== 'powershell') return null;
+  const t = readTheme() || DEFAULT_THEME;
+  return JSON.stringify([profile, t.autoDetectAgents !== false, startDir()]);
+}
+
+function killSpare(spare) {
+  const i = spares.indexOf(spare);
+  if (i >= 0) spares.splice(i, 1);
+  detachedPtys.delete(spare.id);
+  try {
+    ptys.get(spare.id)?.kill();
+  } catch {}
+}
+
+function fillSpares(delay = 0) {
+  clearTimeout(spareTimer);
+  spareTimer = setTimeout(() => {
+    spareTimer = null;
+    const key = spareKey();
+    for (const s of [...spares]) if (s.key !== key) killSpare(s);
+    spares.slice(spareCount()).forEach(killSpare);
+    // one at a time: each runs the whole profile, and two at once only slows both
+    if (!key || spares.length >= spareCount() || spares.some((s) => !s.ready)) return;
+    if (!BrowserWindow.getAllWindows().length) return;
+    try {
+      const { id } = spawnShell({ cols: 120, rows: 30, spare: true });
+      spares.push({ id, key, born: Date.now(), ready: false });
+    } catch {}
+  }, delay);
+}
+
+// a spare is ready at its first prompt; the next one starts then
+function spareWatch(id, data) {
+  const spare = spares.find((s) => s.id === id);
+  if (!spare || spare.ready || !data.includes('\x1b]133;A')) return;
+  spare.ready = true;
+  fillSpares(SPARE_REFILL_MS);
+}
+
+function spareGone(id) {
+  const spare = spares.find((s) => s.id === id);
+  if (spare) {
+    killSpare(spare);
+    fillSpares(SPARE_REFILL_MS);
+  }
+  clearTimeout(spareHiding.get(id)?.timer);
+  spareHiding.delete(id);
+}
+
+// Until the prompt after the move, nothing a claimed spare prints is shown.
+// That prompt starts at its 133;A; the cwd report the hook writes just before
+// it is kept, or the pane would not know its folder until the next prompt.
+function spareFilter(id, data) {
+  const hide = spareHiding.get(id);
+  if (!hide) return data;
+  const at = data.indexOf('\x1b]133;A');
+  const before = at < 0 ? data : data.slice(0, at);
+  const cwds = before.match(/\x1b\]9;9;[^\x07]*\x07/g);
+  if (cwds) hide.osc = cwds[cwds.length - 1];
+  if (at < 0) return '';
+  clearTimeout(hide.timer);
+  spareHiding.delete(id);
+  return hide.osc + data.slice(at);
+}
+
+function claimSpare(owner, opts) {
+  if (opts.adopt) return null;
+  const profile = findProfile(opts.profileId);
+  if (profile.id !== findProfile().id) return null;
+  const key = spareKey();
+  const spare = key && spares.find((s) => s.ready && s.key === key && ptys.has(s.id));
+  if (!spare) return null;
+  const { id } = spare;
+  spares.splice(spares.indexOf(spare), 1);
+  detachedPtys.delete(id); // the banner and the old prompt: never shown
+  ptyOwners.set(id, owner);
+  const p = ptys.get(id);
+  try {
+    if (opts.cols > 0 && opts.rows > 0) p.resize(opts.cols, opts.rows);
+  } catch {}
+  spareHiding.set(id, {
+    osc: '',
+    timer: setTimeout(() => spareHiding.delete(id), SPARE_HIDE_CAP_MS)
+  });
+  const cwd = shellCwd(profile, opts.cwd).replace(/'/g, "''");
+  try {
+    p.write(`Set-Location -LiteralPath '${cwd}'; Clear-Host #frost-spare\r`);
+  } catch {}
+  // a pane opened to run claude types it at the prompt the move ends on
+  if (opts.run) holdForRun(id, opts.run, true);
+  fillSpares(SPARE_REFILL_MS);
+  const meta = ptyMeta.get(id) || {};
+  return { id, profileId: meta.profileId || profile.id, profileName: meta.profileName || profile.name };
+}
+
+// a spare old enough to have missed a change to PATH is replaced, but only
+// while nothing is being typed: starting one costs seconds of CPU
+setInterval(() => {
+  if (Date.now() - lastTyped < SPARE_QUIET_MS) return;
+  const stale = spares.find((s) => s.ready && Date.now() - s.born > SPARE_STALE_MS);
+  if (stale) {
+    killSpare(stale);
+    fillSpares();
+  }
+}, 60000);
 
 ipcMain.handle('profiles:list', () =>
   getProfiles().map(({ id, name, agentWrapper }) => ({ id, name, agentWrapper: agentWrapper || 'none' }))
 );
 
 ipcMain.on('pty:input', (_e, { id, data }) => {
+  lastTyped = Date.now();
   const ta = typeAhead.get(id);
   if (ta) {
     ta.held.push(data);
@@ -1913,7 +2091,7 @@ function canonPath(p) {
   return path.resolve(String(p).trim()).replace(/[\\/]+$/, '');
 }
 
-function gitInfo(cwd) {
+function gitInfoRaw(cwd) {
   const b = spawnSync('git', ['-C', cwd, 'rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' });
   if (b.status !== 0) return { git: false, branch: null, baseCommit: null };
   const h = spawnSync('git', ['-C', cwd, 'rev-parse', 'HEAD'], { encoding: 'utf8' });
@@ -1923,6 +2101,7 @@ function gitInfo(cwd) {
     baseCommit: (h.stdout || '').trim() || 'HEAD'
   };
 }
+const gitInfo = stalls.timed('git info', gitInfoRaw);
 
 // What the tracked files looked like when the session started, uncommitted
 // edits included, as a tree object. Diffing against HEAD instead would count
@@ -2253,12 +2432,13 @@ function nearestDir(p) {
 }
 
 // The repo a path lives in, file or folder.
-function repoRootOf(p) {
+function repoRootOfRaw(p) {
   const dir = nearestDir(p);
   if (!dir) return null;
   const r = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', windowsHide: true });
   return r.status === 0 && r.stdout.trim() ? canonPath(r.stdout.trim()) : null;
 }
+const repoRootOf = stalls.timed('git root', repoRootOfRaw);
 
 const within = (dir, p) => {
   const rel = path.relative(dir, p);
@@ -2651,10 +2831,14 @@ function initAgentInfra() {
         }
       }
     }));
+  // each step labelled, so a freeze in the tick names the one that held it
+  const statuses = stalls.timed('statuses', broadcastStatuses);
+  const titles = stalls.timed('titles', refreshAgentTitles);
+  const edits = stalls.timed('transcript edits', scanTranscriptEdits);
   setInterval(stalls.timed('status tick', () => {
-    broadcastStatuses();
-    refreshAgentTitles();
-    if (diffSel) scanTranscriptEdits(diffSel.agentId);
+    statuses();
+    titles();
+    if (diffSel) edits(diffSel.agentId);
   }), 1500);
 }
 
@@ -2798,7 +2982,7 @@ function readClaudeSession(file, size) {
 // to costs one stat. `maxAge` lets a caller take a parse that recent even if
 // the file has moved on since: a working session's transcript changes on every
 // line claude writes, and re-reading it on each status tick buys nothing.
-function sessionInfo(file, st, maxAge = 0) {
+function sessionInfoRaw(file, st, maxAge = 0) {
   let cached = sessionCache.get(file);
   const fresh = cached && (cached.mtimeMs === st.mtimeMs || Date.now() - cached.readAt < maxAge);
   if (!fresh) {
@@ -2811,8 +2995,9 @@ function sessionInfo(file, st, maxAge = 0) {
   }
   return cached.info;
 }
+const sessionInfo = stalls.timed('read transcript', sessionInfoRaw);
 
-function scanTranscripts() {
+function scanTranscriptsRaw() {
   const files = [];
   let dirs = [];
   try {
@@ -2842,35 +3027,114 @@ function scanTranscripts() {
   }
   return files;
 }
+const scanTranscripts = stalls.timed('scan transcripts', scanTranscriptsRaw);
 
 // Claude Code registers every running process in ~/.claude/sessions/<pid>.json
 // — session id, cwd, and the name /rename gave it. It is not a documented
 // format, so anything unexpected just means "nothing known to be running".
 // A file whose process is gone is left over from a crash, and doesn't count.
-function runningClaudeSessions() {
-  const running = new Map(); // session id -> { pid, name, custom }
+//
+// Nor does one whose pid is alive but belongs to someone else now: a file left
+// behind by a shutdown outlives its claude, and after a reboot Windows hands
+// the same pid to svchost or whatever starts first. Claude Code writes the
+// process's creation time beside the pid (`procStart`, a FILETIME), so the
+// owner of that pid now has to have started at that same instant.
+function readClaudeRegistry() {
+  const out = [];
   const dir = path.join(CLAUDE_DIR, 'sessions');
   let names = [];
   try {
     names = fs.readdirSync(dir);
   } catch {
-    return running;
+    return out;
   }
   for (const n of names) {
     if (!/^\d+\.json$/.test(n)) continue;
     try {
       const s = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'));
-      if (!s.sessionId || !s.pid) continue;
+      if (!s.sessionId || !Number.isInteger(s.pid) || s.pid <= 0) continue;
       try {
         process.kill(s.pid, 0); // signal 0 only asks whether it exists
       } catch (e) {
         if (e.code === 'ESRCH') continue;
       }
-      running.set(s.sessionId, { pid: s.pid, name: s.name || null, custom: s.nameSource === 'user' });
+      out.push(s);
     } catch {}
+  }
+  return out;
+}
+
+// "pid:procStart" -> { ours, at }: whether the process now holding that pid is
+// the one that wrote the file. A no is final — that claude is gone for good —
+// while a yes is asked again after a while, in case it has since died and its
+// pid been reused.
+const procChecks = new Map();
+const PROC_RECHECK_MS = 60000;
+const procKey = (s) => `${s.pid}:${s.procStart}`;
+const canCheckProc = (s) => process.platform === 'win32' && typeof s.procStart === 'string' && /^\d+$/.test(s.procStart);
+
+// Creation times of the given pids, as FILETIME strings; a pid that is gone,
+// or whose start can't be read (another user's, a system service), is left
+// out. Null when the lookup itself failed.
+function processStartTimes(pids) {
+  const script =
+    `Get-Process -Id ${pids.join(',')} -ErrorAction SilentlyContinue | ForEach-Object {` +
+    ` try { '{0} {1}' -f $_.Id, $_.StartTime.ToFileTimeUtc() } catch {} }; 'done'`;
+  return new Promise((resolve) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { encoding: 'utf8', windowsHide: true, timeout: 15000 }, (err, stdout) => {
+        const lines = String(stdout || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (err || lines[lines.length - 1] !== 'done') return resolve(null);
+        const starts = new Map();
+        for (const l of lines) {
+          const m = /^(\d+) (\d+)$/.exec(l);
+          if (m) starts.set(Number(m[1]), m[2]);
+        }
+        resolve(starts);
+      });
+  });
+}
+
+let procCheckRun = null;
+async function checkClaudeProcessesNow() {
+  const now = Date.now();
+  const due = readClaudeRegistry().filter((s) => {
+    if (!canCheckProc(s)) return false;
+    const c = procChecks.get(procKey(s));
+    return !c || (c.ours && now - c.at > PROC_RECHECK_MS);
+  });
+  if (!due.length) return;
+  const starts = await processStartTimes([...new Set(due.map((s) => s.pid))]);
+  for (const s of due) {
+    // a failed lookup proves nothing: trust the pid as before, ask later
+    const ours = starts ? starts.get(s.pid) === s.procStart : true;
+    procChecks.set(procKey(s), { ours, at: Date.now() });
+  }
+}
+
+// Settles every registry file not looked at yet before resolving, so whatever
+// asks next sees the truth; ones only due for a recheck are redone in the
+// background, without holding the caller up.
+function checkClaudeProcesses() {
+  const unknown = readClaudeRegistry().some((s) => canCheckProc(s) && !procChecks.has(procKey(s)));
+  if (!procCheckRun) {
+    procCheckRun = checkClaudeProcessesNow().finally(() => {
+      procCheckRun = null;
+    });
+  }
+  return unknown ? procCheckRun : Promise.resolve();
+}
+
+function runningClaudeSessionsRaw() {
+  const running = new Map(); // session id -> { pid, name, custom }
+  for (const s of readClaudeRegistry()) {
+    // not looked at yet counts as running, as it did before the check existed
+    if (canCheckProc(s) && procChecks.get(procKey(s))?.ours === false) continue;
+    running.set(s.sessionId, { pid: s.pid, name: s.name || null, custom: s.nameSource === 'user' });
   }
   return running;
 }
+const runningClaudeSessions = stalls.timed('running sessions', runningClaudeSessionsRaw);
 
 // `exclude` is what already shows as a live agent, left out before counting so
 // the list still holds SESSION_LIMIT rows however many are running.
@@ -2899,7 +3163,10 @@ function listClaudeSessions(exclude = []) {
   return out;
 }
 
-ipcMain.handle('claude:sessions', (_e, exclude) => listClaudeSessions(exclude));
+ipcMain.handle('claude:sessions', async (_e, exclude) => {
+  await checkClaudeProcesses();
+  return listClaudeSessions(exclude);
+});
 
 // Removes a session from disk: its transcript, and the folder beside it that
 // holds its subagents and /rename name. To the Recycle Bin, so a wrong click
@@ -2910,6 +3177,7 @@ ipcMain.handle('claude:delete-session', async (_e, id) => {
   if (!transcriptPaths.has(id)) scanTranscripts();
   const file = transcriptPaths.get(id);
   if (!file) return { error: 'Session not found' };
+  await checkClaudeProcesses();
   if (runningClaudeSessions().has(id)) return { error: 'This session is open somewhere — end it first' };
   try {
     await shell.trashItem(file);
@@ -3455,6 +3723,7 @@ ipcMain.on('win:new', () => createWindow());
 
 ipcMain.handle('theme:save', (_e, theme) => {
   fs.writeFileSync(THEME_FILE, JSON.stringify(theme, null, 2));
+  fillSpares(SPARE_REFILL_MS); // started under the old settings: retired
   return true;
 });
 
@@ -3469,7 +3738,7 @@ function notifySettings() {
   return { ...DEFAULT_THEME.notify, ...(configured || {}) };
 }
 
-function notify({ title, body, agentId }) {
+function notifyRaw({ title, body, agentId }) {
   if (!liveWindows().length || anyWindowFocused() || !Notification.isSupported()) return;
   const toast = new Notification({
     title,
@@ -3492,6 +3761,7 @@ function notify({ title, body, agentId }) {
     } catch {}
   }
 }
+const notify = stalls.timed('notify', notifyRaw);
 
 ipcMain.on('notify:command', (_e, { seconds, cwd, exit }) => {
   const settings = notifySettings();
@@ -3587,7 +3857,16 @@ function resolveEditor() {
 // Turns a candidate found in terminal output into an absolute path, but only if
 // it actually exists as a file. Existence is the filter that keeps ordinary
 // words from being underlined as links.
-function resolveTarget(cwd, candidate) {
+// A path starting with two slashes is a network share (\\host\share), and a
+// stat on one sends Windows looking for that host over SMB, which can take
+// seconds. Terminal text is full of them that aren't paths at all (// comments,
+// the tail of a URL), and a stat held up like that is what froze the main
+// thread long enough for Windows to kill Frost. So they are never looked up.
+const isUnc = (p) => /^[\\/]{2}/.test(p);
+
+// The absolute path a candidate names, or null if it can't be one. String work
+// only: whether it exists is the caller's question.
+function targetPath(base, candidate) {
   if (!candidate || candidate.length > 400) return null;
   // Legal in a Windows filename but shell metacharacters, so a file could be
   // named to inject if anything downstream ever reaches a command line.
@@ -3599,13 +3878,36 @@ function resolveTarget(cwd, candidate) {
     // msys/Git Bash style: /c/dev/x -> C:\dev\x
     target = target[1] + ':' + target.slice(2);
   }
-  const base = cwd && fs.existsSync(cwd) ? cwd : startDir();
+  if (isUnc(target)) return null;
   const abs = path.resolve(base, target);
+  return isUnc(abs) ? null : abs;
+}
+
+function resolveTarget(cwd, candidate) {
+  const base = cwd && !isUnc(cwd) && fs.existsSync(cwd) ? cwd : startDir();
+  const abs = targetPath(base, candidate);
+  if (!abs) return null;
   try {
     return fs.statSync(abs).isFile() ? abs : null;
   } catch {
     return null;
   }
+}
+
+// Async lookups for paths:resolve, which asks about dozens of words on every
+// hover: a slow disk (network drive, sleeping USB) waits off the main thread
+// instead of freezing the app.
+async function statAsync(abs) {
+  try {
+    return await fs.promises.stat(abs);
+  } catch {
+    return null;
+  }
+}
+
+async function baseDirAsync(cwd) {
+  if (cwd && !isUnc(cwd) && (await statAsync(cwd))?.isDirectory()) return cwd;
+  return startDir();
 }
 
 // ---------- images dropped or pasted into a pane ----------
@@ -3738,7 +4040,7 @@ function buildNameIndex(root) {
 
 async function findInRepo(cwd, name) {
   if (/[\\/]/.test(name) || /[\0<>|"*?&^%`$:]/.test(name)) return null;
-  const base = cwd && fs.existsSync(cwd) ? cwd : null;
+  const base = cwd && !isUnc(cwd) && (await statAsync(cwd))?.isDirectory() ? cwd : null;
   const root = base && (await repoRootCached(base));
   if (!root) return null;
   let entry = nameIndexes.get(root.toLowerCase());
@@ -3750,23 +4052,18 @@ async function findInRepo(cwd, name) {
   }
   if (!hits || hits.length !== 1) return null;
   const abs = path.join(root, hits[0]);
-  try {
-    return fs.statSync(abs).isFile() ? abs : null;
-  } catch {
-    return null; // deleted since the list was taken
-  }
+  // null when deleted since the list was taken
+  return (await statAsync(abs))?.isFile() ? abs : null;
 }
 
 // A name a listing cut short to fit its column ("CHANGEL…"): the one file in
 // the folder whose name starts that way. With several ("packag…") there is no
 // guessing which: { dir } instead, for the folder to be searched for them.
-function resolveCut(cwd, candidate) {
+async function resolveCut(dir, candidate) {
   if (!candidate.endsWith('…') || /[\0<>|"*?&^%`$\\/]/.test(candidate)) return null;
   const start = candidate.slice(0, -1).toLowerCase();
-  const dir = cwd && fs.existsSync(cwd) ? cwd : startDir();
   try {
-    const hits = fs
-      .readdirSync(dir, { withFileTypes: true })
+    const hits = (await fs.promises.readdir(dir, { withFileTypes: true }))
       .filter((d) => d.isFile() && d.name.toLowerCase().startsWith(start));
     if (hits.length === 1) return path.join(dir, hits[0].name);
     return hits.length > 1 ? { dir } : null;
@@ -3775,31 +4072,33 @@ function resolveCut(cwd, candidate) {
   }
 }
 
+async function resolveFile(base, candidate) {
+  const abs = targetPath(base, candidate);
+  return abs && (await statAsync(abs))?.isFile() ? abs : null;
+}
+
 // A folder named in output ("assets", "src/renderer") — only where it stands,
 // never searched for: a word naming some folder deep in the repo is prose.
-function resolveFolder(cwd, candidate) {
-  if (!candidate || candidate.length > 400 || /[\0<>|"*?&^%`$]/.test(candidate)) return null;
-  const base = cwd && fs.existsSync(cwd) ? cwd : startDir();
-  const abs = path.resolve(base, candidate.replace(/^~(?=[\\/])/, app.getPath('home')));
-  try {
-    return fs.statSync(abs).isDirectory() ? abs : null;
-  } catch {
-    return null;
-  }
+async function resolveFolder(base, candidate) {
+  const abs = targetPath(base, candidate);
+  return abs && (await statAsync(abs))?.isDirectory() ? abs : null;
 }
 
 // Files under `paths`, folders under `dirs`, names cut short that several files
 // start with under `cuts` (their folder), each keyed by the text asked about.
+// Every disk lookup here is async: it runs on each hover, and one sync stat
+// that hung is what got Frost killed as not responding.
 ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
   const paths = {};
   const dirs = {};
   const cuts = {};
   const list = Array.isArray(candidates) ? candidates.slice(0, 64) : [];
+  const base = await baseDirAsync(cwd);
   await Promise.all(
     list.map(async (candidate) => {
       if (typeof candidate !== 'string') return;
       if (candidate.endsWith('…')) {
-        const hit = resolveCut(cwd, candidate);
+        const hit = await resolveCut(base, candidate);
         if (typeof hit === 'string') paths[candidate] = hit;
         else if (hit) cuts[candidate] = hit.dir;
         return;
@@ -3807,10 +4106,10 @@ ipcMain.handle('paths:resolve', async (_e, { cwd, candidates }) => {
       // the repo is searched by name only for something named like a file:
       // every word of prose would otherwise send git through the repo
       const named = /\.[A-Za-z]\w{0,9}$/.test(candidate);
-      const abs = resolveTarget(cwd, candidate) || (named ? await findInRepo(cwd, candidate) : null);
+      const abs = (await resolveFile(base, candidate)) || (named ? await findInRepo(cwd, candidate) : null);
       if (abs) paths[candidate] = abs;
       else {
-        const dir = resolveFolder(cwd, candidate);
+        const dir = await resolveFolder(base, candidate);
         if (dir) dirs[candidate] = dir;
       }
     })
@@ -4499,6 +4798,7 @@ app.whenReady().then(() => {
 
   watchConfig();
   initUpdates();
+  fillSpares(SPARE_FIRST_MS);
 });
 
 app.on('before-quit', () => {

@@ -13,6 +13,7 @@ const s = {
   gpu: document.getElementById('s-gpu'),
   defaultProfile: document.getElementById('s-profile'),
   restoreSession: document.getElementById('s-restore'),
+  spareShells: document.getElementById('s-spares'),
   notifyBlocked: document.getElementById('s-notify-blocked'),
   notifyDone: document.getElementById('s-notify-done'),
   notifySeconds: document.getElementById('s-notify-seconds'),
@@ -168,6 +169,7 @@ function syncSettingsUI() {
   if (profiles.length) s.defaultProfile.value = t.defaultProfile || profiles[0].id;
   s.gpu.checked = t.gpuRenderer === true;
   s.restoreSession.checked = t.restoreSession !== false;
+  s.spareShells.value = String(Number.isInteger(t.spareShells) ? Math.max(0, Math.min(3, t.spareShells)) : 2);
   const notify = t.notify || {};
   s.notifyBlocked.checked = notify.agentBlocked !== false;
   s.notifyDone.checked = notify.agentDone !== false;
@@ -290,6 +292,7 @@ function onSettingChange() {
   if (s.defaultProfile.value) t.defaultProfile = s.defaultProfile.value;
   t.gpuRenderer = s.gpu.checked;
   t.restoreSession = s.restoreSession.checked;
+  t.spareShells = +s.spareShells.value;
   t.notify = {
     agentBlocked: s.notifyBlocked.checked,
     agentDone: s.notifyDone.checked,

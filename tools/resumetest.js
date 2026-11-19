@@ -87,6 +87,30 @@ function connect(url) {
   const dayAgo = new Date(Date.now() - 86400e3);
   fs.utimesSync(oldFile, dayAgo, dayAgo);
 
+  // Two more, each on a live stand-in process. One file's procStart matches its
+  // process: a claude still open elsewhere. The other's doesn't: a file left by
+  // a shutdown whose pid went to someone else after the reboot.
+  const sitters = [0, 1].map(() => spawn('ping', ['-n', '300', '127.0.0.1'], { stdio: 'ignore', windowsHide: true }));
+  await sleep(500);
+  const startOf = (pid) => spawnSync('powershell.exe', ['-NoProfile', '-Command', `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`], { encoding: 'utf8' }).stdout.trim();
+  const SID_LIVE = '00000000-0000-4000-8000-000000000004';
+  const SID_REUSED = '00000000-0000-4000-8000-000000000005';
+  for (const [i, sid, title, procStart] of [
+    [0, SID_LIVE, 'Truly open', startOf(sitters[0].pid)],
+    [1, SID_REUSED, 'Pid reused', '134000000000000000']
+  ]) {
+    const f = path.join(project, sid + '.jsonl');
+    fs.writeFileSync(f, [
+      { type: 'user', cwd: DEMO, sessionId: sid, message: { role: 'user', content: title } },
+      { type: 'ai-title', aiTitle: title, sessionId: sid }
+    ].map((l) => JSON.stringify(l)).join('\n') + '\n');
+    const t = new Date(Date.now() - (70 + i * 10) * 1000); // just behind "Renamed elsewhere"
+    fs.utimesSync(f, t, t);
+    fs.writeFileSync(path.join(claudeDir, 'sessions', sitters[i].pid + '.json'), JSON.stringify({
+      pid: sitters[i].pid, sessionId: sid, cwd: DEMO, procStart, name: 'derived', nameSource: 'derived'
+    }));
+  }
+
   // and a leftover from a crashed claude, whose pid is long gone
   fs.writeFileSync(path.join(claudeDir, 'sessions', '999999.json'), JSON.stringify({
     pid: 999999, sessionId: SID, cwd: DEMO, name: 'ghost', nameSource: 'user'
@@ -123,6 +147,10 @@ function connect(url) {
     check('a crashed leftover does not count as running', !String(rows[0]).includes('elsewhere') && !rows.some((r) => r.startsWith('ghost')));
     check('one open elsewhere says so, under its /rename name',
       rows[1] === 'Renamed elsewhere | aurora-notes · open elsewhere', JSON.stringify(rows[1]));
+    check('one whose process started when its file says is open elsewhere',
+      rows[2] === 'Truly open | aurora-notes · open elsewhere', JSON.stringify(rows[2]));
+    check('one whose pid now belongs to another process is not',
+      rows[3] === 'Pid reused | aurora-notes · 1m ago', JSON.stringify(rows[3]));
 
     const before = await c.eval(`agentTabs()[0].centerLeaves.size`);
 
@@ -216,6 +244,7 @@ function connect(url) {
     console.error('ERROR:', e.message); fail++;
   } finally {
     spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    for (const s of sitters) s.kill();
     app.exit(fail ? 1 : 0);
   }
 })();

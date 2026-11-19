@@ -69,9 +69,20 @@ const AGENT_SETUP = `(async () => {
           await pause(400);
         }
       };
+      const resting = () => {
+        const agent = [...globalAgents.values()][0];
+        return !agent || ['done', 'blocked', 'idle'].includes(agent.status);
+      };
       const ask = async (prompt, timeout = 180000) => {
-        api.ptyInput(leaf.ptyId, prompt + '\\r');
-        await pause(3500); // let the submit land before watching for a rest
+        // Enter on its own, a moment later: typed in the same write, Claude
+        // Code takes it for part of a paste and adds a new line instead.
+        api.ptyInput(leaf.ptyId, prompt);
+        await pause(400);
+        api.ptyInput(leaf.ptyId, '\\r');
+        // Wait for the agent to start working before waiting for it to rest:
+        // the status can take a while to leave the last turn's 'done', and a
+        // question sent meanwhile is queued and merged into this one.
+        await waitFor(() => !resting(), 30000);
         return settled(timeout);
       };
 
@@ -101,7 +112,10 @@ const AGENT_SETUP = `(async () => {
       // top. Keep giving the agent real work until it's gone.
       const fillers = [
         'List the files in src/ with a one-line description of each.',
-        'What does the pinned-first sort order do to search results?'
+        'What does the pinned-first sort order do to search results?',
+        // short answers can leave the whole chat on a zoomed-out screen; a
+        // file printed in full is long whatever the agent's style
+        'Print src/store.js in full in a code block, nothing else.'
       ];
       for (const filler of fillers) {
         if (!bannerVisible()) break;
@@ -223,10 +237,10 @@ module.exports = [
     setup: AGENT_SETUP
   },
   {
-    // The four designs side by side, on one screen: the agent tab is set up
-    // once and photographed under each design in turn, so the only thing that
-    // differs between the four is the design. Tiled 2x2 by shots.js, and
-    // taken one Ctrl+- out: four windows to an image, so more of each fits.
+    // Every design side by side: the agent tab is set up once and photographed
+    // under each design in turn, so the only thing that differs between them
+    // is the design. Tiled two to a row by shots.js, and taken one Ctrl+- out:
+    // six windows to an image, so more of each fits.
     name: 'screenshot-designs',
     photo: 'peaks-sunrise',
     wallpaper: 'alpine',
@@ -237,7 +251,9 @@ module.exports = [
       { id: 'frost', label: 'Frost' },
       { id: 'liquid', label: 'Liquid Glass' },
       { id: 'aurora', label: 'Aurora Night' },
-      { id: 'graphite', label: 'Graphite Studio' }
+      { id: 'graphite', label: 'Graphite Studio' },
+      { id: 'terminal', label: 'Classic Terminal' },
+      { id: 'candy', label: 'Candy Swirl' }
     ],
     setup: `(async () => {
       runCommand('view.zoomOut');

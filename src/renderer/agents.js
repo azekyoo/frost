@@ -305,7 +305,7 @@ function buildAgentLayout(tab) {
   layout.className = 'agents-layout';
   layout.innerHTML = `
     <div class="agents-rail">
-      <button class="rail-new" title="Start Claude Code in a folder">+ New session</button>
+      <button class="rail-new" title="Start Claude Code in a folder"><span>+ New session</span></button>
       <div class="rail-section">
         <div class="rail-head"><h4>Agents<span class="rail-count"></span></h4></div>
         <div class="agents-list"></div>
@@ -328,8 +328,8 @@ function buildAgentLayout(tab) {
       <div class="diff-head">
         <span class="diff-title">Diff watch</span>
         <div class="diff-toggle">
-          <button data-mode="session" class="active" title="Everything since the agent started, commits included">Session</button>
-          <button data-mode="uncommitted" title="Working tree vs HEAD only">Uncommitted</button>
+          <button data-mode="session" class="active" title="Everything since the agent started, commits included"><span>Session</span></button>
+          <button data-mode="uncommitted" title="Working tree vs HEAD only"><span>Uncommitted</span></button>
         </div>
       </div>
       <div class="diff-repos" hidden></div>
