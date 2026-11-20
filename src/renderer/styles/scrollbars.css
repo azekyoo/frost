@@ -1,0 +1,74 @@
+/* ---------- scrollbars ---------- */
+/* Every panel that scrolls uses this one, the terminal excepted — its scrollbar
+   carries the command ticks and is styled with them. Pseudo-elements only:
+   since Chromium 121, an element with the standard scrollbar-width or
+   scrollbar-color set ignores every ::-webkit-scrollbar rule and draws
+   Chromium's own bar, arrows and all, merely recoloured. The thumb is inset by
+   a transparent border so it floats as a thin pill clear of the panel's edge. */
+.settings-body::-webkit-scrollbar,
+#palette-list::-webkit-scrollbar,
+.agents-rail::-webkit-scrollbar,
+.agents-diff::-webkit-scrollbar,
+.diff-body::-webkit-scrollbar,
+.peek-body::-webkit-scrollbar,
+.peek-tree::-webkit-scrollbar,
+.select-menu::-webkit-scrollbar,
+.peek-md pre::-webkit-scrollbar,
+.diff-note textarea::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.settings-body::-webkit-scrollbar-track,
+#palette-list::-webkit-scrollbar-track,
+.agents-rail::-webkit-scrollbar-track,
+.agents-diff::-webkit-scrollbar-track,
+.diff-body::-webkit-scrollbar-track,
+.peek-body::-webkit-scrollbar-track,
+.peek-tree::-webkit-scrollbar-track,
+.select-menu::-webkit-scrollbar-track,
+.peek-md pre::-webkit-scrollbar-track,
+.diff-note textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-body::-webkit-scrollbar-thumb,
+#palette-list::-webkit-scrollbar-thumb,
+.agents-rail::-webkit-scrollbar-thumb,
+.agents-diff::-webkit-scrollbar-thumb,
+.diff-body::-webkit-scrollbar-thumb,
+.peek-body::-webkit-scrollbar-thumb,
+.peek-tree::-webkit-scrollbar-thumb,
+.select-menu::-webkit-scrollbar-thumb,
+.peek-md pre::-webkit-scrollbar-thumb,
+.diff-note textarea::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 10px;
+}
+
+.settings-body::-webkit-scrollbar-thumb:hover,
+#palette-list::-webkit-scrollbar-thumb:hover,
+.agents-rail::-webkit-scrollbar-thumb:hover,
+.agents-diff::-webkit-scrollbar-thumb:hover,
+.diff-body::-webkit-scrollbar-thumb:hover,
+.peek-body::-webkit-scrollbar-thumb:hover,
+.peek-tree::-webkit-scrollbar-thumb:hover,
+.select-menu::-webkit-scrollbar-thumb:hover,
+.peek-md pre::-webkit-scrollbar-thumb:hover,
+.diff-note textarea::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-3);
+  background-clip: padding-box;
+}
+
+/* where two scrollbars meet: defaults to an opaque grey square */
+.peek-md pre::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* where the two scrollbars meet: Chromium paints it white unless told */
+.peek-body::-webkit-scrollbar-corner {
+  background: transparent;
+}
+

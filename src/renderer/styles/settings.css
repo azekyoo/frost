@@ -1,0 +1,501 @@
+/* ---------- settings drawer ---------- */
+
+#settings {
+  position: fixed;
+  top: calc(var(--titlebar-h) + 8px);
+  right: 8px;
+  bottom: 8px;
+  width: 336px;
+  background: var(--ice-sheen), var(--ice);
+  backdrop-filter: var(--ice-blur);
+  border-radius: 16px;
+  box-shadow: var(--ice-edge), 0 30px 70px -16px rgba(0, 0, 0, 0.62), 0 4px 14px -4px rgba(0, 0, 0, 0.3);
+  transform: translateX(calc(100% + 20px));
+  opacity: 0.6;
+  transition: transform 0.32s var(--ease-out), opacity 0.22s var(--ease);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#settings.open {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+/* the drawer is frosted like the window, grain and all */
+#settings::after,
+.palette-box::after,
+.modal-box::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: var(--grain);
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px 12px 18px;
+  font-family: var(--ui-font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.settings-header button {
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 65%, transparent);
+  cursor: pointer;
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.settings-header button:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+.settings-body {
+  padding: 12px 12px 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Each group is a card of its own, so a long drawer reads as a handful of
+   sections rather than one column of forty controls. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 13px 13px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), inset 0 0 0 1px var(--hairline);
+}
+
+.group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+
+/* a short lit tick before each heading: the accent, used as a bookmark */
+.group h3::before {
+  content: '';
+  width: 3px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field.row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+/* a checkbox that only qualifies the one above it */
+.field.row.sub {
+  margin-left: 24px;
+  padding-left: 10px;
+  border-left: 1px solid var(--hairline);
+}
+
+.field.row.sub span {
+  color: color-mix(in srgb, var(--fg) 58%, transparent);
+}
+
+.field-pair {
+  display: flex;
+  gap: 10px;
+}
+
+.field-pair .field {
+  flex: 1;
+}
+
+.field span {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
+}
+
+.field > span:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.field.row > span:first-child {
+  display: inline;
+}
+
+/* a slider's value, pinned to the right of its label like a readout */
+.field em {
+  font-style: normal;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--surface-1);
+}
+
+.field em:empty {
+  display: none;
+}
+
+.field input[type="text"],
+.field select {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--hairline);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: var(--ui-font);
+  outline: none;
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+.field select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 30px;
+  background-image: var(--chevron);
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 14px;
+  cursor: pointer;
+}
+
+.field input[type="text"]:hover,
+.field select:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--hairline-strong);
+}
+
+.field input[type="text"]:focus,
+.field select:focus {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.field input[type="text"]::placeholder {
+  color: color-mix(in srgb, var(--fg) 35%, transparent);
+}
+
+.field select option {
+  background: #16181f;
+  color: #e8eaf2;
+}
+
+.input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.input-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.input-row button {
+  flex: none;
+  width: 34px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-1);
+  color: color-mix(in srgb, var(--fg) 80%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.input-row button:hover {
+  background: var(--surface-2);
+  border-color: var(--hairline-strong);
+  color: var(--fg);
+}
+
+.field input[type="color"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 32px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  padding: 4px;
+  transition: border-color 0.15s var(--ease);
+}
+
+.field input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.field input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.field input[type="color"]:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+/* Checkboxes are switches: every one of them in the drawer turns a behaviour
+   on or off, and that is what a switch says and a tick box only implies. */
+.field input[type="checkbox"] {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 30px;
+  height: 18px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px var(--hairline-strong), inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: background 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+
+.field input[type="checkbox"]::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s var(--ease-out), background 0.18s var(--ease);
+}
+
+.field input[type="checkbox"]:checked {
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, #fff), 0 0 10px -2px var(--accent-glow);
+}
+
+.field input[type="checkbox"]:checked::before {
+  transform: translateX(12px);
+  background: #fff;
+}
+
+.field input[type="checkbox"]:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* range sliders */
+.field input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.field input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent-mid), var(--surface-3));
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.25);
+}
+
+.field input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  margin-top: -6px;
+  background: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent), 0 2px 6px rgba(0, 0, 0, 0.45);
+  transition: transform 0.12s var(--ease), box-shadow 0.12s var(--ease);
+}
+
+.field input[type="range"]:hover::-webkit-slider-thumb {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 14px var(--accent-glow),
+    0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+.field input[type="range"]:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-actions button {
+  flex: 1;
+  border: 1px solid var(--hairline);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 8px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), transform 0.12s var(--ease);
+}
+
+.settings-actions button:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.05));
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.settings-actions button:active {
+  background: var(--surface-3);
+  transform: scale(0.98);
+}
+
+/* A check already running, or a build that cannot check at all: the button has
+   to read as unavailable, not merely as unresponsive when pressed. */
+.settings-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+  transform: none;
+}
+
+.settings-actions button:disabled:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  border-color: var(--hairline);
+}
+
+/* the one action worth taking once an update is in hand */
+#btn-update-act {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+/* The two versions read as a comparison, so they line up as one block rather
+   than as two more fields in a panel full of them. */
+.update-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 11px;
+  background: rgba(0, 0, 0, 0.18);
+  /* The progress percentage is painted as the box's own background, so a
+     download is legible without a separate bar competing with the numbers. */
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--accent) 22%, transparent) var(--update-progress, 0%),
+    transparent var(--update-progress, 0%)
+  );
+  background-repeat: no-repeat;
+  transition: background-image 0.25s var(--ease);
+}
+
+.update-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+
+.update-line b {
+  color: var(--fg);
+  font-weight: 600;
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-status {
+  font-size: 11px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--fg) 55%, transparent);
+}
+
+.update-status:empty {
+  display: none;
+}
+
+.update-status.ready,
+.update-status.available {
+  color: var(--accent);
+}
+
+.update-status.error {
+  color: var(--danger); /* same red as an error toast */
+}
+
+.hint {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--fg) 46%, transparent);
+  line-height: 1.5;
+}
+
+.hint b {
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  font-weight: 600;
+}
+
+.hint:empty {
+  display: none;
+}
+
+/* Ligatures, when they are on. xterm's DOM renderer puts a sub-pixel
+   letter-spacing correction on every span so that n characters measure exactly
+   n cells — and Chromium turns ligature substitution off for any text whose
+   letter-spacing is not zero, however small. So the correction goes while
+   ligatures are on: it is a hundredth of a pixel per character, about one pixel
+   across a full row, against a feature that is otherwise silently dead.
+   !important because the value is set inline, on every span, every frame. */
+body.ligatures .xterm-rows span {
+  letter-spacing: 0 !important;
+}
+
+/* puts the design's own accent back; only there once one has been picked */
+.accent-reset {
+  border: none;
+  border-radius: 5px;
+  padding: 1px 7px;
+  background: var(--surface-2);
+  color: color-mix(in srgb, var(--fg) 75%, transparent);
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.accent-reset:hover {
+  background: var(--surface-3);
+  color: var(--fg);
+}
+
+.accent-reset[hidden] {
+  display: none;
+}
+

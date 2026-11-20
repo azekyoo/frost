@@ -1,0 +1,218 @@
+/* ---------- shell dock ---------- */
+/* The right-hand column is the diff over an optional shell: two sheets of the
+   same glass, with a gap to drag between them. */
+.agents-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.agents-dock-gutter {
+  flex: none;
+  height: 6px;
+  position: relative;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.agents-dock-gutter[hidden],
+.agents-dock[hidden] {
+  display: none;
+}
+
+.agents-dock-gutter::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: 3px;
+  background: transparent;
+  transition: background 0.15s var(--ease), width 0.2s var(--ease-out);
+}
+
+.agents-dock-gutter:hover::after,
+.agents-dock-gutter.dragging::after {
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.agents-dock-gutter.dragging::after {
+  width: 72px;
+}
+
+.agents-dock {
+  flex: none;
+  height: 260px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.015) 50%);
+  box-shadow: var(--raised-edge), 0 10px 28px -16px rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: box-shadow 0.2s var(--ease);
+}
+
+/* Header and shell in one block. Mid-slide that block keeps the dock's full
+   height and sits on its bottom edge, so it rises out of the column with
+   everything already in place rather than unrolling downwards. */
+.dock-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agents-dock.sliding {
+  position: relative;
+}
+
+.agents-dock.sliding .dock-inner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--dock-full);
+}
+
+/* lit while it has the keyboard, like a focused pane */
+.agents-dock:focus-within {
+  box-shadow: var(--raised-edge), 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 0 22px -8px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.dock-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 6px 5px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.dock-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.dock-title svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+}
+
+.dock-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font);
+  font-weight: 500;
+}
+
+.dock-send {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  border: none;
+  border-radius: 7px;
+  padding: 4px 9px 4px 7px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 0 0 1px var(--hairline);
+  color: color-mix(in srgb, var(--fg) 72%, transparent);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+.dock-send svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dock-send:hover {
+  color: var(--fg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 0 12px -4px var(--accent-glow);
+}
+
+/* the last command failed: the one thing in the header worth pressing */
+.dock-send.failed {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(248, 81, 73, 0.38), rgba(248, 81, 73, 0.18));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(248, 81, 73, 0.6), 0 0 14px -4px rgba(248, 81, 73, 0.7);
+}
+
+/* something selected: the button will send that, and says so in the accent */
+.dock-send.selection {
+  color: #fff;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 34%, transparent), color-mix(in srgb, var(--accent) 16%, transparent));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 0 14px -4px var(--accent-glow);
+}
+
+.dock-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.dock-close svg {
+  width: 13px;
+  height: 13px;
+}
+
+.dock-close:hover {
+  background: var(--surface-3);
+  color: #fff;
+}
+
+.dock-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+/* the dock is the sheet here; its pane needs no second border inside it */
+.dock-body .pane {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  /* the theme's padding, capped: a short shell can't spare a full terminal's */
+  padding: min(var(--pad), 10px);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+

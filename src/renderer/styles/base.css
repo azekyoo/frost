@@ -1,0 +1,174 @@
+:root {
+  --tint: rgba(10, 12, 20, 0.55);
+  --accent: #7aa2f7;
+  --fg: #c8d3f5;
+  --pad: 14px;
+  --radius: 8px;
+  --titlebar-h: 44px;
+  --font: "Cascadia Mono", Consolas, monospace;
+
+  --ui-font: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --ui-font-display: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.13);
+  --surface-1: rgba(255, 255, 255, 0.04);
+  --surface-2: rgba(255, 255, 255, 0.085);
+  --surface-3: rgba(255, 255, 255, 0.14);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ---- the material, in layers ----
+     Every floating surface is the same sheet of ice: a smoked, translucent body,
+     a heavy blur of whatever sits under it, a lit top edge where the light
+     catches it, and a shadow that lifts it off the glass behind. Written once
+     here so a menu, the palette and the drawer can never drift apart. */
+  --ice: rgba(18, 20, 30, 0.74);
+  --ice-strong: rgba(15, 17, 26, 0.86);
+  /* divided by the UI zoom like everything glass: the frost is the desktop's,
+     and the desktop doesn't zoom */
+  --ice-blur: blur(calc(30px / var(--ui-zoom, 1))) saturate(1.7);
+  --ice-edge: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 0 0 1px rgba(255, 255, 255, 0.055);
+  --ice-lift: 0 22px 56px -14px rgba(0, 0, 0, 0.62), 0 3px 10px -2px rgba(0, 0, 0, 0.28);
+  --ice-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 42%);
+
+  /* a raised piece of glass inside a surface: the active tab, a selected row */
+  --raised: linear-gradient(180deg, rgba(255, 255, 255, 0.115), rgba(255, 255, 255, 0.05));
+  --raised-edge: inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+
+  --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-mid: color-mix(in srgb, var(--accent) 45%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 55%, transparent);
+
+  /* Frost's grain. Real frosted glass is never optically flat, and a whisper of
+     noise is what separates it from a translucent rectangle. Grey noise, used
+     through a low-opacity overlay layer, so it shifts luminance only and never
+     tints the wallpaper. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4.5 6.5 3.5 3.5 3.5-3.5' fill='none' stroke='white' stroke-opacity='.6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --search-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='7' cy='7' r='4.25' fill='none' stroke='white' stroke-opacity='.5' stroke-width='1.5'/%3E%3Cpath d='m10.25 10.25 3 3' stroke='white' stroke-opacity='.5' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+
+  --st-working: #58a6ff;
+  --st-blocked: #f0883e;
+  --st-done: #3fb950;
+  --danger: #f85149;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  background: var(--tint);
+  color: var(--fg);
+  font-family: var(--ui-font);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  animation: boot 0.34s var(--ease-out);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes boot {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The one entrance every floating surface shares: it condenses into place,
+   a few pixels and a hair of scale, rather than blinking into existence. */
+@keyframes condense {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* condense played backwards: how every floating surface leaves */
+@keyframes evaporate {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* A surface on its way out is still drawn but no longer there to click */
+.menu.closing:not(.open) {
+  display: block;
+  pointer-events: none;
+  animation: evaporate 0.12s var(--ease) forwards;
+}
+
+#palette.closing:not(.open),
+#peek.closing:not(.open),
+#modal.closing:not(.open) {
+  display: block;
+  pointer-events: none;
+  animation: fade-out 0.14s var(--ease) forwards;
+}
+
+#modal.closing:not(.open) {
+  display: flex;
+}
+
+#palette.closing:not(.open) .palette-box,
+#peek.closing:not(.open) .peek-box,
+#modal.closing:not(.open) .modal-box {
+  animation: evaporate 0.14s var(--ease) forwards;
+}
+
+button {
+  font-family: var(--ui-font);
+}
+
+/* Icons are drawn with the text colour and never take the click themselves:
+   the handlers look at the button, and a click that landed on the <path>
+   inside it would be a click on something they don't recognise. */
+button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 1px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
+}
+

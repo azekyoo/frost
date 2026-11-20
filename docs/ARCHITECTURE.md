@@ -63,7 +63,7 @@ settings, candy and `boot.js`. A folder is one former file cut at its section he
 order, so nothing that runs at load time may use a name declared in a later script. The end-to-end tests
 (`tools/*test.js`) drive the page through these globals by name.
 
-Looks are CSS: `style.css` plus one file per design in `designs/`.
+Looks are CSS: `styles/*.css` (the former style.css cut at its section headings, linked in the same order, so the cascade is unchanged) and one file per design in `designs/`, scoped to `body[data-design=…]` and linked after `styles/`.
 
 ## Porting checklist
 

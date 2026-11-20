@@ -1,0 +1,120 @@
+/* ---------- command palette ---------- */
+
+/* The terminal behind the palette goes out of focus as well as dark: the
+   palette is the one thing to look at, and a softened backdrop is the glass
+   metaphor carried one layer further. */
+#palette {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 150;
+  background: rgba(2, 4, 10, 0.34);
+  backdrop-filter: blur(3px);
+  padding-top: 12vh;
+}
+
+#palette.open {
+  display: block;
+  animation: boot 0.16s var(--ease);
+}
+
+.palette-box {
+  position: relative;
+  width: min(600px, 88vw);
+  margin: 0 auto;
+  background: var(--ice-sheen), var(--ice-strong);
+  backdrop-filter: var(--ice-blur);
+  border-radius: 16px;
+  box-shadow: var(--ice-edge), 0 32px 80px -16px rgba(0, 0, 0, 0.65), 0 4px 14px -4px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+#palette.open .palette-box {
+  animation: condense 0.2s var(--ease-out);
+}
+
+#palette-input {
+  width: 100%;
+  padding: 16px 18px 16px 46px;
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--search-icon) no-repeat 18px 50% / 16px, transparent;
+  color: var(--fg);
+  font: inherit;
+  font-family: var(--ui-font-display);
+  font-size: 15px;
+  outline: none;
+}
+
+#palette-input::placeholder {
+  color: color-mix(in srgb, var(--fg) 38%, transparent);
+}
+
+#palette-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+#palette-list .hint {
+  margin: 10px 12px;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 82%, transparent);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+}
+
+.palette-item.selected {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 26%, transparent), color-mix(in srgb, var(--accent) 12%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--fg);
+}
+
+.palette-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.palette-item.selected em {
+  color: var(--fg);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.palette-item span {
+  flex: none;
+}
+
+/* a folder's full path, next to its name in the folder picker */
+.palette-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  opacity: 0.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-family: var(--font);
+}
+

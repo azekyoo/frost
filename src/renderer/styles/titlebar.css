@@ -1,0 +1,319 @@
+/* ---------- titlebar ---------- */
+
+#titlebar {
+  height: var(--titlebar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 8px;
+  -webkit-app-region: drag;
+  user-select: none;
+  position: relative;
+}
+
+/* The seam under the titlebar fades out at both ends instead of running into
+   the frame: it separates the strip from the terminal without boxing it in. */
+#titlebar::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--hairline-strong) 12%, var(--hairline-strong) 88%, transparent);
+}
+
+.titlebar-spacer {
+  flex: 1;
+}
+
+.wco-spacer {
+  width: 140px; /* room for native min/max/close overlay buttons */
+  flex: none;
+}
+
+#tabstrip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* shrink before the buttons do, then scroll: squeezing tabs into unreadable
+     slivers is worse than having to scroll to one */
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none; /* the active tab is scrolled into view instead */
+  -webkit-app-region: no-drag;
+}
+
+#tabstrip::-webkit-scrollbar {
+  height: 0;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  /* A tab is a click target before it is a label, and a 104px one asks to be
+     aimed at. Sized so a normal title reads in full and the strip stays easy to
+     hit; the strip still scrolls rather than squeezing them once it is full. */
+  flex: 0 0 auto;
+  max-width: 280px;
+  min-width: 150px;
+  height: 32px;
+  padding: 0 5px 0 12px;
+  border-radius: 9px;
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 58%, transparent);
+  cursor: default;
+  white-space: nowrap;
+  position: relative;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+
+/* Seams between resting tabs, so a row of them reads as a row of separate
+   targets. A seam goes wherever it would touch a lit tab — the lit one has its
+   own edge and needs no line cutting into it. */
+.tab + .tab::before {
+  content: '';
+  position: absolute;
+  left: -2px;
+  top: 50%;
+  width: 1px;
+  height: 14px;
+  transform: translateY(-50%);
+  background: var(--hairline-strong);
+  transition: opacity 0.15s var(--ease);
+  pointer-events: none;
+}
+
+.tab.active::before,
+.tab.active + .tab::before,
+.tab:hover::before,
+.tab:hover + .tab::before {
+  opacity: 0;
+}
+
+.tab:hover {
+  background: var(--surface-1);
+  color: color-mix(in srgb, var(--fg) 86%, transparent);
+}
+
+.tab.active {
+  background: var(--raised);
+  box-shadow: var(--raised-edge), 0 6px 16px -8px rgba(0, 0, 0, 0.55);
+  color: var(--fg);
+}
+
+/* The accent is a strip of light under the lit tab, not a painted line: it
+   fades out at its ends and throws a little glow onto the glass below. */
+.tab.active::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent) 25%, var(--accent) 75%, transparent);
+  box-shadow: 0 0 10px var(--accent-glow), 0 0 2px var(--accent-mid);
+}
+
+.tab .title {
+  /* grows to fill the tab so the close button stays pinned to the right edge —
+     without this a short title leaves the cross stranded mid-tab */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  line-height: 32px;
+  letter-spacing: 0.005em;
+}
+
+.tab.active .title {
+  font-weight: 500;
+}
+
+/* The tab left in the strip while its copy is under the cursor: a hole in the
+   order rather than a tab, since the real one is visibly elsewhere. */
+.tab.dragging {
+  opacity: 0.32;
+  cursor: grabbing;
+}
+
+.tab.dragging .close {
+  opacity: 0;
+}
+
+/* A tab growing open or folding shut: its insides are clipped to whatever width
+   it has reached, and one on its way out can no longer be clicked. */
+.tab.motion-clip {
+  overflow: hidden;
+}
+
+.tab.leaving {
+  pointer-events: none;
+}
+
+/* Sits exactly where the title was, so renaming does not resize the tab */
+.tab-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 0 6px;
+  outline: none;
+}
+
+/* The tab of a zoomed pane looks like a tab with one pane; this says otherwise */
+.tab .tab-zoom {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 4px;
+  font-size: 10px;
+  line-height: 15px;
+  border-radius: 4px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  vertical-align: 1px;
+}
+
+.tab .close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0;
+  flex: none;
+  transition: opacity 0.12s var(--ease), background 0.12s var(--ease), color 0.12s var(--ease);
+}
+
+.tab:hover .close,
+.tab.active .close {
+  opacity: 0.6;
+}
+
+.tab .close:hover {
+  background: var(--surface-3);
+  opacity: 1;
+}
+
+/* ---------- titlebar buttons ---------- */
+
+.tb-group {
+  display: flex;
+  align-items: center;
+  flex: none;
+  height: 30px;
+  margin-left: 4px;
+  border-radius: 9px;
+  -webkit-app-region: no-drag;
+  transition: background 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+
+/* The capsule only shows itself when it is being reached for */
+.tb-group:hover {
+  background: var(--surface-1);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+
+#btn-newtab,
+#btn-newtab-menu,
+#btn-agents,
+#btn-settings {
+  -webkit-app-region: no-drag;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--fg) 70%, transparent);
+  width: 32px;
+  height: 30px;
+  border-radius: 9px;
+  cursor: pointer;
+  flex: none;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+
+#btn-newtab:hover,
+#btn-newtab-menu:hover,
+#btn-agents:hover,
+#btn-settings:hover {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+#btn-newtab:active,
+#btn-newtab-menu:active,
+#btn-agents:active,
+#btn-settings:active {
+  transform: scale(0.92);
+}
+
+/* the profile caret hugs the + button, split from it by a seam */
+#btn-newtab {
+  border-radius: 9px 4px 4px 9px;
+}
+
+#btn-newtab-menu {
+  width: 20px;
+  border-radius: 4px 9px 9px 4px;
+  position: relative;
+}
+
+#btn-newtab-menu svg {
+  width: 12px;
+  height: 12px;
+}
+
+#btn-newtab-menu::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--hairline-strong);
+  opacity: 0;
+  transition: opacity 0.15s var(--ease);
+}
+
+.tb-group:hover #btn-newtab-menu::before {
+  opacity: 1;
+}
+
+/* the agent button carries the accent: it is the one thing on the strip that
+   is Frost's own rather than every terminal's */
+#btn-agents {
+  color: color-mix(in srgb, var(--accent) 80%, var(--fg));
+}
+
+#btn-agents:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+#btn-agents svg {
+  stroke-width: 1.25;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+
+#btn-settings {
+  margin-right: 4px;
+}
+
