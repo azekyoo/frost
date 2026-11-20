@@ -89,28 +89,6 @@ const gitInfo = stalls.timed('git info', gitInfoRaw);
 // status lines are compared, or the snapshot and the diff disagree.
 const UTF8_PATHS = ['-c', 'core.quotePath=false'];
 
-function unquotePath(p) {
-  if (!p.startsWith('"') || !p.endsWith('"')) return p;
-  const esc = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
-  const body = Buffer.from(p.slice(1, -1), 'utf8');
-  const bytes = [];
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] !== 92) {
-      bytes.push(body[i]);
-      continue;
-    }
-    const c = String.fromCharCode(body[i + 1]);
-    if (/[0-7]/.test(c)) {
-      bytes.push(parseInt(body.toString('latin1', i + 1, i + 4), 8));
-      i += 3;
-    } else {
-      bytes.push(esc[c] ?? body[i + 1]);
-      i += 1;
-    }
-  }
-  return Buffer.from(bytes).toString('utf8');
-}
-
 // Taken without holding up the process: every terminal's input and output
 // passes through here, and the snapshot is several gits.
 function gitRun(cwd, args, env) {
@@ -172,7 +150,6 @@ Object.assign(module.exports, {
   gitInfoRaw,
   gitInfo,
   UTF8_PATHS,
-  unquotePath,
   gitRun,
   nearestDir,
   repoRootOfRaw,

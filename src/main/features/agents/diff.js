@@ -6,7 +6,8 @@ const { execFile } = require('child_process');
 const stalls = require('../../stalls');
 
 const { CONFIG_DIR } = require('../../env');
-const { UTF8_PATHS, repoRootOf, unquotePath } = require('../git');
+const { UTF8_PATHS, repoRootOf } = require('../git');
+const { unquotePath } = require('../../core/git');
 const { agents } = require('./state');
 const { broadcast } = require('../windows/registry');
 const { late } = require('../../late');

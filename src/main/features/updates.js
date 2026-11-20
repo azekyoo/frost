@@ -9,6 +9,7 @@ const { flushWindowState } = require('./windows/state');
 const { readTheme } = require('./config');
 const { isPortableBuild } = require('../platform');
 const { markQuitting } = require('./windows/state');
+const { cmpVersion } = require('../core/version');
 
 // ---------- updates ----------
 // electron-updater against the GitHub releases the CI workflow already cuts:
@@ -169,13 +170,6 @@ function notifyUpdateReady(version) {
 const LAST_VERSION_FILE = path.join(app.getPath('userData'), 'last-version.json');
 let justUpdated = null; // { from, to }, handed to the first window that asks
 
-function cmpVersion(a, b) {
-  const pa = String(a).split(/[.-]/).map((x) => parseInt(x, 10) || 0);
-  const pb = String(b).split(/[.-]/).map((x) => parseInt(x, 10) || 0);
-  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
-  return 0;
-}
-
 function recordLaunchVersion() {
   const now = app.getVersion();
   let prev = null;
@@ -327,7 +321,6 @@ Object.assign(module.exports, {
   onUpdateDownloaded,
   notifyUpdateReady,
   LAST_VERSION_FILE,
-  cmpVersion,
   recordLaunchVersion,
   FAKE_UPDATE,
   playFakeUpdate,

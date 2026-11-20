@@ -4,6 +4,7 @@ const fs = require('fs');
 const { TITLEBAR_H, ZOOM_FILE } = require('../../env');
 const { windowOf } = require('./registry');
 const { setCaptionButtons } = require('../../platform');
+const { ZOOM_MIN, ZOOM_MAX, zoomSteps, displayKeyOf } = require('../../core/geometry');
 
 // ---------- UI zoom ----------
 // A monitor's scale factor makes text the same *physical* size everywhere, which
@@ -11,24 +12,6 @@ const { setCaptionButtons } = require('../../platform');
 // away: same size, much more of it. Zoom is therefore remembered per display
 // rather than per window, so dragging the window across screens picks up the
 // size that screen was last set to, and dragging it back restores the other one.
-
-// Zoom steps are derived from the display's scale factor rather than fixed,
-// because the terminal renderer rasterises a glyph cell to whole device pixels:
-// at an effective ratio of 1.5 the rounding error lands differently in every
-// column and the text looks gritty. Every step below multiplies out to a whole
-// or half device pixel ratio, so zooming also sharpens rather than blurs.
-const ZOOM_DPRS = [1, 1.5, 2, 2.5, 3, 4];
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 3;
-
-function zoomSteps(scaleFactor) {
-  const steps = ZOOM_DPRS.map((dpr) => dpr / (scaleFactor || 1)).filter(
-    (z) => z >= ZOOM_MIN - 1e-6 && z <= ZOOM_MAX + 1e-6
-  );
-  // A scale factor outside the table (an odd 1.75, say) could filter down to
-  // nothing; 1:1 always has to remain reachable.
-  return steps.length ? steps : [1];
-}
 
 let zoomByDisplay = (() => {
   try {
@@ -47,12 +30,6 @@ function saveZoomSoon() {
       fs.writeFileSync(ZOOM_FILE, JSON.stringify(zoomByDisplay, null, 2));
     } catch {}
   }, 300);
-}
-
-// Resolution + scale rather than display.id: ids are reassigned when a monitor
-// is unplugged and plugged back in, which would forget the setting every time.
-function displayKeyOf(d) {
-  return `${d.size.width}x${d.size.height}@${d.scaleFactor}`;
 }
 
 function displayKey(w) {
@@ -126,12 +103,7 @@ ipcMain.handle('zoom:step', (event, dir) => {
 });
 
 Object.assign(module.exports, {
-  ZOOM_DPRS,
-  ZOOM_MIN,
-  ZOOM_MAX,
-  zoomSteps,
   saveZoomSoon,
-  displayKeyOf,
   displayKey,
   zoomFor,
   applyZoom,

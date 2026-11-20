@@ -14,6 +14,7 @@ const { late } = require('../../late');
 const { diffSelection, diffSoon, selectDiff } = late(require('./diff'), ['diffSelection', 'diffSoon', 'selectDiff']);
 const { primaryWindow } = require('../windows/registry');
 const { resetTitleScan } = require('./sessions');
+const { effectiveStatus } = require('../../core/agents');
 
 let agentCounter = 0;
 let STATUS_DIR = null;
@@ -110,27 +111,6 @@ function agentEnded(agentId) {
   }
   try { fs.unlinkSync(path.join(STATUS_DIR, 'sid-' + agentId)); } catch {}
   broadcast('agent:ended', { agentId });
-}
-
-function effectiveStatus(rec) {
-  if (rec.exited) return 'exited';
-  // Claude Code's hooks report the turn's real state, so they win over the
-  // output heuristic. Typing only invalidates "blocked" — answering the prompt
-  // is what unblocks it — while "done" holds until the next prompt is sent.
-  if (rec.hook === 'blocked' && rec.hookT > rec.lastInput) return 'blocked';
-  // answered: working again, with the same staleness rule, since typing into
-  // it without a turn following would otherwise leave it "working" for good
-  if (rec.hook === 'working' || rec.hook === 'blocked') {
-    // don't stay "working" forever if a session died without firing Stop
-    return Date.now() - rec.lastData > 60000 ? 'idle' : 'working';
-  }
-  if (rec.hook === 'done') return 'done';
-  // No hook yet: a shell that hasn't run claude, or a turn that hasn't started.
-  // Output has to have been flowing for a moment, not just arrived once, so a
-  // single repaint can't pass for work.
-  const recent = Date.now() - rec.lastData < 2500;
-  const sustained = rec.lastData - (rec.busySince || rec.lastData) > 400;
-  return recent && sustained ? 'working' : 'idle';
 }
 
 function broadcastStatuses() {
@@ -708,7 +688,6 @@ Object.assign(module.exports, {
   snapshotBaseAsync,
   registerDetected,
   agentEnded,
-  effectiveStatus,
   broadcastStatuses,
   sessionIdHook,
   FROST_CONTEXT,

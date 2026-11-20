@@ -31,16 +31,6 @@ function launchFromArgv(argv) {
   return launch.dir || launch.run ? launch : null;
 }
 
-// What reaches a running Frost from a second launch. That launch parsed its own
-// argv, against its own working directory, and passed the result along; the
-// argv the running instance sees can be reordered or carry Chromium switches.
-function cleanLaunch(data) {
-  if (!data || typeof data !== 'object') return null;
-  const str = (v) => (typeof v === 'string' && v.trim() ? v : null);
-  const launch = { dir: str(data.dir), run: str(data.run), profileId: str(data.profileId) };
-  return launch.dir || launch.run ? launch : null;
-}
-
 // This process's own launch, handed to the first window that asks and to no
 // other: a window opened later must not run the command again.
 let startupLaunch = launchFromArgv(process.argv);
@@ -54,6 +44,5 @@ function takeStartupLaunch() {
 Object.assign(module.exports, {
   getStartupLaunch,
   takeStartupLaunch,
-  launchFromArgv,
-  cleanLaunch
+  launchFromArgv
 });

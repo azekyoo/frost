@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { UTF8_PATHS, gitRun } = require('./git');
+const { treeStatus } = require('../core/git');
 
 // The file's uncommitted changes, as an editor's gutter shows them: measured
 // against the last commit, not an agent's session snapshot, since the viewer is
@@ -88,23 +89,6 @@ ipcMain.handle('peek:dir', (_e, { root, rel }) => {
 
 ipcMain.handle('peek:index', (_e, { root }) => (treeRel(root, '') === null ? null : walkTree(root)));
 
-// porcelain XY -> one letter, as editors badge files: U new, A staged new,
-// D deleted, M anything else changed
-function treeStatus(stdout) {
-  const status = {};
-  const parts = stdout.split('\0');
-  for (let i = 0; i < parts.length; i++) {
-    const entry = parts[i];
-    if (entry.length < 4) continue;
-    const xy = entry.slice(0, 2);
-    // a rename or copy is followed by the path it came from
-    if (xy[0] === 'R' || xy[0] === 'C') i++;
-    status[entry.slice(3)] =
-      xy === '??' ? 'U' : xy.includes('D') ? 'D' : xy[0] === 'A' ? 'A' : 'M';
-  }
-  return status;
-}
-
 ipcMain.handle('peek:tree', async (_e, { dir }) => {
   if (typeof dir !== 'string' || !dir) return { error: 'no folder' };
   let start = path.resolve(dir);
@@ -174,7 +158,6 @@ Object.assign(module.exports, {
   listDir,
   walkTree,
   treeRel,
-  treeStatus,
   peekWatchers,
   peekHooked,
   peekUnwatch

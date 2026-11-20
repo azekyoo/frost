@@ -8,6 +8,7 @@ const { agentByPty, agents } = require('./state');
 const { broadcast } = require('../windows/registry');
 const { canCheckProc, processStartTimes } = require('../../platform');
 const { canonPath } = require('../git');
+const { jsonLines } = require('../../core/agents');
 
 // ---------- Claude Code sessions ----------
 // Claude Code keeps one transcript per session under
@@ -34,17 +35,6 @@ function readSlice(file, start, length) {
   } finally {
     fs.closeSync(fd);
   }
-}
-
-function jsonLines(text) {
-  const out = [];
-  for (const line of text.split('\n')) {
-    if (!line.startsWith('{')) continue;
-    try {
-      out.push(JSON.parse(line));
-    } catch {} // the cut at either end of a slice
-  }
-  return out;
 }
 
 function readClaudeSession(file, size) {
@@ -387,7 +377,6 @@ Object.assign(module.exports, {
   sessionCache,
   transcriptPaths,
   readSlice,
-  jsonLines,
   readClaudeSession,
   sessionInfoRaw,
   sessionInfo,

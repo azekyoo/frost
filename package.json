@@ -8,6 +8,7 @@
     "postinstall": "node tools/patch-xterm-alpha.js",
     "start": "electron .",
     "shots": "electron tools/shots.js",
+    "test:core": "node --test test/core.test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "test:status": "electron tools/statustest.js",

@@ -13,6 +13,7 @@ const { findProfile, shellCwd } = require('../profiles');
 const { late } = require('../../late');
 const { claimSpare, noteTyped, spareFilter, spareGone, spareWatch } = late(require('./spares'), ['claimSpare', 'noteTyped', 'spareFilter', 'spareGone', 'spareWatch']);
 const { statusDir } = require('../agents/agents');
+const { runsClaude } = require('../../core/agents');
 
 let ptyCounter = 0;
 
@@ -40,13 +41,6 @@ const HOLD_CAP_MS = 15000;
 // terminal, and Git Bash's readline throws away input that arrived before it
 // did: the command is typed a moment after the marker instead.
 const RUN_AFTER_PROMPT_MS = 150;
-
-// Only claude draws a prompt of its own after the command: anything else
-// (`git status`, `npm test`) is done with once it's typed, and holding the keys
-// for a claude prompt that never comes would swallow them for HOLD_CAP_MS.
-function runsClaude(run) {
-  return /^\s*claude(\.exe|\.cmd)?(\s|$)/i.test(run);
-}
 
 function holdForRun(id, run, marked) {
   const ta = { run, stage: 'shell', held: [], timer: null };
@@ -250,7 +244,6 @@ Object.assign(module.exports, {
   RUN_MARKED_CAP_MS,
   HOLD_CAP_MS,
   RUN_AFTER_PROMPT_MS,
-  runsClaude,
   holdForRun,
   typeRun,
   releaseTypeAhead,

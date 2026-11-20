@@ -3,7 +3,7 @@ const fs = require('fs');
 
 const { DEFAULT_THEME, readTheme } = require('../config');
 const { SHOT, TITLEBAR_H, WINDOW_FILE } = require('../../env');
-const { displayKeyOf } = require('./zoom');
+const { displayKeyOf } = require('../../core/geometry');
 const { liveWindows, windowOf } = require('./registry');
 
 // ---------- window + session state ----------
@@ -58,27 +58,6 @@ function boundsVisible(b) {
       b.y + b.height > w.y + 40
     );
   });
-}
-
-// A window size is only meaningful next to the screen it was chosen on: two
-// thirds of a laptop panel is a third of a 4K one, and restoring the rectangle
-// verbatim onto a different monitor produces a window nobody asked for. The
-// saved geometry therefore carries the work area it was measured against, and
-// is re-proportioned when it comes back to a screen of another size.
-function scaleBoundsTo(b, from, to) {
-  if (!b || !from || !from.width || !from.height) return null;
-  const fw = Math.min(1, b.width / from.width);
-  const fh = Math.min(1, b.height / from.height);
-  const width = Math.max(480, Math.round(to.width * fw));
-  const height = Math.max(300, Math.round(to.height * fh));
-  const fx = Math.min(Math.max((b.x - from.x) / from.width, 0), 1);
-  const fy = Math.min(Math.max((b.y - from.y) / from.height, 0), 1);
-  return {
-    width,
-    height,
-    x: Math.max(to.x, Math.min(Math.round(to.x + fx * to.width), to.x + to.width - width)),
-    y: Math.max(to.y, Math.min(Math.round(to.y + fy * to.height), to.y + to.height - height))
-  };
 }
 
 // A window with nothing to restore is sized the way Windows Terminal sizes its
@@ -185,7 +164,6 @@ Object.assign(module.exports, {
   ptyIdsOf,
   readWindowState,
   boundsVisible,
-  scaleBoundsTo,
   DEFAULT_COLS,
   DEFAULT_ROWS,
   defaultBoundsFor,
