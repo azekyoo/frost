@@ -7,6 +7,7 @@ const { NOTIFY_ICON_FILE } = require('../env');
 const { anyWindowFocused, broadcast, focusedWindow, liveWindows } = require('./windows/registry');
 const { flushWindowState } = require('./windows/state');
 const { readTheme } = require('./config');
+const { isPortableBuild } = require('../platform');
 const { markQuitting } = require('./windows/state');
 
 // ---------- updates ----------
@@ -53,7 +54,7 @@ let readyVersion = null; // the release already downloaded and waiting to instal
 // mechanism those two builds actually have.
 function updateSupport() {
   if (!app.isPackaged) return { ok: false, message: 'Running from source — git pull to update.' };
-  if (process.env.PORTABLE_EXECUTABLE_FILE)
+  if (isPortableBuild())
     return { ok: false, message: 'Portable build — download a new exe to update.' };
   return { ok: true, message: '' };
 }

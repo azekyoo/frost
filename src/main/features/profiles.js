@@ -1,7 +1,7 @@
 const { ipcMain } = require('electron');
 const fs = require('fs');
 
-const { detectProfiles } = require('../platform');
+const { detectProfiles, homeDir } = require('../platform');
 const { readTheme } = require('./config');
 
 function getProfiles() {
@@ -18,7 +18,7 @@ function findProfile(id) {
 function startDir() {
   const d = readTheme()?.startDir;
   if (d && fs.existsSync(d)) return d;
-  return process.env.USERPROFILE || process.cwd();
+  return homeDir() || process.cwd();
 }
 
 // The folder a shell of this profile starts in, asked for or not.

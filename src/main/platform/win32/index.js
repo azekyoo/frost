@@ -4,5 +4,7 @@ module.exports = {
   ...require('./wallpaper'),
   ...require('./fonts'),
   ...require('./processes'),
-  ...require('./editor')
+  ...require('./editor'),
+  ...require('./window-chrome'),
+  ...require('./app')
 };

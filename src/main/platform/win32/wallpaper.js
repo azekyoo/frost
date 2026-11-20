@@ -4,6 +4,8 @@
 // second or two per call, which is why main paints the single-image guess first
 // and only lets this correct it.
 
+const { screen } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 
@@ -131,10 +133,82 @@ function registryWallpaper() {
   );
 }
 
+const fileExists = (f) =>
+  fs.promises.access(f).then(
+    () => true,
+    () => false
+  );
+
+// Windows measures monitors in physical pixels, Electron in DIPs. Snapping the
+// converted rectangle to the display it lands on keeps rounding at mixed scale
+// factors from opening a seam between two monitors' tiles.
+function dipDisplayRect(r) {
+  const dip = screen.screenToDipRect(null, r);
+  let best = null;
+  let bestArea = 0;
+  for (const { bounds: b } of screen.getAllDisplays()) {
+    const w = Math.min(b.x + b.width, dip.x + dip.width) - Math.max(b.x, dip.x);
+    const h = Math.min(b.y + b.height, dip.y + dip.height) - Math.max(b.y, dip.y);
+    if (w > 0 && h > 0 && w * h > bestArea) {
+      best = b;
+      bestArea = w * h;
+    }
+  }
+  return best || dip;
+}
+
+function unionRect(rects) {
+  const x = Math.min(...rects.map((r) => r.x));
+  const y = Math.min(...rects.map((r) => r.y));
+  const right = Math.max(...rects.map((r) => r.x + r.width));
+  const bottom = Math.max(...rects.map((r) => r.y + r.height));
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+// One tile per monitor of `displays`: where it is, the picture it shows (null for a solid
+// colour) and how Windows fits that picture. `quick` skips asking Windows, for a
+// first paint that must not wait on PowerShell: one picture on every display,
+// filled, which is right for most desktops.
+async function desktopWallpaperTiles(displays, quick) {
+  const single = (await fileExists(TRANSCODED_WALLPAPER)) ? TRANSCODED_WALLPAPER : null;
+  const desk = quick ? null : await queryDesktopWallpaper();
+  if (!desk?.monitors?.length) {
+    const reg = await registryWallpaper();
+    const file = reg ? single || reg : null; // no path: a solid colour
+    return { mode: 'fill', color: null, tiles: file ? displays.map((rect) => ({ rect, file })) : [] };
+  }
+  const { mode, color, monitors } = desk;
+  if (mode === 'span') {
+    return { mode, color, tiles: [{ rect: unionRect(displays), file: single || monitors[0].path || null }] };
+  }
+  const perMonitor = new Set(monitors.map((m) => m.path.toLowerCase())).size > 1;
+  const tiles = [];
+  for (const m of monitors) {
+    let file = null;
+    if (m.path) {
+      if (perMonitor && (await fileExists(transcodedFor(m.index)))) file = transcodedFor(m.index);
+      else if (!perMonitor && single) file = single;
+      else if (await fileExists(m.path)) file = m.path;
+    }
+    tiles.push({ rect: dipDisplayRect(m), file });
+  }
+  return { mode, color, tiles };
+}
+
+// Windows sends no WM_SETTINGCHANGE when Settings changes the picture, but it
+// always rewrites its copies, so watching those files catches every change.
+function watchWallpaperFiles(onChange) {
+  return fs.watch(THEMES_DIR, (_ev, name) => {
+    if (!name || /^Transcoded(Wallpaper|_\d+)$/.test(name)) onChange();
+  });
+}
+
 Object.assign(module.exports, {
   THEMES_DIR,
   TRANSCODED_WALLPAPER,
   transcodedFor,
   registryWallpaper,
-  queryDesktopWallpaper
+  queryDesktopWallpaper,
+  desktopWallpaperTiles,
+  watchWallpaperFiles
 });

@@ -3,11 +3,12 @@ const chokidar = require('chokidar');
 const path = require('path');
 const stalls = require('../../stalls');
 
-const { CSS_FILE, KEYS_FILE, MAIN_DIR, RENDERER_DIR, SHOT, THEME_FILE, TITLEBAR_H } = require('../../env');
+const { CSS_FILE, KEYS_FILE, MAIN_DIR, RENDERER_DIR, SHOT, THEME_FILE } = require('../../env');
 const { DEFAULT_THEME, readCss, readKeys, readTheme } = require('../config');
 const { SAFE_SCHEMES } = require('../open');
 const { SPARE_REFILL_MS } = require('../pty/spare-timing');
 const { appIcon, applyWindowTheme, captionInk } = require('./chrome');
+const { frameOptions, refreshMaterialOnBlur } = require('../../platform');
 const { applyZoom, displayKey, displayKeyOf, syncZoom, zoomFor } = require('./zoom');
 const { boundsVisible, cursorDisplay, defaultBoundsFor, flushWindowState, lastBounds, pendingLayouts, ptyIdsOf, recentlyClosed, saveWindowStateSoon, scaleBoundsTo, sessionLayouts, windowEntry } = require('./state');
 const { broadcast, focusedWindow, glassBounds, liveWindows, windows } = require('./registry');
@@ -44,28 +45,7 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
     }
   };
 
-  if (glass) {
-    // Frameless but solid: the renderer paints its own blurred wallpaper and
-    // window buttons, and that wallpaper is opaque, so the window never needed
-    // to be transparent — the only thing transparency bought was a corner
-    // radius we could pick ourselves. It cost far more than that. A transparent
-    // window is layered, gets no WS_THICKFRAME, and Windows therefore refuses
-    // it Aero Snap, snap layouts, a sizing border, a drop shadow and the
-    // minimise animation. Solid buys all of that back, and DWM rounds the
-    // corners itself.
-    opts.transparent = false;
-    opts.frame = false;
-    opts.roundedCorners = true;
-    opts.backgroundColor = theme.terminal?.background || '#101014';
-  } else {
-    opts.backgroundMaterial = alwaysOn ? 'acrylic' : material;
-    opts.titleBarStyle = 'hidden';
-    opts.titleBarOverlay = {
-      color: '#00000000',
-      symbolColor: captionInk(theme),
-      height: TITLEBAR_H
-    };
-  }
+  frameOptions(opts, { glass, material, alwaysOn, theme, symbolColor: captionInk(theme) });
 
   // A window restores its own geometry when it has some; one opened by hand is
   // offset from the current window so it doesn't land exactly on top of it.
@@ -162,14 +142,11 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
     } catch {}
   });
 
-  // Windows dims/disables the acrylic backdrop when the window deactivates.
-  // Re-applying the material right after blur makes DWM repaint it in its
-  // active look — keeps the blur constant when unfocused.
+  // acrylic-always: the backdrop keeps its focused look while unfocused
   w.on('blur', () => {
     if (currentMaterial === 'acrylic-always') {
       try {
-        w.setBackgroundMaterial('none');
-        w.setBackgroundMaterial('acrylic');
+        refreshMaterialOnBlur(w);
       } catch {}
     }
   });

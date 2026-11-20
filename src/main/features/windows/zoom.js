@@ -3,6 +3,7 @@ const fs = require('fs');
 
 const { TITLEBAR_H, ZOOM_FILE } = require('../../env');
 const { windowOf } = require('./registry');
+const { setCaptionButtons } = require('../../platform');
 
 // ---------- UI zoom ----------
 // A monitor's scale factor makes text the same *physical* size everywhere, which
@@ -80,7 +81,7 @@ function tellZoom(w) {
   // zoomed titlebar the renderer draws if the overlay is resized to match.
   if (!w.isFramelessMode) {
     try {
-      w.setTitleBarOverlay({ height: Math.round(TITLEBAR_H * factor) });
+      setCaptionButtons(w, { height: Math.round(TITLEBAR_H * factor) });
     } catch {}
   }
   w.webContents.send('win:zoom', { factor });

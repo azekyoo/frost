@@ -2,6 +2,7 @@ const { nativeImage, nativeTheme } = require('electron');
 
 const { ICON_FILE, TITLEBAR_H } = require('../../env');
 const { liveWindows } = require('./registry');
+const { setCaptionButtons, setMaterial } = require('../../platform');
 
 // The native minimise/maximise/close glyphs. Candy Swirl's titlebar is bright
 // liquid, where the terminal's light foreground would vanish over yellow, so
@@ -30,10 +31,10 @@ function applyWindowTheme(theme) {
     // is not a DWM material, so there is nothing to hand Windows either way.
     if (w.isFramelessMode || material === 'glass') continue;
     try {
-      w.setBackgroundMaterial(material === 'acrylic-always' ? 'acrylic' : material);
+      setMaterial(w, material);
     } catch {}
     try {
-      w.setTitleBarOverlay({
+      setCaptionButtons(w, {
         color: '#00000000',
         symbolColor: captionInk(theme),
         // must track the zoom, or changing any theme setting shrinks the native

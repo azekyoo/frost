@@ -35,6 +35,7 @@ const { fillSpares } = require('./features/pty/spares');
 const { destroyGhost } = require('./features/tab-drag');
 const { initAgentInfra } = require('./features/agents/agents');
 const { initUpdates, stopUpdateTimer } = require('./features/updates');
+const { identifySourceBuild } = require('./platform');
 require('./features/windows/chrome');
 require('./features/windows/zoom');
 require('./features/windows/ipc');
@@ -81,13 +82,7 @@ app.whenReady().then(() => {
   stalls.labelEmitter(app, 'app');
   stalls.labelEmitter(screen, 'screen');
   stalls.labelEmitter(powerMonitor, 'power');
-  // A run from source is launched by electron.exe, so Windows identifies the
-  // taskbar button as Electron's and paints Electron's logo whatever icon the
-  // window carries. An id of its own breaks that association and sends Windows
-  // back to the window icon, which is Frost's. Dev only — a packaged build is
-  // identified by its own executable and must stay that way, for the reason
-  // below.
-  if (!app.isPackaged) app.setAppUserModelId('dev.azekyoo.frost.source');
+  if (!app.isPackaged) identifySourceBuild();
 
   // No application menu at all. An app that never sets one gets Electron's
   // default, and although the window is frameless and never shows it, its
