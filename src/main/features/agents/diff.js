@@ -11,7 +11,7 @@ const { unquotePath } = require('../../core/git');
 const { agents } = require('./state');
 const { broadcast } = require('../windows/registry');
 const { late } = require('../../late');
-const { scanTranscriptEdits } = late(require('./agents'), ['scanTranscriptEdits']);
+const { scanTranscriptEdits } = late(require('./edits'), ['scanTranscriptEdits']);
 
 let diffTimer = null;
 

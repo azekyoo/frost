@@ -7,18 +7,18 @@ const stalls = require('../../stalls');
 const { DEFAULT_THEME, readTheme } = require('../config');
 const { PS_SPARE_HISTORY, bashRc, psStartup, whichExe } = require('../../platform');
 const { agentByPty, agents } = require('../agents/state');
-const { agentEnded, hookSettingsFile } = require('../agents/agents');
+const { agentEnded } = require('../agents/agents');
+const { hookSettingsFile } = require('../agents/hooks');
 const { detachedPtys, ptyMeta, ptyOwners, ptys, sendToOwner } = require('./registry');
 const { findProfile, shellCwd } = require('../profiles');
 const { late } = require('../../late');
 const { claimSpare, noteTyped, spareFilter, spareGone, spareWatch } = late(require('./spares'), ['claimSpare', 'noteTyped', 'spareFilter', 'spareGone', 'spareWatch']);
-const { statusDir } = require('../agents/agents');
+const { STATUS_DIR } = require('../../env');
 const { runsClaude } = require('../../core/agents');
 
 let ptyCounter = 0;
 
 function bashRcFile(withClaude) {
-  const STATUS_DIR = statusDir();
   const f = path.join(STATUS_DIR, withClaude ? 'frost-bashrc-agent' : 'frost-bashrc');
   fs.writeFileSync(f, bashRc(withClaude));
   return f;
@@ -109,7 +109,6 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
     if (withClaude) {
       const agentId = 'pty' + id;
       const hooks = hookSettingsFile(agentId);
-      const STATUS_DIR = statusDir();
       const launch = path.join(STATUS_DIR, 'ln-' + agentId);
       // bash eats backslashes in redirect targets — hand it msys-style paths
       const fix = dialect === 'bash' ? (s) => s.replace(/\\/g, '/') : (s) => s;

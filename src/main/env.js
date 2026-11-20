@@ -33,6 +33,10 @@ const KEYS_FILE = path.join(CONFIG_DIR, 'keybindings.json');
 const WINDOW_FILE = path.join(CONFIG_DIR, 'window.json');
 const ZOOM_FILE = path.join(CONFIG_DIR, 'zoom.json');
 
+// Where agents report to Frost: hook output, launch markers, per-agent settings
+// and rc files. Emptied at every start (initAgentInfra).
+const STATUS_DIR = path.join(app.getPath('userData'), 'agent-status');
+
 // Height of the native window-button overlay, in unzoomed CSS pixels. Kept here
 // because the overlay has to be re-sized whenever the UI zoom changes: it is the
 // one part of the titlebar the renderer does not draw.
@@ -62,6 +66,7 @@ Object.assign(module.exports, {
   KEYS_FILE,
   WINDOW_FILE,
   ZOOM_FILE,
+  STATUS_DIR,
   TITLEBAR_H,
   ICON_FILE,
   NOTIFY_ICON_FILE
