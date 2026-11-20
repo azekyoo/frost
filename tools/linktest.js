@@ -173,11 +173,11 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     // A bare name not in the shell's folder is found by name in its repo
     const repo = JSON.stringify(ROOT);
     const res = await w.eval(
-      `api.resolvePaths(${repo}, ['icon-48.png', 'panes.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json', 'assets', 'src/renderer', 'renderer', 'the', 'CHANGEL…', 'packag…'])`
+      `api.resolvePaths(${repo}, ['icon-48.png', 'tooltip.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json', 'assets', 'src/renderer', 'renderer', 'the', 'CHANGEL…', 'packag…'])`
     );
     const found = res.paths;
     check('a bare name found once in the repo is a link', /assets[\\/]icon-48\.png$/.test(found['icon-48.png'] || ''), found['icon-48.png']);
-    check('for any kind of file', /src[\\/]renderer[\\/]panes\.js$/.test(found['panes.js'] || ''), found['panes.js']);
+    check('for any kind of file', /src[\\/]renderer[\\/]tooltip\.js$/.test(found['tooltip.js'] || ''), found['tooltip.js']);
     check('a name the repo has twice is not', !found['screenshot-hero.png'], found['screenshot-hero.png']);
     check('nor one it does not have', !found['no-such-file.png']);
     check('the shell folder still comes first', /frost[\\/]package\.json$/.test(found['package.json'] || ''), found['package.json']);
