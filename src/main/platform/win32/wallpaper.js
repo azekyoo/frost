@@ -4,6 +4,7 @@
 // second or two per call, which is why main paints the single-image guess first
 // and only lets this correct it.
 
+const path = require('path');
 const { execFile } = require('child_process');
 
 const SCRIPT = `
@@ -105,4 +106,35 @@ function queryDesktopWallpaper() {
   });
 }
 
-module.exports = { queryDesktopWallpaper };
+// Wallpaper for the 'glass' material — the app blurs it itself, DWM stays out.
+// Windows keeps its own copy of whatever the desktop shows. The paths it reports
+// can lag behind that copy: a slideshow or Spotlight changes the picture without
+// rewriting them, and the original may since have been moved or deleted (both
+// the registry and IDesktopWallpaper were seen naming a picture the desktop had
+// stopped showing). The copy is re-encoded, which costs nothing once blurred.
+const THEMES_DIR = path.join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Themes');
+const TRANSCODED_WALLPAPER = path.join(THEMES_DIR, 'TranscodedWallpaper');
+// with a different picture per monitor, Windows keeps a copy per monitor too
+const transcodedFor = (index) => path.join(THEMES_DIR, `Transcoded_${String(index).padStart(3, '0')}`);
+
+function registryWallpaper() {
+  return new Promise((resolve) =>
+    execFile(
+      'reg',
+      ['query', 'HKCU\\Control Panel\\Desktop', '/v', 'WallPaper'],
+      { encoding: 'utf8', windowsHide: true },
+      (_err, out) => {
+        const m = /WallPaper\s+REG_SZ\s+(.+)/.exec(out || '');
+        resolve(m ? m[1].trim() : '');
+      }
+    )
+  );
+}
+
+Object.assign(module.exports, {
+  THEMES_DIR,
+  TRANSCODED_WALLPAPER,
+  transcodedFor,
+  registryWallpaper,
+  queryDesktopWallpaper
+});
