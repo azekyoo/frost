@@ -4,6 +4,8 @@ const path = require('path');
 const { execFile, spawnSync } = require('child_process');
 const stalls = require('../stalls');
 
+const { STATUS_DIR } = require('../env');
+
 // ---------- git branch for tab titles ----------
 // Read .git/HEAD straight off disk: this runs on every shell prompt, and
 // spawning git there would block the main process on each keystroke-to-prompt.
@@ -142,6 +144,35 @@ function commitAt(root, ms) {
   return (before.stdout || '').trim() || null;
 }
 
+async function snapshotBaseAsync(cwd, head) {
+  const untracked = new Set();
+  const st = await gitRun(cwd, [...UTF8_PATHS, 'status', '--porcelain']);
+  for (const line of st.stdout.split(/\r?\n/)) {
+    if (line.startsWith('??')) untracked.add(line);
+  }
+  if (!st.ok || !st.stdout.trim()) return { base: head, untracked };
+  const tmp = path.join(STATUS_DIR, `idx-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+  try {
+    const real = await gitRun(cwd, ['rev-parse', '--path-format=absolute', '--git-path', 'index']);
+    // starting from a copy of the real index keeps its stat cache: only
+    // changed files get re-hashed
+    try {
+      await fs.promises.copyFile(real.stdout.trim(), tmp);
+    } catch {
+      // without the real index to start from, the snapshot would be empty and
+      // every file would read as added; HEAD is the honest fallback
+      return { base: head, untracked };
+    }
+    const env = { ...process.env, GIT_INDEX_FILE: tmp };
+    if (!(await gitRun(cwd, ['add', '-u'], env)).ok) return { base: head, untracked };
+    const tree = await gitRun(cwd, ['write-tree'], env);
+    const hash = tree.stdout.trim();
+    return tree.ok && hash ? { base: hash, untracked } : { base: head, untracked };
+  } finally {
+    fs.promises.unlink(tmp).catch(() => {});
+  }
+}
+
 Object.assign(module.exports, {
   branchCache,
   findGitDir,
@@ -155,5 +186,6 @@ Object.assign(module.exports, {
   repoRootOfRaw,
   repoRootOf,
   within,
-  commitAt
+  commitAt,
+  snapshotBaseAsync
 });

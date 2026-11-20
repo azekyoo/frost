@@ -11,7 +11,7 @@ const { scanTranscripts, transcriptPaths } = require('./sessions');
 const { bashPaths } = require('./hooks');
 const { late } = require('../../late');
 const { diffSelection, diffSoon, selectDiff } = late(require('./diff'), ['diffSelection', 'diffSoon', 'selectDiff']);
-const { snapshotBaseAsync } = late(require('./agents'), ['snapshotBaseAsync']);
+const { snapshotBaseAsync } = require('../git');
 
 // A repo other than the agent's own, first seen being edited, joins the
 // agent's diff. Reported by the hook, it is snapshotted now, before the edit
