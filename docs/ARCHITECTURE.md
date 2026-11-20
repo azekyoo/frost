@@ -8,7 +8,7 @@ rewriting the middle of the app.
 
 ```
 main.js        startup order only: userData → stalls → features → single-instance lock → ready
-env.js         paths and fixed values (config files, icons, MAIN_DIR / RENDERER_DIR, test overrides)
+env.js         paths and fixed values (config files, agent-status folder, icons, MAIN_DIR / RENDERER_DIR, test overrides)
 late.js        calling into a module that may still be loading (the features call each other in cycles)
 stalls.js      names whatever holds the main process up, in stalls.log
 preload.js     the window.api bridge the renderer talks through
@@ -25,12 +25,13 @@ features/      one area each; owns its state and its IPC channels; Electron is f
   theme-ipc.js     theme and keys to and from windows
   profiles.js      shell profiles, start folder
   launch.js        `frost <dir>`, --run, --profile
-  git.js           branch for tab titles, git helpers shared by agents/diff/peek
+  git.js           branch for tab titles, git helpers and base snapshots shared by agents/diff/peek
   pty/             shells (spawn, type-ahead, input), spare shells, moving a shell between windows
   tab-drag.js      the tab that follows the cursor, drop targets
   windows/         window creation, registry, zoom, saved geometry (window.json), framing, window IPC
   glass.js         the blurred wallpaper behind a glass window
-  agents/          agent detection and status hooks, Claude Code sessions, the diff panel
+  agents/          agents.js detect/register/end + status, hooks.js the injected Claude Code hooks,
+                   edits.js which files an agent edited, sessions.js resumable sessions, diff.js the panel
   peek.js, paths.js, images.js, open.js   the file viewer, links in output, pasted images, editors
   notify.js, updates.js, fonts.js
 
