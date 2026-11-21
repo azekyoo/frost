@@ -101,10 +101,10 @@ function buildAgentLayout(tab) {
           <button class="diff-open-tab" title="Show or put away this session's shell, under the diff (it keeps running)">
             <svg viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2" /><path d="m4.75 6.25 2 1.75-2 1.75M8.5 10h2.75" /></svg><span>Shell</span>
           </button>
-          <button class="diff-open-editor" title="Browse this session's repo in Peek (Ctrl+Shift+E)">
+          <button class="diff-open-editor" title="${keyText("Browse this session's repo in Peek (Ctrl+Shift+E)")}">
             <svg viewBox="0 0 16 16"><path d="m5.5 4.5-3.25 3.5 3.25 3.5M10.5 4.5l3.25 3.5-3.25 3.5" /></svg><span>Files</span>
           </button>
-          <button class="diff-explorer" title="Open this repo in File Explorer">
+          <button class="diff-explorer" title="${osText('Open this repo in File Explorer', 'Open this repo in Finder')}">
             <svg viewBox="0 0 16 16"><path d="M1.75 4.25a1.5 1.5 0 0 1 1.5-1.5h2.6l1.5 1.75h5.4a1.5 1.5 0 0 1 1.5 1.5v5.75a1.5 1.5 0 0 1-1.5 1.5h-9.5a1.5 1.5 0 0 1-1.5-1.5z" /></svg>
           </button>
           <button class="diff-fold" title="Collapse or expand every file">
@@ -122,7 +122,7 @@ function buildAgentLayout(tab) {
             <svg viewBox="0 0 16 16"><path d="m3.5 5 3 3-3 3M8.5 11.5h4" /></svg>
             <span class="dock-name">Shell</span>
           </span>
-          <button class="dock-send" title="Send the last command's output to this session's agent (Ctrl+Shift+S)">
+          <button class="dock-send" title="${keyText("Send the last command's output to this session's agent (Ctrl+Shift+S)")}">
             <svg viewBox="0 0 16 16"><path d="M2.75 8h9.5M8.75 4.5 12.25 8l-3.5 3.5" /></svg><span>Send output</span>
           </button>
           <button class="dock-close" title="Close this shell"><svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7M11.5 4.5l-7 7" /></svg></button>

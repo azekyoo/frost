@@ -165,6 +165,12 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   for (const ev of ['resize', 'move', 'maximize', 'unmaximize']) {
     w.on(ev, saveWindowStateSoon);
   }
+  // macOS hides the traffic lights in fullscreen, and the titlebar takes back
+  // the room it keeps for them.
+  if (process.platform === 'darwin') {
+    w.on('enter-full-screen', () => w.webContents.send('win:fullscreen', true));
+    w.on('leave-full-screen', () => w.webContents.send('win:fullscreen', false));
+  }
   // Recorded while the window still exists, so its geometry and tabs are
   // captured rather than measured from a window that is already gone.
   w.on('close', () => {
@@ -236,7 +242,9 @@ const MATERIAL_NAMES = {
   'acrylic-always': 'Acrylic (always on)',
   mica: 'Mica',
   tabbed: 'Tabbed',
-  none: 'None'
+  none: 'None',
+  // what the macOS settings call it
+  ...(process.platform === 'darwin' ? { acrylic: 'Translucent' } : {})
 };
 
 // Asked in the app's own dialog rather than a Windows message box: this is a
@@ -251,9 +259,10 @@ function promptGlassRestart(material) {
   // they can't coexist, what the button does. It used to end on "this one has to
   // be replaced", which left the reader to work out both that "this one" meant
   // the window and that replacing it meant restarting.
+  const OS_NAME = process.platform === 'darwin' ? 'macOS' : 'Windows';
   const detail = leavingGlass
-    ? `Glass gives Frost a transparent window so it can blur your wallpaper itself. ${to} is drawn by Windows behind a solid window — and a window can't switch between the two once it's open. Restarting opens a fresh one.`
-    : `Glass needs a transparent window so Frost can blur your wallpaper itself, rather than letting Windows draw the backdrop. A window can't switch between the two once it's open. Restarting opens a fresh one.`;
+    ? `Glass gives Frost a transparent window so it can blur your wallpaper itself. ${to} is drawn by ${OS_NAME} behind a solid window — and a window can't switch between the two once it's open. Restarting opens a fresh one.`
+    : `Glass needs a transparent window so Frost can blur your wallpaper itself, rather than letting ${OS_NAME} draw the backdrop. A window can't switch between the two once it's open. Restarting opens a fresh one.`;
 
   const keepsTabs = (readTheme() || {}).restoreSession !== false;
   const note = keepsTabs

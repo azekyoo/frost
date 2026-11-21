@@ -190,7 +190,7 @@ function attachLinks(node) {
   // the scheme allowlist in one place.
   term.loadAddon(
     new WebLinksAddon.WebLinksAddon((ev, uri) => {
-      if (!ev.ctrlKey) return;
+      if (!modKey(ev)) return;
       // One click, one tab. Under Claude Code, which turns mouse tracking on,
       // a single Ctrl+click reached here twice and the browser opened the link
       // twice; a second ask for the same link straight after the first is
@@ -305,7 +305,7 @@ function attachLinks(node) {
               if (isImage) hideImageCard();
             },
             activate(ev) {
-              if (!ev.ctrlKey) return;
+              if (!modKey(ev)) return;
               hideImageCard();
               const opts = { cwd: node.cwd, target, line: loc.line, column: loc.column };
               // Ctrl+click looks without leaving Frost; Shift added goes

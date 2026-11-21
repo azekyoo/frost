@@ -145,7 +145,8 @@ function peekRenderMarkdown(text) {
     FORBID_ATTR: ['style']
   });
   // relative images are relative to the file, not to Frost's own page
-  const base = 'file:///' + peekDirname(peek.file).replace(/\\/g, '/') + '/';
+  // a POSIX path already starts with the slash a drive letter needs added
+  const base = (IS_MAC ? 'file://' : 'file:///') + peekDirname(peek.file).replace(/\\/g, '/') + '/';
   for (const img of md.querySelectorAll('img')) {
     const src = img.getAttribute('src') || '';
     if (src && !/^[a-z][\w+.-]*:/i.test(src)) img.src = new URL(src, base).href;
@@ -203,11 +204,11 @@ function peekRenderFile(keepScroll) {
   const ed = root.querySelector('.peek-editor');
   ed.disabled = !has && !canDir;
   ed.querySelector('span').textContent = has ? 'Open in editor' : 'Open folder in editor';
-  ed.title = has ? 'Open in editor (Ctrl+Shift+click)' : 'Open this folder in the editor';
+  ed.title = has ? keyText('Open in editor (Ctrl+Shift+click)') : 'Open this folder in the editor';
   const rv = root.querySelector('.peek-reveal');
   rv.disabled = !has && !canDir;
-  rv.querySelector('span').textContent = has ? 'Show in Explorer' : 'Open in Explorer';
-  rv.title = has ? 'Show in File Explorer' : 'Open this folder in File Explorer';
+  rv.querySelector('span').textContent = has ? osText('Show in Explorer', 'Show in Finder') : osText('Open in Explorer', 'Open in Finder');
+  rv.title = has ? osText('Show in File Explorer', 'Show in Finder') : osText('Open this folder in File Explorer', 'Open this folder in Finder');
 
   const name = has ? peek.file.split(/[\\/]/).pop() : '';
   // the tree already shows which file this is; without one, the name is all

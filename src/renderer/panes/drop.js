@@ -6,6 +6,10 @@
 // or pasted as a bitmap all have to arrive as a path on the prompt line.
 
 function quotePath(p) {
+  // macOS: a POSIX shell still expands $ and backticks inside double quotes,
+  // and a filename may contain any of them, so single quotes, with a single
+  // quote itself closed, escaped and reopened.
+  if (IS_MAC) return /[^\w@%+=:,./-]/.test(p) ? `'${p.replace(/'/g, `'\\''`)}'` : p;
   // The line goes to a shell, which splits it on spaces. A Windows filename
   // cannot contain a double quote, so wrapping is always enough.
   return /[\s'`&|;(){}\[\],]/.test(p) ? `"${p}"` : p;

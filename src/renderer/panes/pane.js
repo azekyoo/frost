@@ -59,8 +59,9 @@ async function createPane(opts = {}) {
     smoothScrollDuration: theme.scroll?.smoothMs ?? 90,
     scrollSensitivity: theme.scroll?.lines ?? 3,
     fastScrollSensitivity: theme.scroll?.fastLines ?? 10,
-    // tell xterm the backend is Windows ConPTY so it applies its quirk handling
-    windowsPty: { backend: 'conpty' },
+    // tell xterm the backend is Windows ConPTY so it applies its quirk handling;
+    // a Mac has a real pty, and the quirks would break its reflow
+    ...(IS_MAC ? {} : { windowsPty: { backend: 'conpty' } }),
     theme: xtermTheme(theme)
   });
   const fit = new FitAddon.FitAddon();
@@ -104,16 +105,20 @@ async function createPane(opts = {}) {
     if (ev.type !== 'keydown') return true;
     // shortcut executed by the window-level listener; just keep it away from the pty
     if (matchShortcut(ev)) return false;
-    // clipboard — Windows Terminal behavior
-    const ctrlOnly = ev.ctrlKey && !ev.shiftKey && !ev.altKey;
+    // clipboard — Windows Terminal behavior; on a Mac the same on Cmd, which
+    // leaves Ctrl+C and Ctrl+V to the shell
+    const appMod = modKey(ev);
+    const ctrlOnly = appMod && !ev.shiftKey && !ev.altKey;
     if (ctrlOnly && ev.code === 'KeyC' && term.hasSelection()) {
       // copy instead of interrupt when text is selected
+      // (on a Mac the Edit menu's Copy must not run as well)
+      if (IS_MAC) ev.preventDefault();
       navigator.clipboard.writeText(term.getSelection());
       glowCopy(node);
       term.clearSelection();
       return false;
     }
-    if ((ctrlOnly || (ev.ctrlKey && ev.shiftKey)) && ev.code === 'KeyV') {
+    if ((ctrlOnly || (appMod && ev.shiftKey)) && ev.code === 'KeyV') {
       // single controlled paste: preventDefault kills the browser's native
       // paste event, returning false keeps ^V away from the shell (PSReadLine
       // would paste on raw ^V too) — then paste exactly once ourselves
@@ -121,7 +126,7 @@ async function createPane(opts = {}) {
       pasteInto(node);
       return false;
     }
-    if (ev.ctrlKey && ev.shiftKey && ev.code === 'KeyC' && term.hasSelection()) {
+    if (appMod && ev.shiftKey && ev.code === 'KeyC' && term.hasSelection()) {
       navigator.clipboard.writeText(term.getSelection());
       glowCopy(node);
       return false;

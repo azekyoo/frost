@@ -38,7 +38,7 @@ function toggleZoom() {
   // zoom is the answer to a split layout, so whoever presses it here has most
   // likely not met splitting yet.
   if (!leaf || allLeaves(tab.root).length < 2) {
-    toast('Zoom fills the tab with one terminal — split first with Alt+Shift+= or Alt+Shift+-', {
+    toast(osText('Zoom fills the tab with one terminal — split first with Alt+Shift+= or Alt+Shift+-', 'Zoom fills the tab with one terminal — split first with Cmd+D or Cmd+Shift+D'), {
       ms: 6000
     });
     return;

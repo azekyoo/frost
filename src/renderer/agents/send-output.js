@@ -97,6 +97,6 @@ function renderDockSend(tab) {
   btn.classList.toggle('selection', selected);
   btn.querySelector('span').textContent = selected ? 'Send selection' : failed ? 'Send failure' : 'Send output';
   btn.title = selected
-    ? "Send the selected text to this session's agent (Ctrl+Shift+S)"
-    : "Send the last command's output to this session's agent (Ctrl+Shift+S)";
+    ? keyText("Send the selected text to this session's agent (Ctrl+Shift+S)")
+    : keyText("Send the last command's output to this session's agent (Ctrl+Shift+S)");
 }

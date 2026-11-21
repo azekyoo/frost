@@ -301,7 +301,59 @@ cmd('app.openCss', 'Edit theme.css', () => api.themeOpenFile('css'));
 
 // ---------- bindings ----------
 
-const DEFAULT_BINDINGS = [
+// macOS: Frost's shortcuts on Cmd, the way Terminal and iTerm place them, so
+// Ctrl and Option keep reaching the shell (Option+arrows jump words in zsh).
+const MAC_DEFAULT_BINDINGS = [
+  { keys: 'meta+t', command: 'tab.new' },
+  { keys: 'meta+n', command: 'window.new' },
+  { keys: 'meta+shift+a', command: 'tab.agent' },
+  { keys: 'meta+alt+t', command: 'tab.duplicate' },
+  { keys: 'meta+w', command: 'pane.close' },
+  { keys: 'ctrl+tab', command: 'tab.next' },
+  { keys: 'ctrl+shift+tab', command: 'tab.prev' },
+  { keys: 'meta+shift+]', command: 'tab.next' },
+  { keys: 'meta+shift+[', command: 'tab.prev' },
+  { keys: 'meta+9', command: 'tab.last' },
+  { keys: 'meta+d', command: 'pane.splitRight' },
+  { keys: 'meta+shift+d', command: 'pane.splitDown' },
+  { keys: 'meta+shift+enter', command: 'pane.zoom' },
+  { keys: 'meta+ctrl+left', command: 'pane.resizeLeft' },
+  { keys: 'meta+ctrl+right', command: 'pane.resizeRight' },
+  { keys: 'meta+ctrl+up', command: 'pane.resizeUp' },
+  { keys: 'meta+ctrl+down', command: 'pane.resizeDown' },
+  { keys: 'meta+alt+left', command: 'pane.focusLeft' },
+  { keys: 'meta+alt+right', command: 'pane.focusRight' },
+  { keys: 'meta+alt+up', command: 'pane.focusUp' },
+  { keys: 'meta+alt+down', command: 'pane.focusDown' },
+  { keys: 'meta+=', command: 'view.zoomIn' },
+  { keys: 'meta+shift+=', command: 'view.zoomIn' },
+  { keys: 'meta+-', command: 'view.zoomOut' },
+  { keys: 'meta+0', command: 'view.zoomReset' },
+  { keys: 'meta+,', command: 'app.settings' },
+  { keys: 'meta+f', command: 'view.search' },
+  { keys: 'meta+shift+e', command: 'view.browseFiles' },
+  { keys: 'meta+k', command: 'view.clear' },
+  { keys: 'meta+up', command: 'command.previous' },
+  { keys: 'meta+down', command: 'command.next' },
+  { keys: 'meta+shift+o', command: 'command.copyOutput' },
+  { keys: 'meta+shift+s', command: 'command.sendOutput' },
+  { keys: 'meta+shift+p', command: 'app.palette' },
+  { keys: 'meta+alt+i', command: 'view.devtools' },
+  // Cmd+1..8 pick a tab, Cmd+Option+1..9 open the Nth shell profile
+  // (Cmd+Shift+3/4/5 are the system's screenshot keys)
+  ...Array.from({ length: 8 }, (_, i) => ({
+    keys: `meta+${i + 1}`,
+    command: 'tab.go',
+    args: { index: i + 1 }
+  })),
+  ...Array.from({ length: 9 }, (_, i) => ({
+    keys: `meta+alt+${i + 1}`,
+    command: 'tab.newProfile',
+    args: { index: i + 1 }
+  }))
+];
+
+const DEFAULT_BINDINGS = IS_MAC ? MAC_DEFAULT_BINDINGS : [
   { keys: 'ctrl+shift+t', command: 'tab.new' },
   { keys: 'ctrl+shift+n', command: 'window.new' },
   { keys: 'ctrl+shift+a', command: 'tab.agent' },
