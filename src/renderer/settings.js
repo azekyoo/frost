@@ -481,7 +481,9 @@ function renderUpdate(st) {
     idle: 'Not checked yet this run.',
     checking: 'Asking GitHub for the latest release…',
     current: 'Frost is up to date.',
-    available: st.autoDownload
+    available: st.notifyOnly
+      ? `Frost ${st.latest} is available — download it from its release page.`
+      : st.autoDownload
       ? `Frost ${st.latest} is available.`
       : `Frost ${st.latest} is available — automatic downloads are off.`,
     downloading: `Downloading Frost ${st.latest || ''} — ${st.percent}%`,
@@ -497,6 +499,9 @@ function renderUpdate(st) {
   const action =
     st.stage === 'ready'
       ? { label: 'Restart and install', run: () => api.updateInstall() }
+      : st.stage === 'available' && st.notifyOnly
+        ? // macOS: nothing downloads by itself — this opens the .dmg's page
+          { label: `Download ${st.latest}`, run: () => api.openExternal(`${RELEASES_URL}/tag/v${st.latest}`) }
       : st.stage === 'available' && !st.autoDownload
         ? { label: `Download ${st.latest}`, run: () => api.updateDownload() }
         : null;
@@ -522,6 +527,12 @@ api.onUpdateState((st) => {
   // that finds nothing is the normal case and says so in the panel, not on screen.
   if (st.stage === 'ready' && before !== 'ready')
     toast(`Frost ${st.latest} downloaded — it installs when you quit.`, { ms: 8000 });
+  else if (st.stage === 'available' && before !== 'available' && st.notifyOnly)
+    toast(`Frost ${st.latest} is available — click to download it.`, {
+      ms: 12000,
+      onClick: () => api.openExternal(`${RELEASES_URL}/tag/v${st.latest}`),
+      clickTitle: 'Open its release page'
+    });
   else if (st.stage === 'available' && before !== 'available' && !st.autoDownload)
     toast(`Frost ${st.latest} is available — download it in settings.`, { ms: 8000 });
 });

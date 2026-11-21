@@ -93,8 +93,8 @@ jobs:
   # System Settings → Privacy & Security. It runs after the Windows job
   # because whichever finishes first creates the release, and two creating
   # it at once would collide; by now it exists and this only adds to it.
-  # Mac builds don't update themselves (see features/updates.js), so the
-  # latest-mac.yml electron-builder writes for that is left out.
+  # Mac builds don't install updates themselves (see features/updates.js),
+  # but they check for them: latest-mac.yml is what that check reads.
   mac:
     needs: windows
     runs-on: macos-latest
@@ -117,6 +117,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.zip
+            dist/latest-mac.yml
           retention-days: 14
 
       - name: Add to the release
@@ -124,4 +125,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release upload "$TAG" dist/*.dmg dist/*.zip --clobber
+        run: gh release upload "$TAG" dist/*.dmg dist/*.zip dist/latest-mac.yml --clobber
