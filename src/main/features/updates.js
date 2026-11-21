@@ -57,6 +57,10 @@ function updateSupport() {
   if (!app.isPackaged) return { ok: false, message: 'Running from source — git pull to update.' };
   if (isPortableBuild())
     return { ok: false, message: 'Portable build — download a new exe to update.' };
+  // macOS only replaces an app with an update signed by the same developer, and
+  // the Mac builds aren't signed: they update from the releases page.
+  if (process.platform === 'darwin')
+    return { ok: false, message: 'Mac build — download the new version from the releases page to update.' };
   return { ok: true, message: '' };
 }
 

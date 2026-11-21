@@ -27,7 +27,7 @@ function sessionIdHook(agentId) {
 // glued to the end makes a name no file has. Kept short, every session pays
 // for it.
 const FROST_CONTEXT =
-  'This terminal is Frost. The user can Ctrl+click a file path in your output to open it in ' +
+  `This terminal is Frost. The user can ${process.platform === 'darwin' ? 'Cmd' : 'Ctrl'}+click a file path in your output to open it in ` +
   "Frost's viewer. For that to work, write every file path you show as a full absolute path " +
   'inside backticks, followed by a space or the end of the line, never by a colon or other ' +
   'punctuation glued to it. Outside backticks, markdown drops a backslash before punctuation ' +

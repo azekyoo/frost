@@ -36,7 +36,8 @@ const { fillSpares } = require('./features/pty/spares');
 const { destroyGhost } = require('./features/tab-drag');
 const { initAgentInfra } = require('./features/agents/agents');
 const { initUpdates, stopUpdateTimer } = require('./features/updates');
-const { identifySourceBuild } = require('./platform');
+const platform = require('./platform');
+const { identifySourceBuild } = platform;
 require('./features/windows/chrome');
 require('./features/windows/zoom');
 require('./features/windows/ipc');
@@ -97,7 +98,9 @@ app.whenReady().then(() => {
   // there is no such thing in Windows Terminal either — and every key this
   // frees belongs to the shell. What is worth keeping is bound in the
   // renderer's own table, where it can be seen and rebound.
-  Menu.setApplicationMenu(null);
+  // macOS needs a small menu of Cmd shortcuts (see platform/darwin/app.js);
+  // Windows has no applicationMenu and keeps none at all.
+  Menu.setApplicationMenu(platform.applicationMenu ? platform.applicationMenu() : null);
 
   // No setAppUserModelId for packaged builds. It groups the taskbar button under an id of our
   // choosing, and Windows then resolves that button's icon through the id rather
