@@ -141,8 +141,10 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
       await sleep(300);
     };
     for (const c of ['echo one', 'echo two', 'echo three', 'echo four']) await runCommand(c);
-    await runCommand('cls');
-    await runCommand('1..12 | % { "line $_" }');
+    // PowerShell's commands on Windows, zsh's on macOS
+    const mac = process.platform === 'darwin';
+    await runCommand(mac ? 'clear' : 'cls');
+    await runCommand(mac ? 'for i in {1..12}; do echo "line $i"; done' : '1..12 | % { "line $_" }');
     // every row of the output belongs to the command that printed it
     const blocks = await w.eval(`(() => {
       const node = activePane(), buf = node.term.buffer.active;
@@ -158,7 +160,7 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     check('cleared rows leave no command behind', blocks.length === 12, blocks.length + ' output rows');
     check(
       'every output row is in the command that printed it',
-      blocks.every((c) => c === '1..12 | % { "line $_" }'),
+      blocks.every((c) => c === (mac ? 'for i in {1..12}; do echo "line $i"; done' : '1..12 | % { "line $_" }')),
       JSON.stringify([...new Set(blocks)])
     );
     // Ctrl+L clears with the prompt still waiting: nothing is running, and the
@@ -177,7 +179,9 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();

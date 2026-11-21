@@ -10,6 +10,7 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
 const TMP = path.join(app.getPath('temp'), 'frost-sparetest');
 const PORT = 9445;
+const MAC = process.platform === 'darwin';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.on('window-all-closed', () => {});
 
@@ -167,11 +168,16 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     const third = await open('(async () => { await newTab(); return activePane(); })()');
     check('with the spares used up, a tab still opens normally', third.prompt, JSON.stringify({ ms: third.ms }));
 
-    // the move's line never reached the history file
-    await runCommand(w, `(Select-String -Path (Get-PSReadLineOption).HistorySavePath -SimpleMatch ('#frost' + '-spare') | Measure-Object).Count`);
-    await sleep(500);
-    const count = await w.eval(`(() => { const o = commandOutput(activePane()); return o && o.output.join('|'); })()`);
-    check('the move is kept out of the history', String(count).trim() === '0', JSON.stringify(count));
+    // the move's line never reached the history file. Spares are PowerShell's
+    // only, so on macOS (zsh) the tabs above started their own shells and
+    // there is no move to keep out of anything.
+    if (MAC) console.log('  SKIP  the move is kept out of the history  — no spares outside PowerShell');
+    else {
+      await runCommand(w, `(Select-String -Path (Get-PSReadLineOption).HistorySavePath -SimpleMatch ('#frost' + '-spare') | Measure-Object).Count`);
+      await sleep(500);
+      const count = await w.eval(`(() => { const o = commandOutput(activePane()); return o && o.output.join('|'); })()`);
+      check('the move is kept out of the history', String(count).trim() === '0', JSON.stringify(count));
+    }
 
     // --- the setting ---------------------------------------------------------
     const shown = await w.eval(`document.getElementById('s-spares').value`);
@@ -181,12 +187,17 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     const saved = await w.eval('state.theme.spareShells');
     check('picking Off saves it', saved === 0, String(saved));
     const off = await open('(async () => { await newTab(); return activePane(); })()');
-    check('and with it off, a new tab starts its own shell', off.prompt && off.ms > 1200, JSON.stringify({ ms: off.ms }));
+    // PowerShell takes over a second to start; zsh is up in a fraction of one,
+    // so on macOS the time can't tell a spare from a fresh start
+    if (MAC) console.log('  SKIP  and with it off, a new tab starts its own shell  — zsh starts as fast as a spare');
+    else check('and with it off, a new tab starts its own shell', off.prompt && off.ms > 1200, JSON.stringify({ ms: off.ms }));
   } catch (e) {
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();

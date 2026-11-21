@@ -191,7 +191,19 @@ const modalState = `(() => {
       'and the font itself is what says so',
       (await w.eval(`fontHasLigatures('"Cascadia Mono", monospace')`)) === false
     );
-    check(
+    // Windows ships Cascadia Code; on macOS the checks that need it run only
+    // when it has been installed, and say they were skipped otherwise
+    const codeFont =
+      process.platform === 'win32' ||
+      [path.join(require('os').homedir(), 'Library/Fonts'), '/Library/Fonts'].some((d) => {
+        try {
+          return fs.readdirSync(d).some((f) => /^cascadiacode/i.test(f.replace(/[\s-]/g, '')));
+        } catch {
+          return false;
+        }
+      });
+    const checkFont = codeFont ? check : (name) => console.log(`  SKIP  ${name}  — Cascadia Code is not installed`);
+    checkFont(
       'a font that has them is recognised',
       (await w.eval(`fontHasLigatures('"Cascadia Code", monospace')`)) === true
     );
@@ -200,7 +212,7 @@ const modalState = `(() => {
       return true })()`);
     await sleep(600);
     const joined = await w.eval('typeof activePane().ligatureId === "number"');
-    check('switching to it joins the runs, with no setting to find', joined === true);
+    checkFont('switching to it joins the runs, with no setting to find', joined === true);
 
     // The joiner is what decides which characters are drawn as one run
     const ranges = await w.eval(`(() => {
@@ -225,27 +237,29 @@ const modalState = `(() => {
       const span = row && [...row.children].find((c) => c.textContent === '=>');
       if (!span) return 'no joined span';
       return getComputedStyle(span).letterSpacing; })()`);
-    check('the joined run is left unspaced, so the font can shape it', spacing === 'normal' || spacing === '0px', String(spacing));
+    checkFont('the joined run is left unspaced, so the font can shape it', spacing === 'normal' || spacing === '0px', String(spacing));
 
     await w.eval(`(() => {
       applyTheme({ ...state.theme, font: { ...state.theme.font, ligatures: false } }, undefined);
       return true })()`);
     await sleep(400);
     const gone = await w.eval('activePane().ligatureId === undefined');
-    check('and turning them off takes it away again', gone === true);
+    checkFont('and turning them off takes it away again', gone === true);
     const restored = await w.eval(`(() => {
       const rows = [...document.querySelectorAll('.xterm-rows > div')];
       const row = rows.find((r) => r.textContent.includes('!='));
       const span = row && row.children[0];
       return span ? getComputedStyle(span).letterSpacing : 'none'; })()`);
-    check('and the cell-width correction comes back', restored !== 'normal' && restored !== '0px', String(restored));
+    checkFont('and the cell-width correction comes back', restored !== 'normal' && restored !== '0px', String(restored));
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();

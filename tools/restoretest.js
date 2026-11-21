@@ -95,7 +95,9 @@ async function ready(c) {
     check('different tab counts before quit', counts.includes(3) && counts.includes(1), JSON.stringify(counts));
 
     await sleep(1500); // let the debounced save land
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     await sleep(1500);
 
     const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
@@ -124,7 +126,9 @@ async function ready(c) {
     await sleep(4000);
     await back[1].eval('runCommand("tab.new"), true');
     await sleep(2000);
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     await sleep(1200);
     const after = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
     check('closing one window drops it', after.windows.length === 1, `${after.windows.length} left`);
@@ -133,7 +137,7 @@ async function ready(c) {
   } catch (e) {
     console.error('ERROR:', e.message); fail++;
   } finally {
-    try { spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); } catch {}
+    try { if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' }); else child.kill('SIGKILL'); } catch {}
     app.exit(fail ? 1 : 0);
   }
 })();

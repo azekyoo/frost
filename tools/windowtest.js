@@ -160,7 +160,9 @@ async function waitReady(c, timeout = 40000) {
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();
