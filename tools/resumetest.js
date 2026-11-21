@@ -7,8 +7,11 @@ const path = require('path');
 const fs = require('fs');
 
 const ROOT = path.join(__dirname, '..');
-const DEMO = 'C:\\dev\\aurora-notes';
 const LAB = path.join(app.getPath('temp'), 'frost-resumelab');
+// The demo repo's folder. It only has to be named aurora-notes: on macOS it is
+// made inside the lab, since nothing is ever run in it.
+const MAC = process.platform === 'darwin';
+const DEMO = MAC ? path.join(LAB, 'aurora-notes') : 'C:\\dev\\aurora-notes';
 const PORT = 9600;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.on('window-all-closed', () => {});
@@ -43,6 +46,7 @@ function connect(url) {
   fs.rmSync(LAB, { recursive: true, force: true });
   const configDir = path.join(LAB, 'config');
   fs.mkdirSync(configDir, { recursive: true });
+  if (MAC) fs.mkdirSync(DEMO, { recursive: true });
   fs.writeFileSync(path.join(configDir, 'theme.json'), JSON.stringify({
     material: 'glass', restoreSession: false, autoDetectAgents: false, startDir: DEMO,
     notify: { agentBlocked: false, agentDone: false, commandSeconds: 0 }
@@ -90,14 +94,20 @@ function connect(url) {
   // Two more, each on a live stand-in process. One file's procStart matches its
   // process: a claude still open elsewhere. The other's doesn't: a file left by
   // a shutdown whose pid went to someone else after the reboot.
-  const sitters = [0, 1].map(() => spawn('ping', ['-n', '300', '127.0.0.1'], { stdio: 'ignore', windowsHide: true }));
+  // Start times as Claude Code writes them: a FILETIME on Windows, ps's lstart
+  // in UTC on macOS.
+  const sitters = [0, 1].map(() =>
+    MAC ? spawn('sleep', ['300'], { stdio: 'ignore' }) : spawn('ping', ['-n', '300', '127.0.0.1'], { stdio: 'ignore', windowsHide: true }));
   await sleep(500);
-  const startOf = (pid) => spawnSync('powershell.exe', ['-NoProfile', '-Command', `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`], { encoding: 'utf8' }).stdout.trim();
+  const startOf = (pid) =>
+    MAC
+      ? spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', env: { ...process.env, TZ: 'UTC', LC_ALL: 'C' } }).stdout.trim()
+      : spawnSync('powershell.exe', ['-NoProfile', '-Command', `(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc()`], { encoding: 'utf8' }).stdout.trim();
   const SID_LIVE = '00000000-0000-4000-8000-000000000004';
   const SID_REUSED = '00000000-0000-4000-8000-000000000005';
   for (const [i, sid, title, procStart] of [
     [0, SID_LIVE, 'Truly open', startOf(sitters[0].pid)],
-    [1, SID_REUSED, 'Pid reused', '134000000000000000']
+    [1, SID_REUSED, 'Pid reused', MAC ? 'Thu Jan  1 00:00:00 2015' : '134000000000000000']
   ]) {
     const f = path.join(project, sid + '.jsonl');
     fs.writeFileSync(f, [
