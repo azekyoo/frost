@@ -111,6 +111,26 @@
     "portable": {
       "artifactName": "Frost-${version}-portable.exe"
     },
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "Frost-${version}-${arch}.${ext}"
+    },
     "extraResources": [
       {
         "from": "assets/icon.ico",
