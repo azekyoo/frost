@@ -21,6 +21,11 @@ const { runsClaude } = require('../../core/agents');
 
 let ptyCounter = 0;
 
+// Every shell started that hasn't reported its exit yet — including those whose
+// tab is already closed and who are still winding down (a claude saving its
+// session), which `ptys` has forgotten. See endAllPtys.
+const unexited = new Set();
+
 // zsh reads its startup files from ZDOTDIR: a folder of Frost's own, whose
 // files load the user's and then add the hooks (platform/darwin).
 function zshDotDir(withClaude) {
@@ -174,6 +179,8 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
     env
   });
   ptys.set(id, p);
+  unexited.add(p);
+  p.onExit(() => unexited.delete(p));
   ptyMeta.set(id, { profileId: profile.id, profileName: profile.name });
   p.onData(stalls.timed('pty data', (data) => {
     const rec = agentByPty.get(id);
@@ -264,8 +271,37 @@ ipcMain.on('pty:kill', (_e, { id }) => {
   }
 });
 
+// macOS: node-pty reports a shell's exit by calling back into JavaScript, and
+// one that lands while Node is shutting down aborts the app ("Frost quit
+// unexpectedly" on every quit). So before quitting, every shell still going is
+// ended and its exit waited for; one that won't go within `ms` is killed
+// outright, which it can't outlast. Resolves once none is left, or soon after.
+function endAllPtys(ms = 1500) {
+  const left = [...unexited];
+  if (!left.length) return Promise.resolve();
+  const gone = Promise.all(left.map((p) => new Promise((resolve) => p.onExit(() => resolve()))));
+  for (const p of left) {
+    try {
+      p.kill();
+    } catch {}
+  }
+  const wait = (t) => new Promise((resolve) => setTimeout(resolve, t));
+  return Promise.race([
+    gone,
+    wait(ms).then(() => {
+      for (const p of unexited) {
+        try {
+          process.kill(p.pid, 'SIGKILL');
+        } catch {}
+      }
+      return Promise.race([gone, wait(500)]);
+    })
+  ]);
+}
+
 Object.assign(module.exports, {
   bashRcFile,
+  endAllPtys,
   zshDotDir,
   typeAhead,
   RUN_UNMARKED_MS,

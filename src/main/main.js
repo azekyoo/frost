@@ -44,7 +44,7 @@ require('./features/windows/ipc');
 require('./features/glass');
 require('./features/profiles');
 require('./features/git');
-require('./features/pty/shells');
+const { endAllPtys } = require('./features/pty/shells');
 require('./features/pty/adoption');
 require('./features/theme-ipc');
 require('./features/agents/sessions');
@@ -130,6 +130,21 @@ app.on('before-quit', () => {
   flushWindowState();
   markQuitting(); // after the flush: closing windows must not rewrite it
 });
+
+// macOS: quitting waits until every shell has reported its exit (see
+// endAllPtys), then leaves with app.exit — the quit already ran its
+// before-quit, and running it a second time has nothing left to do.
+if (process.platform === 'darwin') {
+  let shellsEnded = false;
+  app.on('will-quit', (event) => {
+    if (shellsEnded) return;
+    event.preventDefault();
+    endAllPtys().finally(() => {
+      shellsEnded = true;
+      app.exit(0);
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   for (const p of ptys.values()) {
