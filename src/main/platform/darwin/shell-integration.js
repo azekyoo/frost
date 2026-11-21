@@ -46,6 +46,9 @@ const ZSH_CLAUDE = [
 // draw. D only after a command actually ran (preexec saw one): an empty Enter
 // would otherwise report the last exit again as a command of its own. precmd
 // goes first in the list so $? is still the command's, not another hook's.
+// A and B (where the prompt ends) are part of the prompt itself rather than
+// printed from precmd: zsh redraws the prompt without running precmd — Ctrl+L,
+// a theme refreshing itself — and the redrawn prompt is the one typed at.
 const ZSH_HOOKS = [
   'typeset -g __frost_seen= __frost_ran=',
   'function __frost_preexec { __frost_ran=1 }',
@@ -53,11 +56,17 @@ const ZSH_HOOKS = [
   '  local ec=$?',
   "  [[ -n $__frost_seen && -n $__frost_ran ]] && printf '\\033]133;D;%s\\007' $ec",
   '  __frost_seen=1 __frost_ran=',
-  "  printf '\\033]133;A\\007'",
   "  printf '\\033]9;9;%s\\007' \"$PWD\"",
   '}',
+  // B lets Frost cut what was typed from the prompt whatever theme draws it.
+  // Run last, after the theme's own precmd has rebuilt the prompt; inside
+  // %{ %} so neither mark takes up any width.
+  'function __frost_prompt_end {',
+  "  [[ $PS1 == *$'\\e]133;A'* ]] || PS1=$'%{\\e]133;A\\a%}'$PS1",
+  "  [[ $PS1 == *$'\\e]133;B'* ]] || PS1+=$'%{\\e]133;B\\a%}'",
+  '}',
   'typeset -ga precmd_functions preexec_functions',
-  'precmd_functions=(__frost_precmd ${precmd_functions:#__frost_precmd})',
+  'precmd_functions=(__frost_precmd ${precmd_functions:#__frost_precmd} __frost_prompt_end)',
   'preexec_functions+=(__frost_preexec)',
   ''
 ].join('\n');
@@ -83,11 +92,19 @@ function zshFiles(withClaude) {
   };
 }
 
+// The shared bash rc, plus the marks the zsh hook puts in its prompt: B where
+// the prompt ends (macOS's own bash prompt, "host:dir user$ ", isn't one Frost
+// can recognise by its shape), and A again where it starts, because readline's
+// Ctrl+L redraws the prompt without PROMPT_COMMAND. On an ordinary prompt the
+// second A replaces the first. \[ \] keeps them from taking up any width.
+const bashRc = (withClaude) =>
+  win.bashRc(withClaude) + "PS1='\\[\\033]133;A\\007\\]'\"$PS1\"'\\[\\033]133;B\\007\\]'\n";
+
 Object.assign(module.exports, {
   CLAUDE_WRAPPER: win.CLAUDE_WRAPPER,
   PS_CWD_HOOK: win.PS_CWD_HOOK,
   psStartup: win.psStartup,
-  bashRc: win.bashRc,
+  bashRc,
   PS_SPARE_HISTORY: win.PS_SPARE_HISTORY,
   zshFiles
 });
