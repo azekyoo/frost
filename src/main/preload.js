@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  // the OS this window runs on, for the few labels and styles that differ
+  platform: process.platform,
   ptyCreate: (cols, rows, opts = {}) => ipcRenderer.invoke('pty:create', { cols, rows, ...opts }),
   ptyInput: (id, data) => ipcRenderer.send('pty:input', { id, data }),
   ptyResize: (id, cols, rows) => ipcRenderer.send('pty:resize', { id, cols, rows }),
@@ -75,6 +77,7 @@ contextBridge.exposeInMainWorld('api', {
   onAgentTitle: (cb) => ipcRenderer.on('agent:title', (_e, m) => cb(m)),
   onAgentSession: (cb) => ipcRenderer.on('agent:session', (_e, m) => cb(m)),
   onWinBounds: (cb) => ipcRenderer.on('win:bounds', (_e, m) => cb(m)),
+  onFullScreen: (cb) => ipcRenderer.on('win:fullscreen', (_e, on) => cb(on)),
   zoomStep: (dir) => ipcRenderer.invoke('zoom:step', dir),
   onZoom: (cb) => ipcRenderer.on('win:zoom', (_e, m) => cb(m)),
   winMinimize: () => ipcRenderer.send('win:minimize'),

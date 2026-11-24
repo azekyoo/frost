@@ -1,0 +1,131 @@
+/* ---------- modal ---------- */
+/* Reserved for a question that must not be missed — a toast fades, this waits. */
+
+#modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 200;
+  background: rgba(2, 4, 10, 0.42);
+  backdrop-filter: blur(4px);
+  align-items: center;
+  justify-content: center;
+}
+
+#modal.open {
+  display: flex;
+  animation: boot 0.18s var(--ease);
+}
+
+.modal-box {
+  position: relative;
+  width: min(440px, 82vw);
+  padding: 20px 22px 18px;
+  background: var(--ice-sheen), var(--ice-strong);
+  backdrop-filter: var(--ice-blur);
+  border-radius: 18px;
+  box-shadow: var(--ice-edge), 0 34px 90px -18px rgba(0, 0, 0, 0.7), 0 4px 14px -4px rgba(0, 0, 0, 0.3);
+}
+
+#modal.open .modal-box {
+  animation: condense 0.24s var(--ease-out);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 10px;
+}
+
+.modal-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  color: #f0b429;
+  background: rgba(240, 180, 41, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(240, 180, 41, 0.3), 0 0 18px -4px rgba(240, 180, 41, 0.45);
+}
+
+.modal-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.modal-title {
+  font-family: var(--ui-font-display);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.modal-detail {
+  font-size: 12px;
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--fg) 74%, transparent);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.modal-actions button {
+  border: 1px solid var(--hairline-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg);
+  border-radius: 9px;
+  padding: 7px 16px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease), transform 0.12s var(--ease);
+}
+
+.modal-actions button:hover {
+  background: var(--surface-2);
+}
+
+.modal-actions button:active {
+  transform: scale(0.97);
+}
+
+.modal-confirm {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent) !important;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 38%, transparent), color-mix(in srgb, var(--accent) 24%, transparent)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 6px 18px -8px var(--accent-glow);
+  font-weight: 500 !important;
+}
+
+.modal-confirm:hover {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 50%, transparent), color-mix(in srgb, var(--accent) 32%, transparent)) !important;
+}
+
+/* the consequence of confirming, kept visually distinct from the reason */
+.modal-note {
+  margin-top: 12px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--fg) 60%, transparent);
+}
+
+/* a resume already under way: no second click, and it says so */
+.agent-row.busy {
+  pointer-events: none;
+  opacity: 0.6;
+}
+

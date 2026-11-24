@@ -160,6 +160,20 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     r = await w.eval(line(['日本 C:/a.png'], 1));
     check('a wide character takes two cells', r.map[3].x === 6, JSON.stringify(r.map[3]));
 
+    // Links a program marks itself (OSC 8, as Claude Code prints them) open
+    // the way found ones do; xterm's own fallback is a native confirm()
+    // dialog followed by a blank window the window guard refuses
+    const osc = await w.eval(`(() => {
+      const t = new Terminal({ cols: 30, rows: 10, allowProposedApi: true });
+      attachLinks({ term: t, cwd: '' });
+      const h = t.options.linkHandler;
+      const out = { same: h?.activate === openUrlClick, other: !!h?.allowNonHttpProtocols };
+      t.dispose();
+      return out;
+    })()`);
+    check('a link the program marks opens like a found one', osc.same, JSON.stringify(osc));
+    check('and only for web addresses', !osc.other);
+
     // Punctuation glued after a path is prose, a line number is not
     const trims = await w.eval(
       `['panes.js:', '\`panes.js\`:', 'a.js:12:', 'a.js:12', '(a.js),', 'a.js.'].map(trimCandidate)`
@@ -173,11 +187,11 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     // A bare name not in the shell's folder is found by name in its repo
     const repo = JSON.stringify(ROOT);
     const res = await w.eval(
-      `api.resolvePaths(${repo}, ['icon-48.png', 'panes.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json', 'assets', 'src/renderer', 'renderer', 'the', 'CHANGEL…', 'packag…'])`
+      `api.resolvePaths(${repo}, ['icon-48.png', 'tooltip.js', 'screenshot-hero.png', 'no-such-file.png', 'package.json', 'assets', 'src/renderer', 'renderer', 'the', 'CHANGEL…', 'packag…'])`
     );
     const found = res.paths;
     check('a bare name found once in the repo is a link', /assets[\\/]icon-48\.png$/.test(found['icon-48.png'] || ''), found['icon-48.png']);
-    check('for any kind of file', /src[\\/]renderer[\\/]panes\.js$/.test(found['panes.js'] || ''), found['panes.js']);
+    check('for any kind of file', /src[\\/]renderer[\\/]tooltip\.js$/.test(found['tooltip.js'] || ''), found['tooltip.js']);
     check('a name the repo has twice is not', !found['screenshot-hero.png'], found['screenshot-hero.png']);
     check('nor one it does not have', !found['no-such-file.png']);
     check('the shell folder still comes first', /frost[\\/]package\.json$/.test(found['package.json'] || ''), found['package.json']);
@@ -208,7 +222,9 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();

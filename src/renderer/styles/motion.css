@@ -1,0 +1,14 @@
+/* ---------- motion ---------- */
+/* Everything above that moves is decoration; with reduced motion asked for,
+   surfaces simply appear and the status dots hold still. The blocked dot keeps
+   its colour and halo, which is what carries the meaning. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+

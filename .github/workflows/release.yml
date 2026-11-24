@@ -87,3 +87,42 @@ jobs:
               --title "Frost $TAG" \
               "${notes[@]}"
           fi
+
+  # The Mac build: an Apple Silicon .dmg (to install) and .zip, ad-hoc signed
+  # but not notarised, so the first open asks the user to confirm it in
+  # System Settings → Privacy & Security. It runs after the Windows job
+  # because whichever finishes first creates the release, and two creating
+  # it at once would collide; by now it exists and this only adds to it.
+  # Mac builds don't install updates themselves (see features/updates.js),
+  # but they check for them: latest-mac.yml is what that check reads.
+  mac:
+    needs: windows
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # --mac: only what the build config's mac section asks for (dmg + zip)
+      - run: npx electron-builder --mac --publish never
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: frost-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest-mac.yml
+          retention-days: 14
+
+      - name: Add to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" dist/*.dmg dist/*.zip dist/latest-mac.yml --clobber

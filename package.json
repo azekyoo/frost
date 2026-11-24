@@ -8,6 +8,7 @@
     "postinstall": "node tools/patch-xterm-alpha.js",
     "start": "electron .",
     "shots": "electron tools/shots.js",
+    "test:core": "node --test test/core.test.js",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "test:status": "electron tools/statustest.js",
@@ -109,6 +110,45 @@
     },
     "portable": {
       "artifactName": "Frost-${version}-portable.exe"
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extraResources": [
+        {
+          "from": "build/mac/frost",
+          "to": "frost"
+        }
+      ],
+      "extendInfo": {
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Folder",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "public.folder"
+            ]
+          }
+        ]
+      },
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "Frost-${version}-${arch}.${ext}"
     },
     "extraResources": [
       {
