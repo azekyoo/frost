@@ -163,7 +163,7 @@ function openAgentMenu(tab, agent, x, y) {
         run: () => copyText(agent.cwd, 'folder path')
       },
       {
-        label: 'Open folder in Explorer',
+        label: osText('Open folder in Explorer', 'Open folder in Finder'),
         disabled: !agent.cwd,
         run: () =>
           api.openPath({ cwd: agent.cwd, target: '.' }).then((res) => {

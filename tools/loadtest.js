@@ -99,7 +99,13 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
         autoDetectAgents: false,
         copyOnSelect: false, // the clipboard is not what is being tested
         update: { check: false, download: false },
-        notify: { agentBlocked: false, agentDone: false, commandSeconds: 0 }
+        notify: { agentBlocked: false, agentDone: false, commandSeconds: 0 },
+        // PowerShell takes long enough to start for the light to show; zsh is up
+        // before it would. On macOS the shell waits a second first, then runs
+        // zsh with Frost's hooks as usual (they reach it through ZDOTDIR).
+        ...(process.platform === 'darwin'
+          ? { profiles: [{ id: 'slow-zsh', name: 'slow zsh', shell: '/bin/sh', args: ['-c', 'sleep 1; exec /bin/zsh -l'], agentWrapper: 'zsh' }] }
+          : {})
       },
       null,
       2
@@ -174,7 +180,9 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();

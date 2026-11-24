@@ -239,7 +239,7 @@ function openNoteEditor(tab, file, entry, row) {
   bar.className = 'dn-bar';
   const hint = document.createElement('span');
   hint.className = 'dn-hint';
-  hint.textContent = 'Ctrl+Enter to save · Esc to cancel';
+  hint.textContent = keyText('Ctrl+Enter to save · Esc to cancel');
   const cancel = document.createElement('button');
   cancel.textContent = 'Cancel';
   const save = document.createElement('button');
@@ -276,7 +276,7 @@ function openNoteEditor(tab, file, entry, row) {
   // the terminal's keys stay out of it while typing here
   input.addEventListener('keydown', (ev) => {
     ev.stopPropagation();
-    if (ev.key === 'Enter' && ev.ctrlKey) {
+    if (ev.key === 'Enter' && modKey(ev)) {
       ev.preventDefault();
       commit();
     } else if (ev.key === 'Escape') {

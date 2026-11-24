@@ -4,5 +4,5 @@
 // Features ask this module, never a platform folder directly, so another OS is
 // a sibling of win32/ exporting the same names.
 //
-// Only Windows exists so far.
-module.exports = require('./win32');
+// macOS gets darwin/; every other platform loads win32/ exactly as before.
+module.exports = process.platform === 'darwin' ? require('./darwin') : require('./win32');

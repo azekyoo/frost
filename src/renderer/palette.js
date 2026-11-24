@@ -59,7 +59,7 @@ function renderPalette() {
       const keys = it.command && keysFor(it.command, it.args);
       if (keys) {
         const kbd = document.createElement('em');
-        kbd.textContent = keys;
+        kbd.textContent = IS_MAC ? macKeys(keys) : keys;
         row.appendChild(kbd);
       }
       row.addEventListener('mousemove', (ev) => hoverPalette(i, ev));

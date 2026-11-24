@@ -1,11 +1,14 @@
 const { ipcMain } = require('electron');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const pty = require('@lydell/node-pty');
 const stalls = require('../../stalls');
 
 const { DEFAULT_THEME, readTheme } = require('../config');
 const { PS_SPARE_HISTORY, bashRc, psStartup, whichExe } = require('../../platform');
+// macOS only: Windows exports no zshFiles, and a 'zsh' profile there falls back to 'none'
+const { zshFiles } = require('../../platform');
 const { agentByPty, agents } = require('../agents/state');
 const { agentEnded } = require('../agents/agents');
 const { hookSettingsFile } = require('../agents/hooks');
@@ -17,6 +20,20 @@ const { STATUS_DIR } = require('../../env');
 const { runsClaude } = require('../../core/agents');
 
 let ptyCounter = 0;
+
+// Every shell started that hasn't reported its exit yet — including those whose
+// tab is already closed and who are still winding down (a claude saving its
+// session), which `ptys` has forgotten. See endAllPtys.
+const unexited = new Set();
+
+// zsh reads its startup files from ZDOTDIR: a folder of Frost's own, whose
+// files load the user's and then add the hooks (platform/darwin).
+function zshDotDir(withClaude) {
+  const dir = path.join(STATUS_DIR, withClaude ? 'frost-zsh-agent' : 'frost-zsh');
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [name, text] of Object.entries(zshFiles(withClaude))) fs.writeFileSync(path.join(dir, name), text);
+  return dir;
+}
 
 function bashRcFile(withClaude) {
   const f = path.join(STATUS_DIR, withClaude ? 'frost-bashrc-agent' : 'frost-bashrc');
@@ -96,7 +113,7 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
   const autoDetect = (readTheme() || DEFAULT_THEME).autoDetectAgents !== false;
   // agentWrapper names the shell dialect: it decides both how the `claude`
   // wrapper is written and how the cwd hook is installed. 'none' = neither.
-  const dialect = profile.agentWrapper || 'none';
+  const dialect = profile.agentWrapper === 'zsh' && !zshFiles ? 'none' : profile.agentWrapper || 'none';
   const withClaude = autoDetect && dialect !== 'none';
   let args = Array.isArray(profile.args) ? [...profile.args] : [];
   // ConPTY passes no TERM of its own, and node-pty's `name` is a no-op on
@@ -104,7 +121,16 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
   // more than sixteen colours and downgrades its palette: Claude Code's status
   // bar loses its gradients. Frost knows what it renders, so it says so. Set
   // before profile.env, which is the user's to override.
-  let env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...(profile.env || {}) };
+  const inherited = { ...process.env };
+  // macOS: started from Terminal.app, Frost would pass on Terminal's identity,
+  // and the system's zshrc/bashrc would then keep Terminal's per-window history
+  // files for it. Frost says who it is instead.
+  if (process.platform === 'darwin') {
+    delete inherited.TERM_SESSION_ID;
+    delete inherited.TERM_PROGRAM_VERSION;
+    inherited.TERM_PROGRAM = 'Frost';
+  }
+  let env = { ...inherited, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...(profile.env || {}) };
   if (dialect !== 'none') {
     if (withClaude) {
       const agentId = 'pty' + id;
@@ -115,10 +141,17 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
       env.FROST_HOOKS = fix(hooks);
       env.FROST_LAUNCH = fix(launch);
     }
-    args =
-      dialect === 'bash'
-        ? ['--rcfile', bashRcFile(withClaude), '-i']
-        : ['-NoLogo', '-NoExit', '-Command', psStartup(withClaude) + (spare ? '; ' + PS_SPARE_HISTORY : '')];
+    if (dialect === 'zsh') {
+      // the profile's own args stay (-l): zsh is told where to start through
+      // ZDOTDIR, and where the user's files are through FROST_USER_ZDOTDIR
+      env.FROST_USER_ZDOTDIR = env.ZDOTDIR || os.homedir();
+      env.ZDOTDIR = zshDotDir(withClaude);
+    } else {
+      args =
+        dialect === 'bash'
+          ? ['--rcfile', bashRcFile(withClaude), '-i']
+          : ['-NoLogo', '-NoExit', '-Command', psStartup(withClaude) + (spare ? '; ' + PS_SPARE_HISTORY : '')];
+    }
   }
   const startCwd = shellCwd(profile, cwd);
   // Detected WSL profiles start in the Linux home (`--cd ~`), which threw away
@@ -146,6 +179,8 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
     env
   });
   ptys.set(id, p);
+  unexited.add(p);
+  p.onExit(() => unexited.delete(p));
   ptyMeta.set(id, { profileId: profile.id, profileName: profile.name });
   p.onData(stalls.timed('pty data', (data) => {
     const rec = agentByPty.get(id);
@@ -236,8 +271,38 @@ ipcMain.on('pty:kill', (_e, { id }) => {
   }
 });
 
+// macOS: node-pty reports a shell's exit by calling back into JavaScript, and
+// one that lands while Node is shutting down aborts the app ("Frost quit
+// unexpectedly" on every quit). So before quitting, every shell still going is
+// ended and its exit waited for; one that won't go within `ms` is killed
+// outright, which it can't outlast. Resolves once none is left, or soon after.
+function endAllPtys(ms = 1500) {
+  const left = [...unexited];
+  if (!left.length) return Promise.resolve();
+  const gone = Promise.all(left.map((p) => new Promise((resolve) => p.onExit(() => resolve()))));
+  for (const p of left) {
+    try {
+      p.kill();
+    } catch {}
+  }
+  const wait = (t) => new Promise((resolve) => setTimeout(resolve, t));
+  return Promise.race([
+    gone,
+    wait(ms).then(() => {
+      for (const p of unexited) {
+        try {
+          process.kill(p.pid, 'SIGKILL');
+        } catch {}
+      }
+      return Promise.race([gone, wait(500)]);
+    })
+  ]);
+}
+
 Object.assign(module.exports, {
   bashRcFile,
+  endAllPtys,
+  zshDotDir,
   typeAhead,
   RUN_UNMARKED_MS,
   RUN_MARKED_CAP_MS,

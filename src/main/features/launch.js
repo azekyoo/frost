@@ -34,11 +34,43 @@ function launchFromArgv(argv) {
 // This process's own launch, handed to the first window that asks and to no
 // other: a window opened later must not run the command again.
 let startupLaunch = launchFromArgv(process.argv);
+let startupTaken = false; // the first window has asked; later launches go to a window
 const getStartupLaunch = () => startupLaunch;
 function takeStartupLaunch() {
   const launch = startupLaunch;
   startupLaunch = null;
+  startupTaken = true;
   return launch;
+}
+
+// macOS: a folder dropped on the Dock icon, Finder's Open With → Frost and
+// `open -a Frost <dir>` reach the app as open-file events, not as a second
+// process with an argv, and they reach it whether it is running or not. Each
+// is a `frost <dir>`: before the first window exists it is this launch (one
+// fresh window there, nothing restored); after, it goes to the window in front
+// as a new tab, as a second launch would. A file opens the folder it is in.
+// Only ever a folder: nothing arriving this way can carry a command to run.
+if (process.platform === 'darwin') {
+  app.on('open-file', (event, file) => {
+    event.preventDefault();
+    let dir;
+    try {
+      dir = fs.statSync(file).isDirectory() ? file : path.dirname(file);
+    } catch {
+      return;
+    }
+    const launch = { dir, run: null, profileId: null };
+    if (!startupTaken) {
+      startupLaunch = launch;
+      return;
+    }
+    const { focusedWindow } = require('./windows/registry');
+    const target = focusedWindow();
+    if (!target) return;
+    if (target.isMinimized()) target.restore();
+    target.focus();
+    target.webContents.send('session:openDir', launch);
+  });
 }
 
 Object.assign(module.exports, {

@@ -1,0 +1,14 @@
+#!/bin/sh
+# The `frost` command on macOS: the same as frost.cmd on Windows.
+#   frost .                 open Frost in this folder
+#   frost <dir> --run "…"   and type a command into that tab once its shell is up
+#   frost --profile <id>    with that shell profile
+# Installed as a link in /usr/local/bin by Frost → Install 'frost' Command; it
+# lives inside Frost.app, so it follows the app through updates.
+#
+# Frost itself is started with these arguments. If it is already running, that
+# second start hands them to the running one and quits, as on Windows. nohup and
+# no output: closing this terminal must not close a Frost started from it.
+self=$(readlink "$0" 2>/dev/null || echo "$0")
+app=$(cd "$(dirname "$self")/../MacOS" && pwd)/Frost
+nohup "$app" "$@" >/dev/null 2>&1 &

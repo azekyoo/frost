@@ -17,9 +17,9 @@ const SEARCH_DECORATIONS = {
 const searchOptions = { caseSensitive: false, wholeWord: false, regex: false };
 
 const SEARCH_TOGGLES = [
-  { key: 'caseSensitive', label: 'Aa', title: 'Match case (Alt+C)', code: 'KeyC' },
-  { key: 'wholeWord', label: 'ab', title: 'Whole word (Alt+W)', code: 'KeyW' },
-  { key: 'regex', label: '.*', title: 'Regular expression (Alt+R)', code: 'KeyR' }
+  { key: 'caseSensitive', label: 'Aa', title: keyText('Match case (Alt+C)'), code: 'KeyC' },
+  { key: 'wholeWord', label: 'ab', title: keyText('Whole word (Alt+W)'), code: 'KeyW' },
+  { key: 'regex', label: '.*', title: keyText('Regular expression (Alt+R)'), code: 'KeyR' }
 ];
 
 // The addon stops adding to its match list at this many and reports that number

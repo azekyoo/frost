@@ -1,5 +1,36 @@
 /* global Terminal, FitAddon, WebLinksAddon, WebglAddon, Unicode11Addon, SearchAddon, SerializeAddon */
 
+// The few labels and styles that differ by OS. osText takes the Windows wording
+// first, so Windows shows exactly what it always has.
+const IS_MAC = window.api.platform === 'darwin';
+const osText = (win, mac) => (IS_MAC ? mac : win);
+// The modifier for Frost's own shortcuts and Ctrl+click: Ctrl on Windows, Cmd
+// on a Mac, where Ctrl belongs to the shell (Ctrl+C must always interrupt).
+const modKey = (ev) => (IS_MAC ? ev.metaKey : ev.ctrlKey);
+// A binding ('meta+shift+t') the way a Mac menu writes it (⌘⇧T).
+const MAC_MODS = { ctrl: '⌃', alt: '⌥', shift: '⇧', meta: '⌘' };
+const macKeys = (k) =>
+  k.split('+').map((p) => MAC_MODS[p] || (p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1))).join('');
+// A shortcut label written the Windows way, said the Mac way.
+const keyText = (s) => (IS_MAC ? s.replace(/Ctrl\+/g, 'Cmd+').replace(/Alt\+/g, 'Option+') : s);
+if (IS_MAC) {
+  document.body.classList.add('mac');
+  // index.html carries the macOS wording beside the Windows one: data-mac
+  // replaces an element's content, data-mac-title / data-mac-placeholder those
+  // attributes, data-mac-keys only rewrites the shortcuts in it, and
+  // data-win-only marks what has no meaning on a Mac (an option is removed, so
+  // it can't be picked; anything else is hidden, so scripts still find it).
+  for (const n of document.querySelectorAll('[data-mac]')) n.innerHTML = n.dataset.mac;
+  for (const n of document.querySelectorAll('[data-mac-placeholder]')) n.placeholder = n.dataset.macPlaceholder;
+  for (const n of document.querySelectorAll('[data-mac-title]')) n.title = n.dataset.macTitle;
+  for (const n of document.querySelectorAll('[data-mac-keys]')) n.innerHTML = keyText(n.innerHTML);
+  for (const n of document.querySelectorAll('[data-win-only]')) {
+    if (n.tagName === 'OPTION') n.remove();
+    else n.style.display = 'none';
+  }
+  window.api.onFullScreen((on) => document.body.classList.toggle('fullscreen', on));
+}
+
 const state = {
   theme: null,
   tabs: [],

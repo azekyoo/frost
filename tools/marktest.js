@@ -75,6 +75,14 @@ async function waitReady(c, timeout = 40000) {
 
 // Typed into the real shell, then waited on until the prompt hook has closed the
 // command — that closing mark is what the whole feature is built on.
+// The commands typed into the pane: PowerShell's on Windows, zsh's on macOS,
+// each doing the same thing in that shell.
+const MAC = process.platform === 'darwin';
+const sh = (win, mac) => (MAC ? mac : win);
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SILENT = sh('cmd /c exit 4', "sh -c 'exit 4'");
+const BOOM = sh('cmd /c "echo boom & exit 3"', "sh -c 'echo boom; exit 3'");
+
 async function runCommand(w, line) {
   const before = await w.eval('(activePane().marks || []).length');
   await w.eval(`(() => { api.ptyInput(activePane().ptyId, ${JSON.stringify(line + '\r')}); return true })()`);
@@ -145,25 +153,25 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
 
     // --- and nothing around it -------------------------------------------
     check('the command line itself is not included', !String(three).includes('echo alpha'), JSON.stringify(three));
-    check('and neither is the prompt', !/PS .*>/.test(String(three)), JSON.stringify(three));
+    check('and neither is the prompt', !(MAC ? /%/ : /PS .*>/).test(String(three)), JSON.stringify(three));
 
     // --- a line longer than the window ------------------------------------
     // Wrapped rows are one line, and a copy that breaks them where the window
     // happens to end is a copy that cannot be pasted back
-    await runCommand(w, "'x' * 300");
+    await runCommand(w, sh("'x' * 300", "printf 'x%.0s' {1..300}; echo"));
     await sleep(400);
     const long = await w.eval(select);
     check('a wrapped line comes back as one line', long === 'x'.repeat(300), `${String(long).length} chars, ${String(long).split('\n').length} line(s)`);
 
     // --- a command that printed nothing ------------------------------------
-    await runCommand(w, '$null = 1');
+    await runCommand(w, sh('$null = 1', 'true'));
     await sleep(400);
     const empty = await w.eval(select);
     check('a command that printed nothing selects nothing', empty === null, JSON.stringify(empty));
 
     // --- one that failed without a word --------------------------------------
     // still a command to send: that it failed is the whole message
-    await runCommand(w, 'cmd /c exit 4');
+    await runCommand(w, SILENT);
     await sleep(400);
     const silent = await w.eval(`(() => {
       activePane().term.clearSelection(); // the earlier checks' selection would be sent instead
@@ -172,14 +180,14 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     })()`);
     check(
       'a silent failure is sent as one',
-      silent?.message === '`cmd /c exit 4` failed (exit 4) in demo, printing nothing.',
+      silent?.message === `\`${SILENT}\` failed (exit 4) in demo, printing nothing.`,
       JSON.stringify(silent)
     );
 
     // --- scrolled up, it is still the last command -------------------------
     // what is on screen doesn't change what ran last, which is what is meant
     await runCommand(w, 'echo needle-one');
-    await runCommand(w, '1..60 | ForEach-Object { "filler $_" }');
+    await runCommand(w, sh('1..60 | ForEach-Object { "filler $_" }', 'for i in {1..60}; do echo "filler $i"; done'));
     await sleep(600);
     const scrolled = await w.eval(`(() => {
       const node = activePane();
@@ -199,7 +207,7 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     // --- what goes to an agent ---------------------------------------------
     // The command as typed, without the prompt in front of it, how it ended,
     // and what it printed — and the clipboard left alone while reading it
-    await runCommand(w, 'cmd /c "echo boom & exit 3"');
+    await runCommand(w, BOOM);
     await sleep(600);
     // At the bottom, as after running it — the scroll lands a moment later —
     // and with the earlier checks' selection gone, so what is left selected
@@ -211,12 +219,12 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
       const out = commandOutput(node);
       return out && { ...out, message: outputPrompt(out, 'C:\\\\dev\\\\demo') };
     })()`);
-    check('the command is what was typed', sent?.command === 'cmd /c "echo boom & exit 3"', JSON.stringify(sent?.command));
+    check('the command is what was typed', sent?.command === BOOM, JSON.stringify(sent?.command));
     check('a failure is reported as one', sent?.exit === 3, JSON.stringify(sent?.exit));
     check('the output comes with it', JSON.stringify(sent?.output) === '["boom"]', JSON.stringify(sent?.output));
     check(
       'the message says what failed, where',
-      /^`cmd \/c "echo boom & exit 3"` failed \(exit 3\) in demo:\n\n```\nboom\n```$/.test(sent?.message || ''),
+      new RegExp('^`' + escapeRe(BOOM) + '` failed \\(exit 3\\) in demo:\n\n```\nboom\n```$').test(sent?.message || ''),
       JSON.stringify(sent?.message)
     );
     const selection = await w.eval('activePane().term.hasSelection()');
@@ -240,14 +248,14 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     check('and reports no result', afterEmpty.open === null, JSON.stringify(afterEmpty.open));
     check(
       'the failure before it is still what gets sent',
-      afterEmpty.command === 'cmd /c "echo boom & exit 3"' && afterEmpty.exit === 3,
+      afterEmpty.command === BOOM && afterEmpty.exit === 3,
       JSON.stringify(afterEmpty)
     );
     check('with its own output, not the empty prompts after it', JSON.stringify(afterEmpty.output) === '["boom"]', JSON.stringify(afterEmpty.output));
 
     // --- while the next one runs ----------------------------------------------
     // its output so far is the last output, so that is what goes
-    await w.eval(`(() => { api.ptyInput(activePane().ptyId, 'echo early; Start-Sleep 3\\r'); return true })()`);
+    await w.eval(`(() => { api.ptyInput(activePane().ptyId, ${JSON.stringify(sh('echo early; Start-Sleep 3', 'echo early; sleep 3') + '\r')}); return true })()`);
     await sleep(1500);
     const busy = await w.eval('(() => { const o = commandOutput(activePane()); return o && { running: !!o.running, output: o.output }; })()');
     check('while a command runs, its output so far is sent', busy?.running && JSON.stringify(busy.output) === '["early"]', JSON.stringify(busy));
@@ -257,7 +265,7 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     // A real newline right at the last column, as a remote shell redrawing a
     // long command sends: read back as the one line it is
     const cols = await w.eval('activePane().term.cols');
-    await runCommand(w, `[Console]::Write(('z' * ${cols}) + "\`r\`n" + "tail\`r\`n")`);
+    await runCommand(w, sh(`[Console]::Write(('z' * ${cols}) + "\`r\`n" + "tail\`r\`n")`, `printf 'z%.0s' {1..${cols}}; printf '\\r\\ntail\\r\\n'`));
     await sleep(400);
     const edge = await w.eval('(() => { const o = commandOutput(activePane()); return o && o.output; })()');
     check('a row cut at the edge is joined to the next', JSON.stringify(edge) === JSON.stringify(['z'.repeat(cols) + 'tail']), JSON.stringify(edge));
@@ -266,7 +274,7 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     // ssh to a machine without Frost's hooks: the local command never finishes,
     // and the command worth sending is the last one run at the far end's prompt
     const before = await w.eval('(activePane().marks || []).length');
-    await w.eval(`(() => { api.ptyInput(activePane().ptyId, 'pwsh -NoLogo -NoProfile\\r'); return true })()`);
+    await w.eval(`(() => { api.ptyInput(activePane().ptyId, ${JSON.stringify(sh('pwsh -NoLogo -NoProfile', "PS1='me@far:~$ ' bash --norc --noprofile -i") + '\r')}); return true })()`);
     await sleep(4000);
     const nested = (await w.eval('(activePane().marks || []).length')) === before;
     await w.eval(`(() => { api.ptyInput(activePane().ptyId, 'echo inner-one; echo inner-two\\r'); return true })()`);
@@ -297,14 +305,16 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     await w.eval(`(() => { runCommand('view.selectAll'); return true })()`);
     await sleep(300);
     const all = await w.eval('activePane().term.getSelection()');
-    check('select all takes the whole buffer', all.includes('alpha') && all.includes('needle-one') && /PS .*>/.test(all), `${all.length} chars`);
+    check('select all takes the whole buffer', all.includes('alpha') && all.includes('needle-one') && (MAC ? all.includes('echo alpha') : /PS .*>/.test(all)), `${all.length} chars`);
 
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();

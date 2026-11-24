@@ -44,6 +44,7 @@ function attachCommandMarks(node) {
         old.decoration?.dispose();
         old.marker.dispose();
         old.end?.dispose();
+        old.input?.marker.dispose();
       }
       return true;
     }
@@ -67,7 +68,19 @@ function attachCommandMarks(node) {
       return true;
     }
 
-    return false; // B, C and anything else aren't ours to claim
+    if (kind === 'B') {
+      // Where the prompt ends and typing begins (the macOS hooks send it).
+      // Recorded on the prompt's mark so the command can be cut from the
+      // prompt exactly, whatever the prompt looks like. Passed on, like C.
+      const mark = node.marks[node.marks.length - 1];
+      if (mark && mark.exit === null && !mark.input) {
+        const marker = node.term.registerMarker(0);
+        if (marker) mark.input = { marker, x: node.term.buffer.active.cursorX };
+      }
+      return false;
+    }
+
+    return false; // C and anything else aren't ours to claim
   });
 
   // Clearing the screen (cls, clear, Ctrl+L) blanks the rows but leaves their
@@ -185,6 +198,25 @@ function bufferLines(term, start, end) {
 // session, most often: "user@host:~# cmd", or a remote PowerShell's "PS x> cmd".
 const FOREIGN_PROMPT = /^(?:\[?([\w.-]+@[\w.-]+)[^#$\n]{0,80}?[#$]|PS [^>\n]{1,200}>) ?(.*)$/;
 
+// What was typed at a prompt that marked its own end (133;B): the text from
+// that column on, through the rows the command wrapped onto, up to (not
+// including) row `stop`. Null without the mark — the hooks on Windows don't
+// send it, and their prompts are recognised by shape instead.
+function typedCommand(term, mark, stop) {
+  const inp = mark?.input;
+  if (!inp || inp.marker.isDisposed) return null;
+  const from = inp.marker.line;
+  if (from < mark.marker.line || from >= stop) return null;
+  const buf = term.buffer.active;
+  let text = buf.getLine(from)?.translateToString(true, inp.x) || '';
+  for (let i = from + 1; i < stop; i++) {
+    const line = buf.getLine(i);
+    if (!line) continue;
+    text += (line.isWrapped ? '' : ' ') + line.translateToString(true);
+  }
+  return text.trim();
+}
+
 // The last mark's command, while it is still running — ssh, a REPL, a watcher.
 // Its output never ends in a mark of Frost's, so the command worth sending is
 // found by the prompts inside it: the last one that ran something, up to the
@@ -197,7 +229,9 @@ function runningOutput(node, marks) {
   let end = buf.length - 1;
   while (end >= start && !buf.getLine(end)?.translateToString(true).trim()) end--;
   if (end < start) return null; // an idle prompt: nothing is running
-  const local = bufferText(node.term, mark.marker.line, start - 1).join(' ').replace(/^PS [^>]*>\s*/, '').trim();
+  const local =
+    typedCommand(node.term, mark, start) ??
+    bufferText(node.term, mark.marker.line, start - 1).join(' ').replace(/^PS [^>]*>\s*/, '').trim();
   const lines = bufferText(node.term, start, end);
   const prompts = [];
   lines.forEach((l, i) => {
@@ -244,6 +278,12 @@ function markOutput(node, region) {
   const promptRows = bufferText(term, region.mark.marker.line, region.start - 1);
   let output = bufferText(term, region.start, region.end);
   let command = promptRows.join(' ').trim();
+  // the prompt said where it ends: everything after that is what was typed
+  const typed = typedCommand(term, region.mark, region.start);
+  if (typed !== null) {
+    while (output.length && !output[output.length - 1]) output.pop();
+    return { command: typed, output, exit: region.mark.exit, clean: true };
+  }
   if (/^\$ /.test(output[0] || '')) {
     command = output[0];
     output = output.slice(1);

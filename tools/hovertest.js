@@ -8,6 +8,8 @@ const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
 const TMP = path.join(app.getPath('temp'), 'frost-hovertest');
 const PORT = 9432;
+// Ctrl+click on Windows is Cmd+click on macOS (CDP modifier bits: 2 Ctrl, 4 Meta)
+const CLICK_MOD = process.platform === 'darwin' ? 4 : 2;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 app.on('window-all-closed', () => {});
 
@@ -243,7 +245,7 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
       }
     })()`);
     for (const type of ['mousePressed', 'mouseReleased']) {
-      await w.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers: 2 });
+      await w.send('Input.dispatchMouseEvent', { type, x: at.x, y: at.y, button: 'left', clickCount: 1, modifiers: CLICK_MOD });
     }
     await sleep(1500);
     const peekState = await w.eval(`({
@@ -266,7 +268,7 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
       }
     })()`);
     for (const type of ['mousePressed', 'mouseReleased']) {
-      await w.send('Input.dispatchMouseEvent', { type, x: cut.x, y: cut.y, button: 'left', clickCount: 1, modifiers: 2 });
+      await w.send('Input.dispatchMouseEvent', { type, x: cut.x, y: cut.y, button: 'left', clickCount: 1, modifiers: CLICK_MOD });
     }
     await sleep(1500);
     const search = await w.eval(`({
@@ -344,7 +346,9 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();

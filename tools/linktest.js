@@ -160,6 +160,20 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     r = await w.eval(line(['日本 C:/a.png'], 1));
     check('a wide character takes two cells', r.map[3].x === 6, JSON.stringify(r.map[3]));
 
+    // Links a program marks itself (OSC 8, as Claude Code prints them) open
+    // the way found ones do; xterm's own fallback is a native confirm()
+    // dialog followed by a blank window the window guard refuses
+    const osc = await w.eval(`(() => {
+      const t = new Terminal({ cols: 30, rows: 10, allowProposedApi: true });
+      attachLinks({ term: t, cwd: '' });
+      const h = t.options.linkHandler;
+      const out = { same: h?.activate === openUrlClick, other: !!h?.allowNonHttpProtocols };
+      t.dispose();
+      return out;
+    })()`);
+    check('a link the program marks opens like a found one', osc.same, JSON.stringify(osc));
+    check('and only for web addresses', !osc.other);
+
     // Punctuation glued after a path is prose, a line number is not
     const trims = await w.eval(
       `['panes.js:', '\`panes.js\`:', 'a.js:12:', 'a.js:12', '(a.js),', 'a.js.'].map(trimCandidate)`
@@ -208,7 +222,9 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     console.error('ERROR:', e.message);
     fail++;
   } finally {
-    spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    // taskkill on Windows; elsewhere a forced kill, which takes Electron's helpers with it
+    if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    else child.kill('SIGKILL');
     app.exit(fail ? 1 : 0);
   }
 })();

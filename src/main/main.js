@@ -36,14 +36,15 @@ const { fillSpares } = require('./features/pty/spares');
 const { destroyGhost } = require('./features/tab-drag');
 const { initAgentInfra } = require('./features/agents/agents');
 const { initUpdates, stopUpdateTimer } = require('./features/updates');
-const { identifySourceBuild } = require('./platform');
+const platform = require('./platform');
+const { identifySourceBuild } = platform;
 require('./features/windows/chrome');
 require('./features/windows/zoom');
 require('./features/windows/ipc');
 require('./features/glass');
 require('./features/profiles');
 require('./features/git');
-require('./features/pty/shells');
+const { endAllPtys } = require('./features/pty/shells');
 require('./features/pty/adoption');
 require('./features/theme-ipc');
 require('./features/agents/sessions');
@@ -97,7 +98,9 @@ app.whenReady().then(() => {
   // there is no such thing in Windows Terminal either — and every key this
   // frees belongs to the shell. What is worth keeping is bound in the
   // renderer's own table, where it can be seen and rebound.
-  Menu.setApplicationMenu(null);
+  // macOS needs a small menu of Cmd shortcuts (see platform/darwin/app.js);
+  // Windows has no applicationMenu and keeps none at all.
+  Menu.setApplicationMenu(platform.applicationMenu ? platform.applicationMenu() : null);
 
   // No setAppUserModelId for packaged builds. It groups the taskbar button under an id of our
   // choosing, and Windows then resolves that button's icon through the id rather
@@ -127,6 +130,21 @@ app.on('before-quit', () => {
   flushWindowState();
   markQuitting(); // after the flush: closing windows must not rewrite it
 });
+
+// macOS: quitting waits until every shell has reported its exit (see
+// endAllPtys), then leaves with app.exit — the quit already ran its
+// before-quit, and running it a second time has nothing left to do.
+if (process.platform === 'darwin') {
+  let shellsEnded = false;
+  app.on('will-quit', (event) => {
+    if (shellsEnded) return;
+    event.preventDefault();
+    endAllPtys().finally(() => {
+      shellsEnded = true;
+      app.exit(0);
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   for (const p of ptys.values()) {

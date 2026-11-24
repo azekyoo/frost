@@ -34,6 +34,8 @@
   <link rel="stylesheet" href="designs/candy.css" />
   <!-- after every design: pins the measurements they all share -->
   <link rel="stylesheet" href="designs/layout-lock.css" />
+  <!-- macOS only (body.mac), after the designs so it can override them -->
+  <link rel="stylesheet" href="styles/mac.css" />
   <style id="custom-css"></style>
 </head>
 <body>
@@ -50,18 +52,18 @@
     <!-- One capsule: the + and the shell picker are the same action, asked two
          ways, so they read as one control with a seam rather than two buttons -->
     <div class="tb-group">
-      <button id="btn-newtab" title="New tab (Ctrl+Shift+T) — right-click for shells">
+      <button id="btn-newtab" title="New tab (Ctrl+Shift+T) — right-click for shells" data-mac-title="New tab (Cmd+T) — right-click for shells">
         <svg viewBox="0 0 16 16"><path d="M8 3.25v9.5M3.25 8h9.5" /></svg>
       </button>
       <button id="btn-newtab-menu" title="Open a different shell">
         <svg viewBox="0 0 16 16"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" /></svg>
       </button>
     </div>
-    <button id="btn-agents" title="New agent tab (Ctrl+Shift+A)">
+    <button id="btn-agents" title="New agent tab (Ctrl+Shift+A)" data-mac-title="New agent tab (Cmd+Shift+A)">
       <svg viewBox="0 0 16 16"><path d="M8 1.75c.45 2.9 1.35 3.8 4.25 4.25C9.35 6.45 8.45 7.35 8 10.25 7.55 7.35 6.65 6.45 3.75 6c2.9-.45 3.8-1.35 4.25-4.25Z" /><path d="M12.25 10.5c.2 1.3.6 1.7 1.9 1.9-1.3.2-1.7.6-1.9 1.9-.2-1.3-.6-1.7-1.9-1.9 1.3-.2 1.7-.6 1.9-1.9Z" /></svg>
     </button>
     <div class="titlebar-spacer"></div>
-    <button id="btn-settings" title="Settings (Ctrl+,)">
+    <button id="btn-settings" title="Settings (Ctrl+,)" data-mac-title="Settings (Cmd+,)">
       <svg viewBox="0 0 16 16"><path d="M2.75 4.5h6.5M12.25 4.5h1M2.75 11.5h1M6.75 11.5h6.5" /><circle cx="10.75" cy="4.5" r="1.5" /><circle cx="5.25" cy="11.5" r="1.5" /></svg>
     </button>
     <div class="wco-spacer"></div>
@@ -98,11 +100,11 @@
         <label class="field">
           <span>Material</span>
           <select id="s-material">
-            <option value="acrylic">Acrylic</option>
-            <option value="acrylic-always">Acrylic (always on)</option>
+            <option value="acrylic" data-mac="Translucent">Acrylic</option>
+            <option value="acrylic-always" data-win-only>Acrylic (always on)</option>
             <option value="glass">Glass (custom blur, no frost) &mdash; needs restart</option>
-            <option value="mica">Mica</option>
-            <option value="tabbed">Tabbed (Mica Alt)</option>
+            <option value="mica" data-win-only>Mica</option>
+            <option value="tabbed" data-win-only>Tabbed (Mica Alt)</option>
             <option value="none">None</option>
           </select>
         </label>
@@ -112,11 +114,11 @@
           <select id="s-colormode">
             <option value="dark">Dark (neutral smoke)</option>
             <option value="light">Light (white frost)</option>
-            <option value="system">Follow Windows</option>
+            <option value="system" data-mac="Follow macOS">Follow Windows</option>
           </select>
         </label>
 
-        <p class="hint">
+        <p class="hint" data-mac="Switching in or out of Glass needs a restart: macOS fixes a window's frame when it opens. Frost will offer to do it.">
           Switching in or out of Glass needs a restart: Windows only lets an app
           choose a transparent window when it starts. Frost will offer to do it.
         </p>
@@ -158,21 +160,21 @@
         <h3>Shell</h3>
 
         <label class="field">
-          <span>Default profile (Ctrl+Shift+T)</span>
+          <span data-mac="Default profile (Cmd+T)">Default profile (Ctrl+Shift+T)</span>
           <select id="s-profile"></select>
         </label>
-        <p class="hint">
+        <p class="hint" data-mac="Detected on first run. Edit <b>profiles</b> in theme.json to add your own — shell path, args, cwd, env. Cmd+Option+1&hellip;9 opens the Nth profile; the <b>&#9662;</b> button lists them all.">
           Detected on first run. Edit <b>profiles</b> in theme.json to add your own —
           shell path, args, cwd, env. Ctrl+Shift+1&hellip;9 opens the Nth profile;
           the <b>&#9662;</b> button lists them all.
         </p>
-        <p class="hint">
+        <p class="hint" data-mac="zsh and bash profiles also report their directory back to Frost each prompt, which is what puts <b>dir &middot; branch</b> on the tab. Other shells (fish) can't yet, so those tabs keep the profile name.">
           PowerShell and bash profiles also report their directory back to Frost
           each prompt, which is what puts <b>dir &middot; branch</b> on the tab.
           cmd and WSL can't, so those tabs keep the profile name.
         </p>
 
-        <label class="field">
+        <label class="field" data-win-only>
           <span>Preloaded shells</span>
           <select id="s-spares">
             <option value="0">Off</option>
@@ -181,7 +183,7 @@
             <option value="3">3</option>
           </select>
         </label>
-        <p class="hint">
+        <p class="hint" data-win-only>
           Kept started in the background, so a new tab, split or agent session
           opens at its prompt instantly instead of waiting for your profile to
           load. About 70&nbsp;MB each. PowerShell profiles only.
@@ -194,13 +196,13 @@
         <label class="field">
           <span>Start directory (new tabs)</span>
           <div class="input-row">
-            <input type="text" id="s-startdir" spellcheck="false" placeholder="C:\Users\you" />
+            <input type="text" id="s-startdir" spellcheck="false" placeholder="C:\Users\you" data-mac-placeholder="/Users/you" />
             <button id="s-startdir-browse" title="Browse for folder" type="button"><svg viewBox="0 0 16 16"><path d="M2 4.25C2 3.56 2.56 3 3.25 3h2.9l1.5 1.5h5.1c.69 0 1.25.56 1.25 1.25v5.99c0 .69-.56 1.26-1.25 1.26h-9.5C2.56 13 2 12.44 2 11.75Z" /></svg></button>
           </div>
         </label>
 
         <label class="field">
-          <span>Editor for Ctrl+click on a file path</span>
+          <span data-mac="Editor for Cmd+click on a file path">Editor for Ctrl+click on a file path</span>
           <input type="text" id="s-editor" spellcheck="false" placeholder="auto-detect (code, cursor, subl, idea&hellip;)" />
         </label>
         <p class="hint">
@@ -343,7 +345,7 @@
           <span>Lines kept per pane <em id="s-scrollback-val"></em></span>
           <input type="range" id="s-scrollback" min="1000" max="200000" step="1000" />
         </label>
-        <p class="hint">
+        <p class="hint" data-mac-keys>
           What scrolls off the top is kept until this fills, then the oldest goes
           &mdash; and what goes is gone: not scrollable, not findable by
           <b>Ctrl+F</b>. It is memory, so a large number costs real RAM in every
@@ -394,12 +396,12 @@
           <span>Check for updates automatically</span>
         </label>
 
-        <label class="field row">
+        <label class="field row" data-win-only>
           <input type="checkbox" id="s-update-download" />
           <span>Download them in the background</span>
         </label>
 
-        <p class="hint">
+        <p class="hint" data-mac="Frost checks GitHub for new releases but can't install them on a Mac: when one is out, <b>Download</b> opens its page. Take the .dmg there and drag Frost to Applications again; your settings stay.">
           A found update installs when you quit Frost, never while you are in it &mdash;
           a terminal holds work that a restart of its own choosing would throw away.
           <b>Restart and install</b> appears here once one is downloaded.
@@ -413,7 +415,7 @@
           <button id="btn-open-css">theme.css</button>
           <button id="btn-open-keys">keybindings.json</button>
         </div>
-        <p class="hint">
+        <p class="hint" data-mac-keys>
           All hot-reload on save. theme.css accepts any CSS — full control.
           Ctrl+Shift+P lists every command with the key it currently answers to.
         </p>

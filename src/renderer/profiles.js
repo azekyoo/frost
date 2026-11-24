@@ -30,7 +30,7 @@ function openProfileMenu(anchor) {
       item.appendChild(name);
       if (i < 9) {
         const kbd = document.createElement('em');
-        kbd.textContent = `Ctrl+Shift+${i + 1}`;
+        kbd.textContent = osText(`Ctrl+Shift+${i + 1}`, `Cmd+Option+${i + 1}`);
         item.appendChild(kbd);
       }
       item.addEventListener('click', () => {

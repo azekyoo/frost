@@ -28,8 +28,8 @@ function targetPath(base, candidate) {
   let target = candidate;
   if (target.startsWith('~/') || target.startsWith('~\\')) {
     target = path.join(app.getPath('home'), target.slice(2));
-  } else if (/^\/[a-zA-Z]\//.test(target)) {
-    // msys/Git Bash style: /c/dev/x -> C:\dev\x
+  } else if (process.platform !== 'darwin' && /^\/[a-zA-Z]\//.test(target)) {
+    // msys/Git Bash style: /c/dev/x -> C:\dev\x (on a Mac /c/x is a real path)
     target = target[1] + ':' + target.slice(2);
   }
   if (isUnc(target)) return null;

@@ -40,7 +40,9 @@ const DEFAULT_THEME = {
   // hints and gamma-corrects it the way the rest of Windows does, and the
   // difference is plain at a glance. The toggle stays for anyone whose work is
   // firehose output rather than reading.
-  gpuRenderer: false,
+  // macOS draws all its text with greyscale antialiasing anyway, so on a Mac
+  // the two look the same and the faster one is the default.
+  gpuRenderer: process.platform === 'darwin',
   autoDetectAgents: true,
   // Off, like every other Windows terminal: a shell that comes back with
   // yesterday's tabs in it is a surprise, and the tabs it restores are empty

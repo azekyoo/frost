@@ -1,4 +1,4 @@
-const { Notification, app, ipcMain } = require('electron');
+const { Notification, app, ipcMain, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const stalls = require('../stalls');
@@ -25,6 +25,15 @@ const { cmpVersion } = require('../core/version');
 // happens the next time Frost closes anyway, and settings offers "Restart and
 // install" for anyone who would rather have it now.
 
+// macOS: notify only. The Mac builds are ad-hoc signed, and Apple's updater
+// (which electron-updater hands the install to there) only replaces an app
+// with one signed by the same developer. So a Mac Frost checks exactly as
+// Windows does — the check only reads latest-mac.yml off the release — but
+// never downloads: it says a release is out, and the user takes the .dmg from
+// the release page.
+const NOTIFY_ONLY = process.platform === 'darwin';
+const RELEASE_PAGE = (version) => `https://github.com/azekyoo/frost/releases/tag/v${version}`;
+
 // Sent to every window on each transition, and returned verbatim by
 // update:check, so the settings panel never has to assemble the story itself.
 let updateState = {
@@ -33,7 +42,8 @@ let updateState = {
   latest: null,
   percent: 0,
   message: '',
-  autoDownload: true
+  autoDownload: true,
+  notifyOnly: NOTIFY_ONLY
 };
 let updater = null; // the electron-updater singleton, required on first use
 let updateTimer = null;
@@ -79,7 +89,7 @@ function getUpdater() {
   // is decided in the update-available handler below, which is also the only
   // place that knows whether the release found is the one already waiting.
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = !NOTIFY_ONLY; // a Mac build never has one to install
   stalls.labelEmitter(autoUpdater, 'updater');
   autoUpdater.on('checking-for-update', () => setUpdateState({ stage: 'checking', message: '' }));
   autoUpdater.on('update-not-available', (info) =>
@@ -95,6 +105,7 @@ function getUpdater() {
       return;
     }
     setUpdateState({ stage: 'available', latest: version, percent: 0, message: '' });
+    if (NOTIFY_ONLY) return notifyUpdateAvailable(version);
     if (updateCfg().download) startUpdateDownload();
   });
   autoUpdater.on('download-progress', (p) =>
@@ -160,6 +171,23 @@ function notifyUpdateReady(version) {
   n.show();
 }
 
+// macOS: the same notice for a release found, since there is no download to
+// wait for. Once per version — the six-hourly checks find it again — and a
+// click opens its page, where the .dmg is.
+let notifiedVersion = null;
+function notifyUpdateAvailable(version) {
+  if (!version || version === notifiedVersion) return;
+  notifiedVersion = version;
+  if (!liveWindows().length || anyWindowFocused() || !Notification.isSupported()) return;
+  const n = new Notification({
+    title: `Frost ${version} is available`,
+    body: 'Click to download it from its release page.',
+    icon: NOTIFY_ICON_FILE
+  });
+  n.on('click', () => shell.openExternal(RELEASE_PAGE(version)));
+  n.show();
+}
+
 // ---------- "Frost updated" on the first launch of a new version ----------
 // The install itself is silent, so without this an update is only ever noticed
 // by someone who happened to see the download toast. The last version that ran
@@ -208,6 +236,7 @@ function playFakeUpdate() {
     setUpdateState({ stage: 'checking', message: '' });
     setTimeout(() => {
       setUpdateState({ stage: 'available', latest: version, percent: 0, autoDownload: true });
+      if (NOTIFY_ONLY) return notifyUpdateAvailable(version); // where a Mac stops
       let p = 0;
       const t = setInterval(() => {
         p += 20;
@@ -290,7 +319,7 @@ function initUpdates() {
 ipcMain.handle('update:get', () => updateState);
 ipcMain.handle('update:check', () => checkForUpdates({ byUser: true }));
 ipcMain.on('update:download', () => {
-  if (updateSupport().ok) startUpdateDownload();
+  if (updateSupport().ok && !NOTIFY_ONLY) startUpdateDownload();
 });
 ipcMain.on('update:install', () => {
   if (updateState.stage !== 'ready') return;
@@ -320,6 +349,8 @@ Object.assign(module.exports, {
   onUpdateError,
   onUpdateDownloaded,
   notifyUpdateReady,
+  NOTIFY_ONLY,
+  notifyUpdateAvailable,
   LAST_VERSION_FILE,
   recordLaunchVersion,
   FAKE_UPDATE,

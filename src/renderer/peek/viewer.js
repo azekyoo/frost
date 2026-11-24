@@ -197,10 +197,10 @@ function peekBuild() {
           <button class="peek-mode" type="button" data-mode="preview">Preview</button>
           <button class="peek-mode" type="button" data-mode="source">Source</button>
         </div>
-        <button class="peek-btn peek-reveal" type="button" title="Show in File Explorer">
-          <svg viewBox="0 0 16 16"><path d="M1.75 4.25a1.5 1.5 0 0 1 1.5-1.5h2.6l1.5 1.75h5.4a1.5 1.5 0 0 1 1.5 1.5v5.75a1.5 1.5 0 0 1-1.5 1.5h-9.5a1.5 1.5 0 0 1-1.5-1.5zM8 7.25v3.5M6.25 9 8 10.75 9.75 9" /></svg><span>Show in Explorer</span>
+        <button class="peek-btn peek-reveal" type="button" title="${osText('Show in File Explorer', 'Show in Finder')}">
+          <svg viewBox="0 0 16 16"><path d="M1.75 4.25a1.5 1.5 0 0 1 1.5-1.5h2.6l1.5 1.75h5.4a1.5 1.5 0 0 1 1.5 1.5v5.75a1.5 1.5 0 0 1-1.5 1.5h-9.5a1.5 1.5 0 0 1-1.5-1.5zM8 7.25v3.5M6.25 9 8 10.75 9.75 9" /></svg><span>${osText('Show in Explorer', 'Show in Finder')}</span>
         </button>
-        <button class="peek-btn peek-editor" type="button" title="Open in editor (Ctrl+Shift+click)">
+        <button class="peek-btn peek-editor" type="button" title="${keyText('Open in editor (Ctrl+Shift+click)')}">
           <svg viewBox="0 0 16 16"><path d="M9.25 2.75h4v4M13.25 2.75 7.5 8.5M11.25 9.5v2.75a1 1 0 0 1-1 1h-6.5a1 1 0 0 1-1-1v-6.5a1 1 0 0 1 1-1H6.5" /></svg><span>Open in editor</span>
         </button>
         <button class="peek-btn peek-close" type="button" title="Close (Esc)">
@@ -210,7 +210,7 @@ function peekBuild() {
       <div class="peek-main">
         <aside class="peek-side">
           <div class="peek-side-search">
-            <input class="pane-search-input peek-filter" type="text" placeholder="Search files (Ctrl+P)" spellcheck="false" />
+            <input class="pane-search-input peek-filter" type="text" placeholder="${keyText('Search files (Ctrl+P)')}" spellcheck="false" />
           </div>
           <div class="peek-tree"></div>
         </aside>
@@ -302,7 +302,7 @@ function peekBuild() {
   peekBuildFind(root);
   peekWireFilter(root);
   root.addEventListener('keydown', (ev) => {
-    const plainCtrl = ev.ctrlKey && !ev.shiftKey && !ev.altKey;
+    const plainCtrl = modKey(ev) && !ev.shiftKey && !ev.altKey;
     const key = ev.key.toLowerCase();
     const inInput = ev.target.tagName === 'INPUT';
     if (ev.key === 'Escape') peekEscape();

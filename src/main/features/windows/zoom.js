@@ -56,7 +56,8 @@ function tellZoom(w) {
   const factor = w.webContents.getZoomFactor() || 1;
   // The native buttons are drawn by Windows, not by us, so they only match the
   // zoomed titlebar the renderer draws if the overlay is resized to match.
-  if (!w.isFramelessMode) {
+  // On macOS Glass keeps the native traffic lights, so they follow the zoom too.
+  if (!w.isFramelessMode || process.platform === 'darwin') {
     try {
       setCaptionButtons(w, { height: Math.round(TITLEBAR_H * factor) });
     } catch {}

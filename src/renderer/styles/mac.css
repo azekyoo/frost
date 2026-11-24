@@ -1,0 +1,27 @@
+/* ---------- macOS ----------
+   Only matches when core.js has put .mac on the body, so Windows never sees
+   any of it. Loaded after every design: `:is([data-design], :not([data-design]))`
+   matches every body and outweighs a design's own `body[data-design='…']`
+   selectors, the trick layout-lock.css uses. */
+
+/* The traffic lights sit at the left of the titlebar (placed by the main
+   process, 14px in, about 54px wide), with the first tab a clear step after
+   them. They are native and don't scale with the UI zoom, so the room left
+   for them is in screen pixels. The right edge gets the same margin the
+   lights have on the left, now that no caption buttons stand there. */
+body.mac:is([data-design], :not([data-design])) #titlebar {
+  padding-left: calc(90px / var(--ui-zoom, 1));
+  padding-right: 10px;
+}
+
+/* macOS hides the traffic lights in fullscreen */
+body.mac.fullscreen:is([data-design], :not([data-design])) #titlebar {
+  padding-left: 8px;
+}
+
+/* Nothing else is drawn on the right: no Windows caption buttons to make room
+   for, and Glass uses the traffic lights instead of Frost's own buttons. */
+body.mac:is([data-design], :not([data-design])) .wco-spacer,
+body.mac:is([data-design], :not([data-design])) #win-controls {
+  display: none;
+}
