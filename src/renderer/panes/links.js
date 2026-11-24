@@ -102,6 +102,23 @@ function logicalLine(term, y) {
 
 const lastOpened = { uri: '', at: 0 }; // the link last sent to the browser, and when
 
+// A web link clicked with the modifier goes to the browser, whether the
+// address was found in the text or marked by the program (OSC 8).
+function openUrlClick(ev, uri) {
+  if (!modKey(ev)) return;
+  // One click, one tab. Under Claude Code, which turns mouse tracking on,
+  // a single Ctrl+click reached here twice and the browser opened the link
+  // twice; a second ask for the same link straight after the first is
+  // that, not a second click.
+  const now = Date.now();
+  if (lastOpened.uri === uri && now - lastOpened.at < 1000) return;
+  lastOpened.uri = uri;
+  lastOpened.at = now;
+  api.openExternal(uri).then((ok) => {
+    if (!ok) toast('Refused to open ' + uri.slice(0, 60), { error: true });
+  });
+}
+
 // ---------- image paths: a look on hover ----------
 // Ctrl+click hands an image to its Windows viewer; most of the time the point
 // is only to see which picture a path is, so resting the pointer on it shows
@@ -188,22 +205,14 @@ function attachLinks(node) {
   // URLs: the addon finds them, we decide what opening means. window.open would
   // be handled by the main process anyway, but going through openExternal keeps
   // the scheme allowlist in one place.
-  term.loadAddon(
-    new WebLinksAddon.WebLinksAddon((ev, uri) => {
-      if (!modKey(ev)) return;
-      // One click, one tab. Under Claude Code, which turns mouse tracking on,
-      // a single Ctrl+click reached here twice and the browser opened the link
-      // twice; a second ask for the same link straight after the first is
-      // that, not a second click.
-      const now = Date.now();
-      if (lastOpened.uri === uri && now - lastOpened.at < 1000) return;
-      lastOpened.uri = uri;
-      lastOpened.at = now;
-      api.openExternal(uri).then((ok) => {
-        if (!ok) toast('Refused to open ' + uri.slice(0, 60), { error: true });
-      });
-    })
-  );
+  term.loadAddon(new WebLinksAddon.WebLinksAddon(openUrlClick));
+  // Links a program marks itself (OSC 8: the address hidden behind the text,
+  // as Claude Code prints them) skip the addon. Left to xterm, they got a
+  // native "could be dangerous" dialog and then went nowhere, because xterm
+  // opens a blank window first and the window guard refuses about:blank.
+  // Only http(s) ones are kept (allowNonHttpProtocols stays off): a file://
+  // link's text is a path, which the path links below already handle.
+  term.options.linkHandler = { activate: openUrlClick };
 
   term.registerLinkProvider({
     provideLinks(y, callback) {
