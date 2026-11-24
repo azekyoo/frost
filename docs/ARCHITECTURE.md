@@ -1,8 +1,8 @@
 # Frost architecture
 
-How the code is laid out, and what porting Frost to macOS or Linux would take. Frost only runs on
-Windows today; this layout exists so that a port adds code next to the Windows code instead of
-rewriting the middle of the app.
+How the code is laid out, and what porting Frost to another OS takes. Frost runs on Windows and
+macOS (Apple Silicon). The layout exists so that an OS adds code next to the others instead of
+rewriting the middle of the app; a Linux port would be a third sibling.
 
 ## Main process (`src/main/`)
 
@@ -24,7 +24,7 @@ features/      one area each; owns its state and its IPC channels; Electron is f
   config.js        theme.json / keybindings / agents.json: defaults, reading, first-run files
   theme-ipc.js     theme and keys to and from windows
   profiles.js      shell profiles, start folder
-  launch.js        `frost <dir>`, --run, --profile
+  launch.js        `frost <dir>`, --run, --profile (and macOS open-file events: Dock, Open With)
   git.js           branch for tab titles, git helpers and base snapshots shared by agents/diff/peek
   pty/             shells (spawn, type-ahead, input), spare shells, moving a shell between windows
   tab-drag.js      the tab that follows the cursor, drop targets
@@ -35,8 +35,8 @@ features/      one area each; owns its state and its IPC channels; Electron is f
   peek.js, paths.js, images.js, open.js   the file viewer, links in output, pasted images, editors
   notify.js, updates.js, fonts.js
 
-platform/      everything that only works on one OS; features import `platform`, never `platform/win32`
-  index.js       picks the implementation (only win32 exists)
+platform/      everything that only works on one OS; features import `platform`, never a folder below it
+  index.js       picks the implementation: darwin/ on macOS, win32/ everywhere else
   win32/
     shells.js            where.exe, WSL distros, detected profiles (pwsh, Windows PowerShell, cmd, Git Bash, WSL)
     shell-integration.js PowerShell prompt hook and claude wrapper, bash rc, PSReadLine history filter
@@ -46,6 +46,17 @@ platform/      everything that only works on one OS; features import `platform`,
     processes.js         process start times (pid reuse check for Claude sessions)
     editor.js            editor executables (Code.exe, Cursor.exe…) beside their shims
     app.js               source build's taskbar id, home folder, portable-build check
+  darwin/        the same names as win32/
+    login-path.js        a packaged app opened from Finder takes the login shell's PATH (runs first)
+    shells.js            login shell first, then zsh, bash, fish, pwsh (`which` + Homebrew folders); no WSL
+    shell-integration.js zsh hooks through a ZDOTDIR of Frost's own that loads the user's files first, and
+                         a bash rc; both send OSC 133 A/B from inside the prompt, so redraws (Ctrl+L) still mark
+    wallpaper.js         each screen's desktop picture through AppKit, HEIC turned into JPEG
+    window-chrome.js     traffic lights over Frost's titlebar, acrylic mapped to vibrancy
+    fonts.js             system_profiler
+    processes.js         `ps -o lstart` start times (pid reuse check)
+    editor.js            editors on PATH or in /Applications
+    app.js               the Cmd app menu, Install 'frost' Command…, home folder
 ```
 
 Conventions:
@@ -64,38 +75,52 @@ settings, candy and `boot.js`. A folder is one former file cut at its section he
 order, so nothing that runs at load time may use a name declared in a later script. The end-to-end tests
 (`tools/*test.js`) drive the page through these globals by name.
 
-Looks are CSS: `styles/*.css` (the former style.css cut at its section headings, linked in the same order, so the cascade is unchanged) and one file per design in `designs/`, scoped to `body[data-design=…]` and linked after `styles/`.
+Looks are CSS: `styles/*.css` (the former style.css cut at its section headings, linked in the same order, so
+the cascade is unchanged) and one file per design in `designs/`, scoped to `body[data-design=…]` and linked
+after `styles/`.
+
+The renderer's OS switches are in `core.js`: `IS_MAC` (also a `.mac` class on the body), `osText(win, mac)`
+for wording, `modKey(ev)` for the app modifier (Ctrl, or Cmd on a Mac) and `keyText()` for key labels.
+`styles/mac.css` holds the Mac-only chrome, `index.html` carries Mac wording in `data-mac` attributes, and
+`commands.js` has its own `MAC_DEFAULT_BINDINGS` table, so the Windows table is never touched.
 
 ## Porting checklist
 
-A port adds `platform/darwin/` or `platform/linux/` exporting the same names as `platform/win32/`, then
-works through the rest of this list.
+macOS was done this way: `platform/darwin/` exports the same names as `platform/win32/`. A Linux port adds
+`platform/linux/` the same way (most of `darwin/`'s zsh and bash work carries over), then works through
+the rest of this list. What is still open on the Mac is tracked in issue #18.
 
 **Platform functions to provide**
 
-| Function | Windows does | A port needs |
+| Function | Windows does | macOS does |
 |---|---|---|
-| `detectProfiles`, `whichExe` | where.exe, fixed install paths, WSL | `$SHELL`, /etc/shells, `which` |
-| `psStartup`, `bashRc`, `PS_SPARE_HISTORY` | PowerShell + Git Bash hooks (OSC 9;9 cwd, OSC 133 marks) | bash/zsh hooks; `pwd -W` is MSYS-only (falls back to `pwd`) |
-| `desktopWallpaperTiles`, `watchWallpaperFiles` | COM, registry, TranscodedWallpaper | desktop picture APIs, or turn glass off |
-| `frameOptions`, `setMaterial`, `setCaptionButtons`, `refreshMaterialOnBlur` | DWM materials, titleBarOverlay | macOS vibrancy + traffic lights; Linux frame |
-| `listFonts` | registry | system font list |
-| `canCheckProc`, `processStartTimes` | Get-Process start time | `ps -o lstart` or equivalent |
-| `EDITOR_CANDIDATES`, `resolveExecutable` | .exe beside the shim | the `code`/`cursor` binaries on PATH, app bundles |
+| `detectProfiles`, `whichExe` | where.exe, fixed install paths, WSL | login shell, `which`, Homebrew folders |
+| `psStartup`, `bashRc`, `PS_SPARE_HISTORY` | PowerShell + Git Bash hooks (OSC 9;9 cwd, OSC 133 marks) | zsh (own ZDOTDIR) and bash hooks, marks inside the prompt |
+| `desktopWallpaperTiles`, `watchWallpaperFiles` | COM, registry, TranscodedWallpaper | AppKit per screen, HEIC to JPEG |
+| `frameOptions`, `setMaterial`, `setCaptionButtons`, `refreshMaterialOnBlur` | DWM materials, titleBarOverlay | vibrancy, traffic lights |
+| `listFonts` | registry | system_profiler |
+| `canCheckProc`, `processStartTimes` | Get-Process start time | `ps -o lstart` |
+| `EDITOR_CANDIDATES`, `resolveExecutable` | .exe beside the shim | binaries on PATH, app bundles in /Applications |
 | `identifySourceBuild`, `homeDir`, `isPortableBuild` | AppUserModelId, USERPROFILE, portable exe | no-op, `os.homedir()`, false |
 
-**Windows assumptions still outside `platform/`** (found in the 2026-11 survey; left as they are because
-changing them would change Windows behaviour)
+**Windows assumptions handled for macOS, each with the Windows path unchanged**
 
-- `features/paths.js` `targetPath` turns `/c/x` (Git Bash) into `c:/x`, which would mangle a real POSIX `/c/...`;
-  it also filters Windows filename metacharacters and skips UNC paths.
+- `features/paths.js` `targetPath` reads `/c/x` (Git Bash) as `C:/x` only off macOS, where `/c/...` can be a
+  real folder.
+- `main.js` sets a small Cmd app menu on macOS (quit, hide, Edit roles); Windows still sets none.
+- Renderer: `panes/drop.js` single-quotes dropped paths on macOS; `peek/file.js` builds `file://` + a POSIX
+  path there; key labels and wording go through `keyText` / `osText`; xterm is told `windowsPty: conpty`
+  only on Windows.
+- Updates: Mac builds are ad-hoc signed and can't replace themselves, so `features/updates.js` stops at
+  "available" there and points to the release page.
+- Packaging: the `mac` section of the build config (arm64 `.dmg` + `.zip`, ad-hoc signed, `build/icon.icns`,
+  `build/mac/frost`); the release workflow builds it on a macOS runner after the Windows job.
+
+**Still Windows-shaped** (fine on macOS as it is, worth a look for Linux)
+
 - Paths are lowercased for lookups throughout (repo roots, the file-name index, wallpaper paths), which assumes a
-  case-insensitive filesystem.
-- Spare shells are PowerShell-only (the move into a folder is typed as `Set-Location`).
+  case-insensitive filesystem. Windows and macOS default to one; Linux doesn't.
+- Spare shells are PowerShell-only (the move into a folder is typed as `Set-Location`), so a Mac has none.
 - `features/agents/agents.js` hook commands quote paths for cmd/PowerShell and strip the BOM that Windows
-  PowerShell writes; `claude --settings` gets a Windows path.
-- `Menu.setApplicationMenu(null)` in `main.js`: on macOS this also removes the app menu (Cmd+Q, Edit roles).
-- Renderer: `panes/drop.js` `quotePath` wraps in double quotes (safe for Windows filenames, not for `$` or
-  backticks in POSIX shells); `peek/file.js` builds `file:///` + a drive-letter path; path regexes look for
-  `C:\`; key labels say Ctrl and menus say "Explorer"; xterm is told `windowsPty: conpty`.
-- Packaging: NSIS and portable targets, `build/installer.nsh`, `icon.ico`.
+  PowerShell writes.
+- `features/paths.js` filters Windows filename metacharacters and skips UNC paths on every OS.

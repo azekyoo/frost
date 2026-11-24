@@ -5,14 +5,14 @@
 <h1 align="center">Frost — the full guide</h1>
 
 <p align="center">
-  A fully customizable acrylic terminal for Windows — with a built-in AI agent mode.<br/>
-  Electron · xterm.js · ConPTY · PowerShell 7
+  A fully customizable acrylic terminal for Windows and macOS — with a built-in AI agent mode.<br/>
+  Electron · xterm.js · ConPTY · PowerShell 7 · zsh
 </p>
 
 <p align="center">
   <a href="../README.md">← Back to the README</a>
   ·
-  <a href="https://github.com/azekyoo/frost/releases/latest"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/azekyoo/frost/releases/latest"><strong>Download for Windows or Mac</strong></a>
   ·
   <a href="#install">Install</a>
   ·
@@ -35,7 +35,8 @@ running and supervising Claude Code agents with live status and diff watching.
 ## Features
 
 - **Shell profiles** — PowerShell 7, Windows PowerShell, cmd, Git Bash and every
-  WSL distro are detected on first run and written into `theme.json`. Add your
+  WSL distro are detected on first run and written into `theme.json` (on a
+  Mac: your login shell first, then zsh, bash, fish and pwsh when installed). Add your
   own (shell, args, cwd, env) by editing that list. The `▾` button next to `+`
   lists them, `Ctrl+Shift+1…9` opens the Nth, and splitting a pane keeps the
   shell you were already in
@@ -298,6 +299,8 @@ running and supervising Claude Code agents with live status and diff watching.
 
 ## Install
 
+### Windows
+
 Grab `Frost-Setup-<version>.exe` from
 [Releases](https://github.com/azekyoo/frost/releases) — a per-user install, no
 admin needed. `Frost-<version>-portable.exe` runs with no install at all.
@@ -329,6 +332,33 @@ Windows 11 is needed for the acrylic/mica materials (`glass` works anywhere), an
 > then "Run anyway". With Smart App Control *enforcing*, Windows blocks unsigned
 > binaries outright and Frost can't run until you turn SAC off. Code signing
 > needs a certificate this project doesn't have yet.
+
+### macOS
+
+Grab `Frost-<version>-arm64.dmg` from
+[Releases](https://github.com/azekyoo/frost/releases) and drag Frost to
+Applications. Apple Silicon only for now.
+
+> **The Mac build isn't notarised** (it has no Apple Developer ID yet). The
+> first time you open it, macOS says it can't check Frost for malware. Click
+> **Done**, open **System Settings → Privacy & Security**, scroll down and click
+> **Open Anyway** beside Frost, then confirm. You only do this once.
+
+- **`frost` on your PATH** — **Frost → Install 'frost' Command…** in the menu
+  bar links it into `/usr/local/bin` (macOS asks for your password if that
+  folder needs it). `frost .`, `--run` and `--profile` work as on Windows
+- **Open a folder in Frost** — drop it on Frost's Dock icon, or **Open With →
+  Frost** in Finder. A running Frost opens a new tab there; Finder stays the
+  default for folders
+- **Updates** — a Mac Frost checks for releases like the Windows one, but
+  can't replace itself until the build is signed: it tells you when one is out
+  (in settings, a toast, and a notification when Frost is in the background)
+  and links to the download
+- Frost's keys sit on Cmd there — see [Shortcuts](#shortcuts) — and it takes
+  your login shell's PATH even when opened from Finder, so `claude`, `node` and
+  Homebrew tools are found. The GPU renderer is on by default
+
+Settings live in `~/Library/Application Support/Frost/config` for the Mac app.
 
 ## Build from source
 
@@ -428,6 +458,25 @@ key it currently answers to — that, not this table, is the authoritative list.
 | Right-click an agent | Mark unread, copy session ID or folder, open folder, end session |
 | Drag an agent | Reorder the agent list (Esc puts it back) |
 | Right-click a past session | Copy session ID or folder, delete session |
+
+On a Mac, Frost's keys move to Cmd the way Terminal and iTerm place them, so
+Ctrl and Option keep reaching the shell (`Ctrl+C` always interrupts,
+Option+arrows jump words). The main differences:
+
+| Mac | Action |
+|-----|--------|
+| `Cmd+T` / `Cmd+N` / `Cmd+W` | New tab / new window / close pane |
+| `Cmd+D` / `Cmd+Shift+D` | Split right / down |
+| `Cmd+Shift+Enter` | Zoom the pane over its tab |
+| `Cmd+Option+←` `→` `↑` `↓` / `Cmd+Ctrl+←` … | Move focus / resize |
+| `Cmd+Option+1` … `9` | New tab with the Nth shell profile |
+| `Cmd+K` | Clear buffer |
+| `Cmd+↑` / `Cmd+↓` | Jump to previous / next command |
+| `Cmd+C` / `Cmd+V` | Copy / paste |
+| `Cmd+click` / `Cmd+Shift+click` | Open a path or URL / open in your editor |
+
+The rest are the Windows keys with Ctrl read as Cmd (`Cmd+Shift+P`,
+`Cmd+Shift+E`, `Cmd+F`, `Cmd+,`…). The palette shows every one.
 
 Every one of them is remappable in `config/keybindings.json`:
 

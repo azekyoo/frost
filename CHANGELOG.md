@@ -3,6 +3,35 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## Unreleased
+
+### Added
+
+- **Frost runs on macOS.** An Apple Silicon `.dmg` comes with every release
+  from now on. zsh, bash, fish and pwsh are detected, with the same prompt
+  marks, command blocks and tab titles as on Windows. Glass blurs each screen's
+  own desktop picture. Frost's keys sit on Cmd the way Terminal and iTerm place
+  them, so Ctrl and Option still reach the shell. Agent mode, Peek and the
+  designs all work there.
+- **Open folders in Frost from Finder and the Dock** on a Mac: drop a folder on
+  the Dock icon or use Open With. **Frost → Install 'frost' Command…** puts
+  `frost` on your PATH, with `--run` and `--profile` as on Windows.
+- **The Mac build isn't notarised yet.** Open it once through System Settings →
+  Privacy & Security → Open Anyway. It tells you when an update is out and
+  links to the download, but doesn't install updates itself yet.
+
+### Changed
+
+- **Under the hood, Frost was rebuilt in layers** so it can run on more than
+  one OS: features, pure logic and everything OS-specific now live apart. On
+  Windows nothing should look or behave differently.
+
+### Fixed
+
+- **Links Claude Code prints open on Ctrl+click.** They used to raise a
+  "this link could be dangerous" dialog, then go nowhere even after you
+  clicked OK.
+
 ## 2.11.0 — 2026-11-19
 
 ### Added

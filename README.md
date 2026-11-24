@@ -5,11 +5,11 @@
 <h1 align="center">Frost</h1>
 
 <p align="center">
-  A glass terminal for Windows — with a built-in mode for running Claude Code agents.
+  A glass terminal for Windows and macOS — with a built-in mode for running Claude Code agents.
 </p>
 
 <p align="center">
-  <a href="https://github.com/azekyoo/frost/releases/latest"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/azekyoo/frost/releases/latest"><strong>Download for Windows or Mac</strong></a>
   ·
   <a href="#install">Install</a>
   ·
@@ -44,7 +44,7 @@ doing while it does it.
   line — without leaving Frost ([Peek](#peek)). A folder opens its tree, and
   resting the mouse on an image path shows the picture
 - **Every shell detected** — PowerShell 7, Windows PowerShell, cmd, Git Bash and
-  your WSL distros
+  your WSL distros on Windows; zsh, bash, fish and pwsh on a Mac
 - **Typing effects, made of ice** — optional: what you type freezes, what you
   delete dissolves, what you copy is scanned
 - **Six designs**, switched live — [see them](#make-it-yours)
@@ -57,7 +57,7 @@ doing while it does it.
 ## Agent mode
 
 Run `claude` in any tab and it becomes an agent with live status — working,
-**blocked (needs you)**, done — and a Windows notification when it needs you.
+**blocked (needs you)**, done — and a desktop notification when it needs you.
 
 ![Agent mode — live status, terminal, a review comment being written on the diff, and the session's docked shell](assets/screenshot-agent.png)
 
@@ -90,21 +90,39 @@ path — or press `Ctrl+Shift+E` — and the file opens over your terminal:
 
 ## Install
 
-Download `Frost-Setup-<version>.exe` from
-[Releases](https://github.com/azekyoo/frost/releases/latest). It installs for
-your user only, so no admin is needed. There's also a portable exe that needs no
-install.
+Everything is on [Releases](https://github.com/azekyoo/frost/releases/latest).
+Agent mode needs [Claude Code](https://claude.com/claude-code) on PATH.
+
+### Windows
+
+Download `Frost-Setup-<version>.exe`. It installs for your user only, so no
+admin is needed. There's also a portable exe that needs no install.
 
 The installer adds **Open Frost here** to the folder right-click menu and `frost`
 to your PATH (`frost .` opens a tab in the current folder; `--run "<cmd>"` types
 a command there once the shell is up).
 
-Needs Windows 11 for acrylic and mica (glass works anywhere). Agent mode needs
-[Claude Code](https://claude.com/claude-code) on PATH.
+Needs Windows 11 for acrylic and mica (glass works anywhere).
 
 > **The builds are unsigned.** SmartScreen warns on first run — click "More
 > info", then "Run anyway". With Smart App Control enforcing, Windows blocks
 > Frost until SAC is turned off.
+
+### macOS (Apple Silicon)
+
+Download `Frost-<version>-arm64.dmg` and drag Frost to Applications.
+
+> **The Mac build isn't notarised.** The first time you open it, macOS says it
+> can't check Frost for malware. Click **Done**, open **System Settings →
+> Privacy & Security**, scroll down and click **Open Anyway** beside Frost.
+> You only do this once.
+
+**Frost → Install 'frost' Command…** in the menu bar puts `frost` on your PATH,
+with the same `.`, `--run` and `--profile` as on Windows. Drop a folder on
+Frost's Dock icon, or use **Open With → Frost** in Finder, to open a tab there.
+
+A Mac Frost doesn't install updates itself yet: it tells you when one is out
+and takes you to the download.
 
 ## A few keys
 
@@ -120,7 +138,9 @@ Needs Windows 11 for acrylic and mica (glass works anywhere). Agent mode needs
 | `Ctrl+F` | Search the buffer |
 | `Ctrl+,` | Settings |
 
-The full table, and how to rebind keys, is in the
+On a Mac they live on Cmd, the way Terminal and iTerm place them (`Cmd+T`,
+`Cmd+D` / `Cmd+Shift+D` to split, `Cmd+F`…), so Ctrl and Option still reach
+the shell. The full table, and how to rebind keys, is in the
 [guide](docs/GUIDE.md#shortcuts).
 
 ## Make it yours
@@ -143,7 +163,8 @@ npm start      # run it
 npm run dist   # installer + portable exe into dist/
 ```
 
-Needs Node 22.12+. Tests, screenshots and build notes are in the
+Needs Node 22.12+. On a Mac, `npx electron-builder --mac` makes the `.dmg`
+and `.zip` instead. Tests, screenshots and build notes are in the
 [guide](docs/GUIDE.md#build-from-source).
 
 ---
