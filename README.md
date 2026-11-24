@@ -18,7 +18,7 @@
 
 ---
 
-![A tour of Frost — the glass backdrop, split panes, the command palette, agent mode and Peek](assets/frost-promo.webp)
+![A tour of Frost — agent mode, Peek, the glass backdrop, split panes and the command palette](assets/frost-promo.webp)
 
 ## Why Frost
 
