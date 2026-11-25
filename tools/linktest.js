@@ -165,7 +165,7 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     // dialog followed by a blank window the window guard refuses
     const osc = await w.eval(`(() => {
       const t = new Terminal({ cols: 30, rows: 10, allowProposedApi: true });
-      attachLinks({ term: t, cwd: '' });
+      attachLinks({ term: t, cwd: '', el: document.createElement('div') });
       const h = t.options.linkHandler;
       const out = { same: h?.activate === openUrlClick, other: !!h?.allowNonHttpProtocols };
       t.dispose();
@@ -173,6 +173,30 @@ const run = (command) => `(() => { runCommand(${JSON.stringify(command)}); retur
     })()`);
     check('a link the program marks opens like a found one', osc.same, JSON.stringify(osc));
     check('and only for web addresses', !osc.other);
+
+    // A modifier-click that opens a link is not also reported to a program
+    // tracking the mouse: Claude Code took the Ctrl+click report as its own
+    // "open this link", and the browser got two tabs
+    const report = await w.eval(`(() => {
+      const n = {}, other = {};
+      linkClickPane = n;
+      const out = {
+        press: linkClickReport(n, '\\x1b[<16;6;1M'),
+        release: linkClickReport(n, '\\x1b[<16;6;1m'),
+        x10: linkClickReport(n, '\\x1b[M0!!'),
+        typing: linkClickReport(n, 'a'),
+        otherPane: linkClickReport(other, '\\x1b[<16;6;1M')
+      };
+      linkClickPane = null;
+      out.afterwards = linkClickReport(n, '\\x1b[<16;6;1M');
+      return out;
+    })()`);
+    check(
+      "a click that opened a link isn't reported to the program",
+      report.press && report.release && report.x10,
+      JSON.stringify(report)
+    );
+    check('but typing, other panes and later clicks still are', !report.typing && !report.otherPane && !report.afterwards);
 
     // Punctuation glued after a path is prose, a line number is not
     const trims = await w.eval(

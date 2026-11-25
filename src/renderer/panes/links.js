@@ -102,6 +102,22 @@ function logicalLine(term, y) {
 
 const lastOpened = { uri: '', at: 0 }; // the link last sent to the browser, and when
 
+// A mouse report xterm sends a program that tracks the mouse: SGR (1006),
+// urxvt (1015) or the original X10 form
+const MOUSE_REPORT = /^\x1b\[(?:<\d+;\d+;\d+[Mm]|\d+;\d+;\d+M|M[\s\S]{3})$/;
+// The pane whose modifier-click on a link is under way, if any
+let linkClickPane = null;
+// The reports of a click that opened a link, which the program must not see
+const linkClickReport = (node, data) => linkClickPane === node && MOUSE_REPORT.test(data);
+// xterm reports the release in its own mouseup; this clears only after it
+window.addEventListener(
+  'mouseup',
+  () => {
+    if (linkClickPane) setTimeout(() => (linkClickPane = null));
+  },
+  true
+);
+
 // A web link clicked with the modifier goes to the browser, whether the
 // address was found in the text or marked by the program (OSC 8).
 function openUrlClick(ev, uri) {
@@ -205,14 +221,28 @@ function attachLinks(node) {
   // URLs: the addon finds them, we decide what opening means. window.open would
   // be handled by the main process anyway, but going through openExternal keeps
   // the scheme allowlist in one place.
-  term.loadAddon(new WebLinksAddon.WebLinksAddon(openUrlClick));
+  const urlHover = { hover: () => (node.onUrl = true), leave: () => (node.onUrl = false) };
+  term.loadAddon(new WebLinksAddon.WebLinksAddon(openUrlClick, urlHover));
   // Links a program marks itself (OSC 8: the address hidden behind the text,
   // as Claude Code prints them) skip the addon. Left to xterm, they got a
   // native "could be dangerous" dialog and then went nowhere, because xterm
   // opens a blank window first and the window guard refuses about:blank.
   // Only http(s) ones are kept (allowNonHttpProtocols stays off): a file://
   // link's text is a path, which the path links below already handle.
-  term.options.linkHandler = { activate: openUrlClick };
+  term.options.linkHandler = { activate: openUrlClick, ...urlHover };
+
+  // A modifier-click that opens a link is Frost's, not the program's. With
+  // mouse tracking on (Claude Code turns it on) xterm also reported the click
+  // to the program, Ctrl bit set, and Claude Code opened the link a second
+  // time. Noted here, in the capture phase, before xterm sends the press;
+  // pane.js drops the reports while it holds.
+  node.el.addEventListener(
+    'mousedown',
+    (ev) => {
+      linkClickPane = modKey(ev) && (node.onLink || node.onUrl) ? node : null;
+    },
+    true
+  );
 
   term.registerLinkProvider({
     provideLinks(y, callback) {

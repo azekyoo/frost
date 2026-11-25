@@ -205,6 +205,8 @@ async function createPane(opts = {}) {
   // so this is a no-op in the ordinary case.
   api.ptyFlush(ptyId);
   term.onData((d) => {
+    // a click that opened a link stays Frost's (links.js)
+    if (linkClickReport(node, d)) return;
     // Enter starts the clock that the next prompt stops
     if (d.includes('\r')) node.enterAt = Date.now();
     api.ptyInput(ptyId, d);
