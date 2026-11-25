@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('api', {
   ghostHide: () => ipcRenderer.send('ghost:hide'),
   tabMoveTo: (frostId, payload) => ipcRenderer.send('tab:moveTo', { frostId, payload }),
   winDevtools: () => ipcRenderer.send('win:devtools'),
+  // a long frame in this window, for stalls.log (renderer/stalls.js)
+  logStall: (line) => ipcRenderer.send('stalls:window', String(line)),
   onTabAdopt: (cb) => ipcRenderer.on('tab:adopt', (_e, m) => cb(m)),
   ptyMute: (id, ms) => ipcRenderer.send('pty:mute', { id, ms }),
   onPtyData: (cb) => ipcRenderer.on('pty:data', (_e, m) => cb(m)),

@@ -190,6 +190,8 @@ function install(ipcMain, userData) {
 
   const on = ipcMain.on.bind(ipcMain);
   const handle = ipcMain.handle.bind(ipcMain);
+  // a window's own long frames (renderer/stalls.js), written as they come
+  on('stalls:window', (_e, line) => write(String(line).replace(/\s+/g, ' ').slice(0, 600)));
   ipcMain.on = (channel, fn) => on(channel, timed('ipc ' + channel, fn));
   ipcMain.handle = (channel, fn) => handle(channel, timed('ipc ' + channel, fn));
   labelTimers();

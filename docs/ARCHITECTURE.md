@@ -74,7 +74,7 @@ Conventions:
 
 Classic scripts sharing one global scope, loaded in order by `index.html`: `core.js`, `tooltip.js`,
 `panes/*`, `tabs/*`, `profiles.js`, `agents/*`, `diff.js`, `peek/*`, then blocks, loading, commands, palette,
-settings, candy and `boot.js`. A folder is one former file cut at its section headings, loaded in the same
+settings, candy, stalls (long frames in the window, written to the main process's stalls.log) and `boot.js`. A folder is one former file cut at its section headings, loaded in the same
 order, so nothing that runs at load time may use a name declared in a later script. The end-to-end tests
 (`tools/*test.js`) drive the page through these globals by name.
 
