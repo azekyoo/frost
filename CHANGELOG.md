@@ -3,6 +3,23 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 3.0.1 — 2026-11-25
+
+### Fixed
+
+- **A Ctrl+click on a link in Claude Code opens one tab, not two.** Frost
+  opened the link and also passed the click on to Claude Code, which opened
+  it again.
+- **Command blocks work in Git Bash.** Its two-line prompt was read as a
+  running command, so **Run** stayed greyed out, **Command** copied nothing,
+  and the outline started on the empty line above the prompt. Moving from one
+  block to the next no longer makes you wait for the outline again. (WSL
+  still has no command blocks, like cmd.)
+- **`stalls.log` says more about short freezes.** A freeze outside any named
+  call now says what ran just before it, long memory clean-ups are logged,
+  and a slow frame in the window is logged with what the window held at the
+  time. This helps track down Frost turning sluggish.
+
 ## 3.0.0 — 2026-11-24
 
 ### Added
