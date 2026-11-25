@@ -36,6 +36,7 @@ let logFile = null;
 let beat = null; // [last tick, start of the running labelled call or 0, end of the last one]
 let label = null; // utf8, zero-padded
 let lastLabel = null; // the outermost labelled call that finished last, same form
+let lastName = '';
 
 function write(line) {
   if (!logFile) return;
@@ -83,8 +84,9 @@ function run(name, fn, self, args, detail) {
     const ms = performance.now() - t;
     if (ms > SLOW_MS) write(`slow ${Math.round(ms)}ms ${current}${detail ? ' — ' + detail() : ''}`);
     // the last thing known to have run, for a freeze that comes between calls
+    // (written only when it changes: most calls are the same "pty data")
     if (!outer && beat) {
-      setLabel(name, lastLabel);
+      if (name !== lastName) setLabel((lastName = name), lastLabel);
       beat[2] = Date.now();
     }
     current = outer;
