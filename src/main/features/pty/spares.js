@@ -1,5 +1,6 @@
 const { BrowserWindow } = require('electron');
 
+const stalls = require('../../stalls');
 const { DEFAULT_THEME, readTheme } = require('../config');
 const { SPARE_DEFAULT, SPARE_HIDE_CAP_MS, SPARE_MAX, SPARE_QUIET_MS, SPARE_REFILL_MS, SPARE_STALE_MS } = require('./spare-timing');
 const { detachedPtys, ptyMeta, ptyOwners, ptys } = require('./registry');
@@ -34,7 +35,7 @@ function killSpare(spare) {
   if (i >= 0) spares.splice(i, 1);
   detachedPtys.delete(spare.id);
   try {
-    ptys.get(spare.id)?.kill();
+    stalls.during('pty kill spare', () => ptys.get(spare.id)?.kill());
   } catch {}
 }
 

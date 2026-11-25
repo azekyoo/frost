@@ -171,13 +171,16 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
     const again = whichExe(path.basename(shell, '.exe'));
     if (again) shell = again;
   }
-  const p = pty.spawn(shell, args, {
-    name: 'xterm-256color',
-    cols: cols || 80,
-    rows: rows || 24,
-    cwd: startCwd,
-    env
-  });
+  // node-pty starts ConPTY on this thread: named, in case that is what holds it
+  const p = stalls.during('pty spawn', () =>
+    pty.spawn(shell, args, {
+      name: 'xterm-256color',
+      cols: cols || 80,
+      rows: rows || 24,
+      cwd: startCwd,
+      env
+    })
+  );
   ptys.set(id, p);
   unexited.add(p);
   p.onExit(() => unexited.delete(p));
@@ -267,7 +270,7 @@ ipcMain.on('pty:kill', (_e, { id }) => {
   typeAhead.delete(id);
   if (p) {
     ptys.delete(id);
-    p.kill();
+    stalls.during('pty kill', () => p.kill());
   }
 });
 
