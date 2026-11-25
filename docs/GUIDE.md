@@ -143,7 +143,8 @@ running and supervising Claude Code agents with live status and diff watching.
   (oh-my-posh, starship), it types the command without pressing Enter, for you
   to check first. Scrolled halfway through a long output, the bar stays at the
   top of what you can see of it. Works in every shell with Frost's prompt hooks
-  (not cmd or WSL) and stays out of full-screen programs. Inside ssh, or a shell
+  (PowerShell and Git Bash; zsh and bash on a Mac), not in cmd or WSL, and
+  stays out of full-screen programs. Inside ssh, or a shell
   started from one, commands are found by their prompts instead: no exit code
   there, and **Run** only while the remote side sits at an empty prompt.
   Clearing the screen (`cls`, `clear`, Ctrl+L) clears the blocks with it.
