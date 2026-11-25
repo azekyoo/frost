@@ -69,7 +69,7 @@ function attachCommandMarks(node) {
     }
 
     if (kind === 'B') {
-      // Where the prompt ends and typing begins (the macOS hooks send it).
+      // Where the prompt ends and typing begins (the bash and zsh hooks send it).
       // Recorded on the prompt's mark so the command can be cut from the
       // prompt exactly, whatever the prompt looks like. Passed on, like C.
       const mark = node.marks[node.marks.length - 1];
@@ -141,6 +141,34 @@ function liveMarks(node) {
 // The last finished command, wherever the screen is scrolled to: it is the one
 // that just ran, and the one a Send or a copy means. Or the given mark's, for a
 // command block picked out of the scrollback.
+// Where a prompt's typed line ends: the prompt's own row, or the row its end
+// mark (133;B) was on when the prompt runs over several (Git Bash's
+// "user@host MINGW64 /c/x" over "$ ").
+function promptInputRow(mark) {
+  const inp = mark.input;
+  return inp && !inp.marker.isDisposed && inp.marker.line >= mark.marker.line ? inp.marker.line : mark.marker.line;
+}
+
+// The first row a command printed: past the prompt and the rows the typed
+// line wrapped onto.
+function outputStart(buf, mark, limit) {
+  let start = promptInputRow(mark) + 1;
+  while (start < limit && buf.getLine(start)?.isWrapped) start++;
+  return start;
+}
+
+// The first row of a prompt worth outlining: one that begins with an empty
+// line (Git Bash's does) has its mark on that blank row, above the prompt.
+// Only a prompt that said where it ends is trimmed, and never past that end.
+function promptTop(node, mark) {
+  const buf = node.term.buffer.active;
+  let top = mark.marker.line;
+  if (!mark.input) return top;
+  const last = promptInputRow(mark);
+  while (top < last && !buf.getLine(top)?.translateToString(true).trim()) top++;
+  return top;
+}
+
 function commandRegion(node, mark) {
   const term = node?.term;
   if (!term) return null;
@@ -154,9 +182,7 @@ function commandRegion(node, mark) {
   // up to the next prompt — the first empty one after it, when there were any
   const own = marks[index].end;
   const stop = own && !own.isDisposed ? own.line : marks[index + 1].marker.line;
-  let start = marks[index].marker.line + 1;
-  // Past the rows the command line itself wrapped onto
-  while (start < stop && buf.getLine(start)?.isWrapped) start++;
+  const start = outputStart(buf, marks[index], stop);
   const end = stop - 1;
   // end < start: a command that printed nothing, which is still a command —
   // one that failed silently is worth sending
@@ -224,8 +250,7 @@ function typedCommand(term, mark, stop) {
 function runningOutput(node, marks) {
   const mark = marks[marks.length - 1];
   const buf = node.term.buffer.active;
-  let start = mark.marker.line + 1;
-  while (start < buf.length && buf.getLine(start)?.isWrapped) start++;
+  const start = outputStart(buf, mark, buf.length);
   let end = buf.length - 1;
   while (end >= start && !buf.getLine(end)?.translateToString(true).trim()) end--;
   if (end < start) return null; // an idle prompt: nothing is running

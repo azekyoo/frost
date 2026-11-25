@@ -88,7 +88,15 @@ function bashRc(withClaude) {
     "  printf '\\033]133;A\\007'",
     '  __frost_cwd',
     '}',
-    'PROMPT_COMMAND="__frost_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND}"',
+    // 133;B where the prompt ends and typing begins. Git Bash's prompt is two
+    // lines (user@host MINGW64 /c/x, then "$ "), and without B Frost took the
+    // "$ " row for a running command's output. Added to the end of PS1 by the
+    // last PROMPT_COMMAND, after anything of the user's (a theme) has rebuilt
+    // it; \[ \] keeps it from taking up any width.
+    '__frost_prompt_end() {',
+    "  case $PS1 in *'133;B'*) ;; *) PS1=\"$PS1\"'\\[\\033]133;B\\007\\]' ;; esac",
+    '}',
+    'PROMPT_COMMAND="__frost_prompt${PROMPT_COMMAND:+;$PROMPT_COMMAND};__frost_prompt_end"',
     ''
   );
   return lines.join('\n');

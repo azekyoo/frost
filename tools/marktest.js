@@ -307,6 +307,48 @@ const select = `(() => { const t = selectCommandOutput(activePane()); return t =
     const all = await w.eval('activePane().term.getSelection()');
     check('select all takes the whole buffer', all.includes('alpha') && all.includes('needle-one') && (MAC ? all.includes('echo alpha') : /PS .*>/.test(all)), `${all.length} chars`);
 
+    // --- bash: a prompt that says where it ends ------------------------------
+    // The bash hook ends the prompt with 133;B. Git Bash's prompt is an empty
+    // line, then user@host MINGW64 /c/x, then "$ ": without B its "$ " row was
+    // taken for a running command's output, so Run stayed off, and the block
+    // took in the empty line above the prompt (issue #20). Git Bash on
+    // Windows, bash on a Mac.
+    const bash = await w.eval(`(profiles.find((p) => p.agentWrapper === 'bash') || {}).id || null`);
+    if (!bash) console.log('  SKIP  bash checks: no bash profile here');
+    else {
+      await w.eval(`(async () => { await newTab({ profileId: ${JSON.stringify(bash)} }); return true })()`);
+      const until = Date.now() + 20000;
+      while (!(await w.eval('(activePane().marks || []).length > 0'))) {
+        if (Date.now() > until) throw new Error('bash never drew its first prompt');
+        await sleep(250);
+      }
+      await runCommand(w, 'echo bash-one');
+      await sleep(300);
+      const b = await w.eval(`(() => {
+        const node = activePane(), buf = node.term.buffer.active;
+        for (let row = buf.length - 1; row >= 0; row--) {
+          if (buf.getLine(row).translateToString(true).trim() !== 'bash-one') continue;
+          const block = blockAt(node, row);
+          if (!block) return { found: false };
+          const out = markOutput(node, commandRegion(node, block.mark));
+          return {
+            found: true,
+            top: buf.getLine(block.start).translateToString(true).trim(),
+            command: out.command,
+            clean: out.clean,
+            output: out.output,
+            idle: shellIdle(node)
+          };
+        }
+        return { found: false };
+      })()`);
+      check('in bash, a command is a block', b.found, JSON.stringify(b));
+      check('that starts on the prompt, not an empty line above it', !!b.top, JSON.stringify(b.top));
+      check('its command is what was typed, without the prompt', b.command === 'echo bash-one' && b.clean, JSON.stringify(b.command));
+      check('its output is what it printed', JSON.stringify(b.output) === '["bash-one"]', JSON.stringify(b.output));
+      check('and at the waiting prompt, Run is offered', b.idle === true, JSON.stringify(b.idle));
+    }
+
     console.log(`\n${pass} passed, ${fail} failed`);
   } catch (e) {
     console.error('ERROR:', e.message);

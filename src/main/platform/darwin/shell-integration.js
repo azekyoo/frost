@@ -92,13 +92,11 @@ function zshFiles(withClaude) {
   };
 }
 
-// The shared bash rc, plus the marks the zsh hook puts in its prompt: B where
-// the prompt ends (macOS's own bash prompt, "host:dir user$ ", isn't one Frost
-// can recognise by its shape), and A again where it starts, because readline's
-// Ctrl+L redraws the prompt without PROMPT_COMMAND. On an ordinary prompt the
-// second A replaces the first. \[ \] keeps them from taking up any width.
-const bashRc = (withClaude) =>
-  win.bashRc(withClaude) + "PS1='\\[\\033]133;A\\007\\]'\"$PS1\"'\\[\\033]133;B\\007\\]'\n";
+// The shared bash rc (which already ends the prompt with B), plus A again
+// inside the prompt where it starts, because readline's Ctrl+L redraws the
+// prompt without PROMPT_COMMAND. On an ordinary prompt the second A replaces
+// the first. \[ \] keeps it from taking up any width.
+const bashRc = (withClaude) => win.bashRc(withClaude) + "PS1='\\[\\033]133;A\\007\\]'\"$PS1\"\n";
 
 Object.assign(module.exports, {
   CLAUDE_WRAPPER: win.CLAUDE_WRAPPER,

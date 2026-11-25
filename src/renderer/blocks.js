@@ -17,7 +17,7 @@ function blockAt(node, row) {
   for (let i = 0; i < marks.length; i++) {
     const mark = marks[i];
     const last = i === marks.length - 1;
-    const start = mark.marker.line;
+    const start = promptTop(node, mark);
     const stop = last
       ? node.term.buffer.active.length
       : mark.end && !mark.end.isDisposed
@@ -114,9 +114,11 @@ function attachCommandBlocks(node) {
     b.pointer = { x: ev.clientX, y: ev.clientY };
     // a button held is a selection being dragged: the bar would be in its way
     if (ev.buttons || node.onLink) return blockHide(b);
-    // once offered it follows the pointer at once; the first offer waits
+    // once offered it follows the pointer at once; the first offer waits.
+    // Crossing a row between two commands (the empty line Git Bash's prompt
+    // starts with) doesn't count as starting over.
     clearTimeout(b.timer);
-    if (b.block) blockUpdate(b);
+    if (b.block || b.warm) blockUpdate(b);
     else b.timer = setTimeout(() => blockUpdate(b), BLOCK_DWELL);
   });
   node.el.addEventListener('mouseleave', () => {
@@ -147,9 +149,12 @@ function attachCommandBlocks(node) {
   });
 }
 
-function blockHide(b) {
+// keepWarm: only the pointer passing over a row no command owns, which leaves
+// the next block to show at once. Anything else starts the wait over.
+function blockHide(b, keepWarm = false) {
   clearTimeout(b.timer);
   b.block = null;
+  if (!keepWarm) b.warm = false;
   b.band.classList.remove('on');
   b.bar.classList.remove('on');
 }
@@ -166,8 +171,9 @@ function blockUpdate(b) {
   const cellH = box.height / term.rows;
   const top = term.buffer.active.viewportY;
   const found = blockAt(node, top + Math.floor(y / cellH));
-  if (!found) return blockHide(b);
+  if (!found) return blockHide(b, b.warm || !!b.block);
   b.block = found;
+  b.warm = true;
 
   // the part of it on screen; an edge cut off by the view is drawn open
   const pane = node.el.getBoundingClientRect();

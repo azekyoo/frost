@@ -39,7 +39,9 @@ platform/      everything that only works on one OS; features import `platform`,
   index.js       picks the implementation: darwin/ on macOS, win32/ everywhere else
   win32/
     shells.js            where.exe, WSL distros, detected profiles (pwsh, Windows PowerShell, cmd, Git Bash, WSL)
-    shell-integration.js PowerShell prompt hook and claude wrapper, bash rc, PSReadLine history filter
+    shell-integration.js PowerShell prompt hook and claude wrapper, bash rc (also used on macOS; ends the
+                         prompt with OSC 133;B so multi-row prompts like Git Bash's are read right), PSReadLine
+                         history filter
     wallpaper.js         IDesktopWallpaper (COM via PowerShell), registry, TranscodedWallpaper copies and their watch
     window-chrome.js     glass frame options, DWM material, native caption-button overlay
     fonts.js             installed fonts from the registry
@@ -50,7 +52,8 @@ platform/      everything that only works on one OS; features import `platform`,
     login-path.js        a packaged app opened from Finder takes the login shell's PATH (runs first)
     shells.js            login shell first, then zsh, bash, fish, pwsh (`which` + Homebrew folders); no WSL
     shell-integration.js zsh hooks through a ZDOTDIR of Frost's own that loads the user's files first, and
-                         a bash rc; both send OSC 133 A/B from inside the prompt, so redraws (Ctrl+L) still mark
+                         win32's bash rc plus A inside the prompt; both mark from inside the prompt, so redraws
+                         (Ctrl+L) still mark
     wallpaper.js         each screen's desktop picture through AppKit, HEIC turned into JPEG
     window-chrome.js     traffic lights over Frost's titlebar, acrylic mapped to vibrancy
     fonts.js             system_profiler
