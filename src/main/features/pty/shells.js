@@ -181,6 +181,15 @@ function spawnShell({ cols, rows, cwd, run, profileId, owner, spare }) {
       env
     })
   );
+  // On Windows node-pty starts the shell's process (CreateProcess) a moment
+  // later, when its output worker reports ready, outside any label. An
+  // unlabelled freeze right after pty:create keeps turning up in stalls.log, so
+  // that step is named too. Found by its shape: where node-pty has no such
+  // step (macOS), there is nothing to wrap.
+  const agent = p._agent;
+  if (typeof agent?._completePtyConnection === 'function') {
+    agent._completePtyConnection = stalls.timed('pty connect', agent._completePtyConnection);
+  }
   ptys.set(id, p);
   unexited.add(p);
   p.onExit(() => unexited.delete(p));

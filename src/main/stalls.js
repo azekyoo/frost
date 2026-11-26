@@ -14,7 +14,8 @@
 // Only the synchronous part of a handler is timed: an await hands the thread
 // back, so it can't be what froze it.
 // Labelled: every IPC handler, every timer (named after its function, or its
-// source quoted when slow), shell start, kill, output and exit, and the events
+// source quoted when slow), shell start (and node-pty's deferred process start
+// on Windows), kill, output and exit, and the events
 // of the windows, app, screen, power monitor and updater. What is left
 // unlabelled is a promise callback, which there is no cheap way to name, or
 // native code a library runs on its own. For those, a frozen entry also says
