@@ -358,6 +358,12 @@ body:is([data-design='graphite'], [data-design='liquid']) .diff-tools button.dif
   overflow: hidden;
   border-radius: 0 0 9px 9px;
   padding: 3px 0;
+  /* Bodies off screen are not laid out. A file folding moves every file below
+     it on each frame of the animation, and on a big diff laying all of them out
+     again took longer than the frame. Once drawn, a body keeps its real height
+     as the placeholder (auto), so the scrollbar doesn't jump. */
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 300px;
 }
 
 .diff-file.collapsed .diff-file-body {

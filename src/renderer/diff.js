@@ -673,12 +673,19 @@ const FOLD_MS = 180;
 
 function foldDiffFile(el, folded, animate = true) {
   const body = el.querySelector('.diff-file-body');
+  // Without animation nothing is measured, so folding every file of a big diff
+  // at once costs one layout instead of one per file. The running animation is
+  // kept on the body rather than asked for (getAnimations flushes style).
+  const still = !body || !animate || reduceMotion.matches;
   const shown = !el.classList.contains('collapsed') || body?.classList.contains('folding');
-  const from = body && shown ? body.offsetHeight : 0;
-  body?.getAnimations().forEach((a) => a.id === 'motion-fold' && a.cancel());
+  const from = !still && shown ? body.offsetHeight : 0;
+  if (body?.foldAnim) {
+    body.foldAnim.cancel();
+    body.foldAnim = null;
+  }
   body?.classList.remove('folding');
   el.classList.toggle('collapsed', folded);
-  if (!body || !animate || reduceMotion.matches) return;
+  if (still) return;
   const pad = getComputedStyle(body);
   const open = { height: body.offsetHeight + 'px', paddingTop: pad.paddingTop, paddingBottom: pad.paddingBottom, opacity: 1 };
   const shut = { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 };
@@ -688,13 +695,17 @@ function foldDiffFile(el, folded, animate = true) {
     body.classList.add('folding');
     const a = body.animate([now, shut], { duration: FOLD_MS, easing: MOTION_EASE, fill: 'forwards' });
     a.id = 'motion-fold';
+    body.foldAnim = a;
     a.finished.then(() => {
       body.classList.remove('folding');
       a.cancel();
+      if (body.foldAnim === a) body.foldAnim = null;
     }, () => {});
   } else {
     const a = body.animate([from ? now : shut, open], { duration: FOLD_MS, easing: MOTION_EASE });
     a.id = 'motion-fold';
+    body.foldAnim = a;
+    a.finished.then(() => { if (body.foldAnim === a) body.foldAnim = null; }, () => {});
   }
 }
 

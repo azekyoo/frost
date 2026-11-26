@@ -167,11 +167,10 @@ function buildAgentLayout(tab) {
     const files = [...tab.els.diffBody.querySelectorAll('.diff-file')];
     // fold everything, unless it is already all folded
     const expand = files.length > 0 && files.every((f) => f.classList.contains('collapsed'));
-    // only the files on screen are animated: the rest just change
-    const view = tab.els.diffBody.getBoundingClientRect();
+    // no animation and no measuring: on a big diff, reading each file's box
+    // between class flips re-laid out the whole panel once per file (seconds)
     for (const f of files) {
-      const r = f.getBoundingClientRect();
-      foldDiffFile(f, !expand, r.bottom > view.top && r.top < view.bottom);
+      foldDiffFile(f, !expand, false);
       const p = f.dataset.path;
       if (!p) continue;
       if (expand) tab.diffCollapsed.delete(p);
