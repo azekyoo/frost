@@ -21,6 +21,10 @@
 // native code a library runs on its own. For those, a frozen entry also says
 // which labelled call finished last and how long before, and a garbage
 // collection pause long enough to matter is logged as "gc".
+// A machine that sleeps stops every thread, and on waking the main one looked
+// frozen for as long as it slept (and a call cut in half by it, slow). The
+// watchdog notices its own timer ran late as well, logs "suspended" instead,
+// and the time asleep is taken out of any freeze or slow call it fell inside.
 
 const { Worker } = require('worker_threads');
 const fs = require('fs');
@@ -32,9 +36,16 @@ const TICK_MS = 250;
 const MAX_LOG = 1024 * 1024;
 const LABEL_BYTES = 256;
 const GC_MS = 500;
+// the watchdog checks every 500ms: a check this late means it was stopped too
+const SUSPENDED_MS = 1500;
+
+// kept before labelTimers wraps it: reporting a slow call is not itself a call
+const rawTimeout = setTimeout;
 
 let logFile = null;
-let beat = null; // [last tick, start of the running labelled call or 0, end of the last one]
+// [last tick, start of the running labelled call or 0, end of the last one,
+//  total ms the process has spent suspended]
+let beat = null;
 let label = null; // utf8, zero-padded
 let lastLabel = null; // the outermost labelled call that finished last, same form
 let lastName = '';
@@ -78,12 +89,13 @@ function run(name, fn, self, args, detail) {
   current = outer ? outer + ' > ' + name : name;
   setLabel(current);
   const t = performance.now();
+  const slept = beat ? beat[3] : 0;
   if (beat) beat[1] = Date.now();
   try {
     return fn.apply(self, args);
   } finally {
     const ms = performance.now() - t;
-    if (ms > SLOW_MS) write(`slow ${Math.round(ms)}ms ${current}${detail ? ' — ' + detail() : ''}`);
+    if (ms > SLOW_MS) reportSlow(ms, current, detail, slept);
     // the last thing known to have run, for a freeze that comes between calls
     // (written only when it changes: most calls are the same "pty data")
     if (!outer && beat) {
@@ -94,6 +106,19 @@ function run(name, fn, self, args, detail) {
     setLabel(outer);
     if (beat) beat[1] = outerStart;
   }
+}
+
+// A call the machine slept through is only slow by what it ran awake. The
+// watchdog may count the sleep a moment after the call has ended (both threads
+// wake together), so the entry waits a second for that before it is written.
+function reportSlow(ms, chain, detail, slept) {
+  const line = (held, asleep) =>
+    `slow ${Math.round(held)}ms ${chain}${asleep ? ` (+${Math.round(asleep / 1000)}s asleep)` : ''}${detail ? ' — ' + detail() : ''}`;
+  if (!beat) return write(line(ms, 0));
+  rawTimeout(() => {
+    const asleep = beat[3] - slept;
+    if (ms - asleep > SLOW_MS) write(line(ms - asleep, asleep));
+  }, 1000).unref?.();
 }
 
 function timed(name, fn, detail) {
@@ -142,33 +167,45 @@ const beat = new Float64Array(workerData.beat);
 const label = new Uint8Array(workerData.label);
 const lastLabel = new Uint8Array(workerData.lastLabel);
 const text = (bytes) => { const end = bytes.indexOf(0); return Buffer.from(bytes.subarray(0, end < 0 ? bytes.length : end)).toString(); };
+const log = (line) => { try { fs.appendFileSync(workerData.logFile, new Date().toISOString() + ' ' + line + '\\n'); } catch {} };
 let reported = 0;
+let lastCheck = Date.now();
+let woke = 0; // when the process last came back from being suspended
 setInterval(() => {
   const now = Date.now();
-  if (now - beat[0] < ${FROZEN_MS}) {
+  // This thread was stopped as well, so the whole process was (the machine
+  // slept): not a freeze. Time is counted again from the moment it woke.
+  const late = now - lastCheck - 500;
+  lastCheck = now;
+  if (late > ${SUSPENDED_MS} - 500) {
+    beat[3] += late;
+    woke = now;
+    if (reported) reported += late;
+    log('suspended ' + Math.round(late) + 'ms (the machine slept, or the process was paused)');
+  }
+  const still = now - Math.max(beat[0], woke);
+  if (still < ${FROZEN_MS}) {
     if (reported) {
-      fs.appendFileSync(workerData.logFile, new Date().toISOString() + ' unfrozen after ' + (now - reported) + 'ms\\n');
+      log('unfrozen after ' + Math.round(now - reported) + 'ms');
       reported = 0;
     }
     return;
   }
   if (reported) return;
-  reported = beat[0];
+  reported = Math.max(beat[0], woke);
   const name = text(label) || '(unlabelled: a promise callback, or native code between calls)';
   const last = text(lastLabel);
   const since = beat[1]
-    ? Math.round(now - beat[1]) + 'ms in it'
+    ? Math.round(now - Math.max(beat[1], woke)) + 'ms in it'
     : 'not in a labelled call' + (last && beat[2] ? '; last labelled: ' + last + ', ended ' + Math.round(now - beat[2]) + 'ms ago' : '');
-  try {
-    fs.appendFileSync(workerData.logFile, new Date().toISOString() + ' frozen ' + Math.round(now - beat[0]) + 'ms, running: ' + name + ' (' + since + ')\\n');
-  } catch {}
+  log('frozen ' + Math.round(still) + 'ms, running: ' + name + ' (' + since + ')');
 }, 500);
 `;
 
 function install(ipcMain, userData) {
   logFile = path.join(userData, 'stalls.log');
   try {
-    const beatBuf = new SharedArrayBuffer(24);
+    const beatBuf = new SharedArrayBuffer(32);
     const labelBuf = new SharedArrayBuffer(LABEL_BYTES);
     const lastBuf = new SharedArrayBuffer(LABEL_BYTES);
     beat = new Float64Array(beatBuf);
