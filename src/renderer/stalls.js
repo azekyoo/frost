@@ -6,6 +6,7 @@
 // window held at the time, so the next slow spell names its cause.
 
 const WINDOW_SLOW_MS = 200;
+const WINDOW_HANG_MS = 10000;
 // a slow spell is many long frames in a row: one line every few seconds says
 // it as well as fifty, and the count of the rest is kept
 const WINDOW_STALL_GAP_MS = 3000;
@@ -57,8 +58,10 @@ function windowStallPhases(e) {
 try {
   new PerformanceObserver((list) => {
     for (const e of list.getEntries()) {
-      // a hidden window isn't drawn, and nothing in it is waited on
-      if (e.duration < WINDOW_SLOW_MS || document.visibilityState === 'hidden') continue;
+      // a hidden window isn't drawn, and nothing in it is waited on; a frame of
+      // many seconds is still a hang the window comes back to, so it is kept
+      if (e.duration < WINDOW_SLOW_MS) continue;
+      if (document.visibilityState === 'hidden' && e.duration < WINDOW_HANG_MS) continue;
       const now = Date.now();
       if (now - windowStallAt < WINDOW_STALL_GAP_MS) {
         windowStallsSkipped++;

@@ -10,7 +10,8 @@ rewriting the middle of the app; a Linux port would be a third sibling.
 main.js        startup order only: userData → stalls → features → single-instance lock → ready
 env.js         paths and fixed values (config files, agent-status folder, icons, MAIN_DIR / RENDERER_DIR, test overrides)
 late.js        calling into a module that may still be loading (the features call each other in cycles)
-stalls.js      names whatever holds the main process up, in stalls.log
+stalls.js      names whatever holds the main process up, in stalls.log; for a hung window, its script
+               stack, each process's CPU/memory and the last ten minutes of both
 preload.js     the window.api bridge the renderer talks through
 
 core/          pure logic, no Electron, no files, no processes; unit-tested (npm run test:core)

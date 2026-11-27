@@ -181,16 +181,181 @@ function logProcessesGone(app) {
   app.on('render-process-gone', (_e, _wc, d) => gone('window process', d));
 }
 
+// ---------- a window that stopped answering ----------
+// A window frozen for minutes (2026-11-27) left only "window unresponsive" six
+// times and a length counted from the last of them, and no long frame. Now one
+// hang is one entry with its real length, what each process was doing (a
+// window spinning in script, or idle and waiting on the GPU), the window's
+// script stack if it is running script, and the last ten minutes of CPU and
+// memory. The trend is kept in memory and written only when a window hangs.
+
+const TREND_EVERY_MS = 30000;
+const TREND_SAMPLES = 20;
+const STACK_WAIT_MS = 3000;
+const STACK_LINES = 12;
+// Chromium's hung-window timeout: a window is reported this long after it
+// stopped answering an input event
+const NOTICED_AFTER_MS = 15000;
+// [{ at, procs: Map pid -> { type, cpu, mem } }], oldest first
+const trend = [];
+let watching = false;
+
+// CPU as % of one core since the previous sample, from each process's total
+// CPU seconds: Electron's own percentCPUUsage is spread over all cores on
+// Windows (a window spinning one core read 6%) and 0 the first time a process
+// is seen. A process seen for the first time is counted from when it started.
+let lastCpu = new Map(); // pid -> { secs, at }
+function sampleProcesses() {
+  const { app } = require('electron');
+  const now = Date.now();
+  const procs = new Map();
+  const cpuNow = new Map();
+  for (const m of app.getAppMetrics()) {
+    const secs = m.cpu?.cumulativeCPUUsage;
+    let cpu = '?';
+    if (Number.isFinite(secs)) {
+      const before = lastCpu.get(m.pid) || { secs: 0, at: m.creationTime || now };
+      const wall = (now - before.at) / 1000;
+      if (wall > 0.5) cpu = Math.round(((secs - before.secs) / wall) * 100);
+      cpuNow.set(m.pid, { secs, at: now });
+    }
+    procs.set(m.pid, { type: m.type, cpu, mem: Math.round((m.memory?.workingSetSize || 0) / 1024) });
+  }
+  lastCpu = cpuNow;
+  return procs;
+}
+
+// The window's own process, the GPU process and main, by name
+function namedProcesses(procs, windowPid) {
+  const out = [];
+  if (procs.has(windowPid)) out.push(['window', procs.get(windowPid)]);
+  for (const p of procs.values()) {
+    if (p.type === 'GPU') out.push(['gpu', p]);
+    else if (p.type === 'Browser') out.push(['main', p]);
+  }
+  return out;
+}
+
+const processLine = (procs, windowPid) =>
+  namedProcesses(procs, windowPid)
+    .map(([name, p]) => `${name} cpu ${p.cpu}% mem ${p.mem}MB`)
+    .join(', ');
+
+function trendLine(windowPid) {
+  if (!trend.length) return '';
+  const series = [];
+  const pick = (name, procs) => namedProcesses(procs, windowPid).find(([n]) => n === name)?.[1];
+  for (const name of ['window', 'gpu', 'main']) {
+    const points = trend.map((s) => pick(name, s.procs));
+    if (!points.some(Boolean)) continue;
+    const list = (k) => points.map((p) => (p ? p[k] : '-')).join(' ');
+    series.push(`${name} cpu% ${list('cpu')} | mem MB ${list('mem')}`);
+  }
+  const mins = Math.round((Date.now() - trend[0].at) / 60000);
+  return `trend, last ${mins} min every ${TREND_EVERY_MS / 1000}s: ${series.join(' ; ')}`;
+}
+
+// "file:///C:/…/src/renderer/panes/glow.js:12:5" -> "panes/glow.js:12:5"
+const stackLine = (s) =>
+  String(s)
+    .trim()
+    .split('\n')
+    .map((l) => l.trim().replace(/^at /, '').replace(/file:\/\/\S*?\/(?:src\/renderer|node_modules)\//g, ''))
+    .filter(Boolean)
+    .slice(0, STACK_LINES)
+    .join(' < ');
+
+// Chromium hands out a window's stack only to a page that asks for it, with a
+// Document-Policy header. A page loaded from a file has no headers, so the
+// header is added to Frost's own pages here, and nothing else is touched.
+function allowWindowStacks() {
+  const { session } = require('electron');
+  const { pathToFileURL } = require('url');
+  const { RENDERER_DIR } = require('./env');
+  const pages = pathToFileURL(RENDERER_DIR).href + '/*';
+  session.defaultSession.webRequest.onHeadersReceived({ urls: [pages] }, (d, done) => {
+    if (d.resourceType !== 'mainFrame') return done({});
+    done({ responseHeaders: { ...d.responseHeaders, 'Document-Policy': ['include-js-call-stacks-in-crash-reports'] } });
+  });
+}
+
+// Started with the first window (the app is ready by then).
+function watchProcesses() {
+  if (watching) return;
+  watching = true;
+  try {
+    allowWindowStacks();
+  } catch (e) {
+    write(`window stacks not available: ${e.message}`);
+  }
+  const sample = () => {
+    try {
+      trend.push({ at: Date.now(), procs: sampleProcesses() });
+      if (trend.length > TREND_SAMPLES) trend.shift();
+    } catch {}
+  };
+  sample();
+  setInterval(sample, TREND_EVERY_MS).unref();
+}
+
+// The stack of whatever script the window is running. The promise never
+// settles when it runs none, which says as much: it is stuck in layout, paint,
+// the GPU or native code.
+async function windowStack(w) {
+  try {
+    const wait = new Promise((r) => rawTimeout(() => r(null), STACK_WAIT_MS));
+    const s = await Promise.race([w.webContents.mainFrame.collectJavaScriptCallStack(), wait]);
+    if (s === null) return `no script running (no stack after ${STACK_WAIT_MS / 1000}s)`;
+    if (!s || /not opted in/i.test(s)) return 'stack not available' + (s ? ': ' + s : '');
+    return stackLine(s) || 'empty stack';
+  } catch (e) {
+    return `stack not available: ${e.message}`;
+  }
+}
+
 // Electron's own "not answering" for a window, and how long it lasted.
+// Electron says "unresponsive" again every few seconds while a hang lasts:
+// the length is counted from the first, and the repeats only counted.
 function logUnresponsive(w) {
+  watchProcesses();
   let since = 0;
-  w.on('unresponsive', () => {
+  let repeats = 0;
+  const pid = () => {
+    try {
+      return w.webContents.getOSProcessId();
+    } catch {
+      return 0;
+    }
+  };
+  w.on('unresponsive', async () => {
+    if (since) return void repeats++;
+    // Electron notices a few seconds in; the window was already stuck
     since = Date.now();
-    write('window unresponsive');
+    repeats = 1;
+    let procs = '';
+    try {
+      procs = processLine(sampleProcesses(), pid());
+    } catch {}
+    write(`window unresponsive (stuck for ${NOTICED_AFTER_MS / 1000}s already) | cpu: ${procs}`);
+    const t = trendLine(pid());
+    if (t) write(t);
+    write(`window stack: ${await windowStack(w)}`);
   });
   w.on('responsive', () => {
-    if (since) write(`window responsive again after ${Date.now() - since}ms`);
+    if (!since) return;
+    // CPU use since the sample taken when the hang began: what the hang cost
+    let procs = '';
+    try {
+      procs = processLine(sampleProcesses(), pid());
+    } catch {}
+    const times = repeats > 1 ? `, reported unresponsive ${repeats} times` : '';
+    const ms = Date.now() - since;
+    write(
+      `window responsive again: hung about ${Math.round((ms + NOTICED_AFTER_MS) / 1000)}s ` +
+        `(${ms}ms after Electron noticed, which takes ${NOTICED_AFTER_MS / 1000}s${times}) | cpu since: ${procs}`
+    );
     since = 0;
+    repeats = 0;
   });
 }
 
@@ -238,6 +403,12 @@ setInterval(() => {
 
 function install(ipcMain, userData) {
   logFile = path.join(userData, 'stalls.log');
+  // lets a hung window's script stack be read (logUnresponsive); a second
+  // enable-features switch set anywhere else would replace this one, so add to
+  // this list instead. Must be set before the app is ready.
+  try {
+    require('electron').app.commandLine.appendSwitch('enable-features', 'DocumentPolicyIncludeJSCallStacksInCrashReports');
+  } catch {}
   try {
     const beatBuf = new SharedArrayBuffer(32);
     const labelBuf = new SharedArrayBuffer(LABEL_BYTES);
