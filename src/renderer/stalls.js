@@ -30,14 +30,28 @@ function windowStallLine(e) {
     `panes ${panes.length}`,
     `gpu ${panes.filter((n) => n.webgl).length}`,
     `effects ${state.theme?.typingGlow === true ? 'on' : 'off'}`,
+    `design ${document.body.dataset.design || 'frost'}`,
+    `scale ${window.devicePixelRatio}`,
+    `size ${window.innerWidth}x${window.innerHeight}`,
     `heap ${heap}`
   ].join(', ');
   const skipped = windowStallsSkipped ? ` (+${windowStallsSkipped} more since the last)` : '';
   return (
     `window slow ${Math.round(e.duration)}ms, blocking ${Math.round(e.blockingDuration || 0)}ms${skipped}: ` +
-    (scripts.join('; ') || 'no script (layout, paint or GPU)') +
-    ` | ${held}`
+    (scripts.join('; ') || 'no script') +
+    ` | ${windowStallPhases(e)} | ${held}`
   );
+}
+
+// Where the frame's time went: the tasks before rendering, the frame callbacks
+// (requestAnimationFrame, resize observers), then style, layout and paint. A
+// frame with no script in it is otherwise all one number.
+function windowStallPhases(e) {
+  const end = e.startTime + e.duration;
+  const render = e.renderStart || end;
+  const layout = e.styleAndLayoutStart || end;
+  const ms = (n) => Math.max(0, Math.round(n)) + 'ms';
+  return `tasks ${ms(render - e.startTime)}, frame callbacks ${ms(layout - render)}, style/layout/paint ${ms(end - layout)}`;
 }
 
 try {
