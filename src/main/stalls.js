@@ -121,10 +121,17 @@ function reportSlow(ms, chain, detail, slept) {
   }, 1000).unref?.();
 }
 
+// Marks a function timed() made, so a timer given one isn't labelled again
+// (that logged every slow call twice, once as "timer anonymous" quoting this
+// wrapper's own source).
+const TIMED = Symbol('timed');
+
 function timed(name, fn, detail) {
-  return function (...args) {
+  const wrapper = function (...args) {
     return run(name, fn, this, args, detail);
   };
+  wrapper[TIMED] = true;
+  return wrapper;
 }
 
 // One call, run under `name`: for a native call (starting or killing a shell)
@@ -139,7 +146,7 @@ function labelTimers() {
   for (const k of ['setTimeout', 'setInterval', 'setImmediate']) {
     const orig = global[k];
     const wrapped = function (fn, ...rest) {
-      if (typeof fn !== 'function') return orig.call(this, fn, ...rest);
+      if (typeof fn !== 'function' || fn[TIMED]) return orig.call(this, fn, ...rest);
       return orig.call(this, timed('timer ' + (fn.name || 'anonymous'), fn, () => sourceOf(fn)), ...rest);
     };
     // util.promisify(setTimeout) looks for this
