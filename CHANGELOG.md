@@ -3,6 +3,24 @@
 Notable changes per release. Dates are release dates; versions follow
 [semver](https://semver.org), where 0.x minor bumps are free to change defaults.
 
+## 3.0.2 — 2026-11-27
+
+### Fixed
+
+- **Folding a big diff no longer stalls the window.** Fold all used to lay
+  the whole panel out again for every file, and folding one file re-laid out
+  every file below it on each frame of the animation.
+
+### Changed
+
+- **`stalls.log` names more of what slows Frost down.** A sleeping machine is
+  logged as suspended instead of as a freeze lasting the whole sleep. A slow
+  window frame says how its time split between tasks, frame callbacks and
+  style/layout/paint, with the design, display scale and window size. A
+  crashed GPU or window process, and a window that stops answering, are
+  logged too. A slow timer is logged once under its own name instead of
+  twice, and node-pty's delayed shell start on Windows is named.
+
 ## 3.0.1 — 2026-11-25
 
 ### Fixed
