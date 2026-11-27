@@ -22,6 +22,20 @@ function attachDrop(node) {
   });
 }
 
+// A hidden pane is never fitted. Under display:none the host's 100% width and
+// height come back from getComputedStyle as a bare "100", which FitAddon reads
+// as 100px: a 9x4 terminal. Anything that fitted every pane (a theme reload)
+// told each hidden session's program it was nine columns wide, and Claude Code
+// drew itself that way, which is what switching back to it hours later showed.
+// Every way of showing a pane fits it once it is laid out.
+function guardFit(fit, hostEl) {
+  const raw = fit.fit.bind(fit);
+  fit.fit = () => {
+    if (!hostEl.isConnected || hostEl.offsetParent === null) return;
+    raw();
+  };
+}
+
 async function createPane(opts = {}) {
   const id = 'pane-' + ++paneCounter;
   const paneEl = document.createElement('div');
@@ -66,6 +80,7 @@ async function createPane(opts = {}) {
   });
   const fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
+  guardFit(fit, hostEl);
   // Modern character widths (emoji = 2 cols). theme.unicodeVersion picks the
   // active table ('11' or '6') and hot-reloads for live A/B testing.
   // Never let a broken addon kill terminal creation.
