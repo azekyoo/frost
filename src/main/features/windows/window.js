@@ -76,6 +76,7 @@ function createWindow({ isPrimary = false, restore = null } = {}) {
   // not its webContents: everything a page sends is an IPC call, labelled
   // already, and its events would only add a second name on the busiest path
   stalls.labelEmitter(w, 'window');
+  stalls.logUnresponsive(w);
   // Windows is signing out or shutting down: a waiting update must not start
   // installing now, because the session ending kills the installer between
   // removing the old version and copying the new one, and Frost no longer

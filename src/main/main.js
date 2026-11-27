@@ -84,6 +84,7 @@ app.whenReady().then(() => {
   stalls.labelEmitter(app, 'app');
   stalls.labelEmitter(screen, 'screen');
   stalls.labelEmitter(powerMonitor, 'power');
+  stalls.logProcessesGone(app);
   if (!app.isPackaged) identifySourceBuild();
 
   // No application menu at all. An app that never sets one gets Electron's

@@ -21,6 +21,8 @@
 // native code a library runs on its own. For those, a frozen entry also says
 // which labelled call finished last and how long before, and a garbage
 // collection pause long enough to matter is logged as "gc".
+// Beside those: a window's own long frames (renderer/stalls.js), a window
+// Electron finds unresponsive, and a GPU, utility or window process that died.
 // A machine that sleeps stops every thread, and on waking the main one looked
 // frozen for as long as it slept (and a call cut in half by it, slow). The
 // watchdog notices its own timer ran late as well, logs "suspended" instead,
@@ -167,6 +169,31 @@ function labelEmitter(obj, prefix) {
   };
 }
 
+// A process that crashed or a window that stopped answering for good leaves no
+// slow call and no long frame behind (a frame is only reported once it ends):
+// the window turns black or stuck, and the log said nothing.
+// Processes ending cleanly (a closed window, a finished utility) aren't news.
+function logProcessesGone(app) {
+  const gone = (what, d) => {
+    if (d.reason !== 'clean-exit') write(`${what} gone: ${d.reason}, exit code ${d.exitCode}`);
+  };
+  app.on('child-process-gone', (_e, d) => gone(`process ${d.type}${d.name ? ' (' + d.name + ')' : ''}`, d));
+  app.on('render-process-gone', (_e, _wc, d) => gone('window process', d));
+}
+
+// Electron's own "not answering" for a window, and how long it lasted.
+function logUnresponsive(w) {
+  let since = 0;
+  w.on('unresponsive', () => {
+    since = Date.now();
+    write('window unresponsive');
+  });
+  w.on('responsive', () => {
+    if (since) write(`window responsive again after ${Date.now() - since}ms`);
+    since = 0;
+  });
+}
+
 const WATCHDOG = `
 const { workerData } = require('worker_threads');
 const fs = require('fs');
@@ -244,4 +271,4 @@ function install(ipcMain, userData) {
   labelTimers();
 }
 
-module.exports = { install, timed, during, labelEmitter };
+module.exports = { install, timed, during, labelEmitter, logProcessesGone, logUnresponsive };
